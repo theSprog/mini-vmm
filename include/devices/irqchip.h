@@ -1,0 +1,1 @@
+// KVM_CREATE_IRQCHIP 封装、GSI 分配表
