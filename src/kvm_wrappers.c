@@ -1,0 +1,213 @@
+/* src/kvm_wrappers.c — KVM ioctl 薄封装 */
+#define _GNU_SOURCE
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+
+#include "vmm.h"
+#include "kvm_wrappers.h"
+
+/* 统一的 ioctl 包装：出错时打出 ioctl 名字。
+ * 没有这层的话，调试期看到的全是 "ioctl failed: Invalid argument"，
+ * 完全无法定位是哪一步。 */
+#define KVM_IOCTL(fd, req, arg) ({                                    \
+    int _r = ioctl((fd), (req), (arg));                           \
+    if (_r < 0)                                                   \
+        vmm_err("ioctl(%s) failed: %s", #req, strerror(errno));\
+    _r;                                                           \
+})
+
+int kvm_open(void)
+{
+    int fd = open("/dev/kvm", O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        vmm_err("open /dev/kvm: %s", strerror(errno));
+        if (errno == EACCES)
+            vmm_err("  hint: is the current user in the kvm group? (id -nG | grep kvm)");
+        if (errno == ENOENT)
+            vmm_err("  hint: is the kvm_amd module loaded? (lsmod | grep kvm)");
+        return VMM_ERR_SYS;
+    }
+    return fd;
+}
+
+int kvm_get_api_version(int kvm_fd)
+{
+    return KVM_IOCTL(kvm_fd, KVM_GET_API_VERSION, 0);
+}
+
+/* 注意：必须用 KVM_CHECK_EXTENSION 做运行时探测，而不是看头文件里
+ * 有没有定义某个 KVM_CAP_*。发行版的 linux-libc-dev 常常比运行中的
+ * 内核新，头文件里有的宏，跑起来的内核不一定认。 */
+int kvm_check_extension(int kvm_fd, int cap)
+{
+    int r = ioctl(kvm_fd, KVM_CHECK_EXTENSION, cap);
+    return r < 0 ? 0 : r;
+}
+
+int kvm_get_vcpu_mmap_size(int kvm_fd)
+{
+    return KVM_IOCTL(kvm_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
+}
+
+int kvm_create_vm(int kvm_fd)
+{
+    /* 第三个参数是 machine type，x86 上必须为 0 */
+    return KVM_IOCTL(kvm_fd, KVM_CREATE_VM, (unsigned long)0);
+}
+
+int kvm_create_vcpu(int vm_fd, int vcpu_id)
+{
+    return KVM_IOCTL(vm_fd, KVM_CREATE_VCPU, (unsigned long)vcpu_id);
+}
+
+int kvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
+                               uint64_t gpa, uint64_t size, uint64_t hva)
+{
+    struct kvm_userspace_memory_region r;
+
+    memset(&r, 0, sizeof(r));
+    r.slot            = slot;
+    r.flags           = flags;
+    r.guest_phys_addr = gpa;
+    r.memory_size     = size;
+    r.userspace_addr  = hva;
+
+    return KVM_IOCTL(vm_fd, KVM_SET_USER_MEMORY_REGION, &r) < 0
+           ? VMM_ERR_SYS : VMM_OK;
+}
+
+/* KVM_SET_TSS_ADDR 是 _IO(KVMIO, 0x47)，参数按值传，不是指针 */
+int kvm_set_tss_addr(int vm_fd, uint64_t addr)
+{
+    return KVM_IOCTL(vm_fd, KVM_SET_TSS_ADDR, (unsigned long)addr) < 0
+           ? VMM_ERR_SYS : VMM_OK;
+}
+
+/* KVM_SET_IDENTITY_MAP_ADDR 是 _IOW(KVMIO, 0x48, __u64)，参数传指针 */
+int kvm_set_identity_map_addr(int vm_fd, uint64_t addr)
+{
+    return KVM_IOCTL(vm_fd, KVM_SET_IDENTITY_MAP_ADDR, &addr) < 0
+           ? VMM_ERR_SYS : VMM_OK;
+}
+
+struct kvm_run *kvm_mmap_run(int vcpu_fd, size_t size)
+{
+    void *p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   vcpu_fd, 0);
+    if (p == MAP_FAILED) {
+        vmm_err("mmap kvm_run: %s", strerror(errno));
+        return NULL;
+    }
+    return (struct kvm_run *)p;
+}
+
+int kvm_get_regs(int vcpu_fd, struct kvm_regs *regs)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_GET_REGS, regs) < 0 ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_set_regs(int vcpu_fd, const struct kvm_regs *regs)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_SET_REGS, regs) < 0 ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_get_sregs(int vcpu_fd, struct kvm_sregs *sregs)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_GET_SREGS, sregs) < 0 ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_set_sregs(int vcpu_fd, const struct kvm_sregs *sregs)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_SET_SREGS, sregs) < 0 ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_run(int vcpu_fd)
+{
+    int r;
+
+    /* EINTR 在这里是正常现象：Step 4 之后我们会用信号把 vCPU 线程
+     * 从 guest 里踢出来。此处直接重入。 */
+    do {
+        r = ioctl(vcpu_fd, KVM_RUN, 0);
+    } while (r < 0 && errno == EINTR);
+
+    if (r < 0) {
+        vmm_err("KVM_RUN: %s", strerror(errno));
+        return VMM_ERR_SYS;
+    }
+    return VMM_OK;
+}
+
+int kvm_get_supported_cpuid(int kvm_fd, struct kvm_cpuid2 **out)
+{
+    struct kvm_cpuid2 *c;
+    int nent = 128;
+
+    for (;;) {
+        c = calloc(1, sizeof(*c) +
+                      nent * sizeof(struct kvm_cpuid_entry2));
+        if (!c)
+            return VMM_ERR_NOMEM;
+        c->nent = nent;
+
+        if (ioctl(kvm_fd, KVM_GET_SUPPORTED_CPUID, c) == 0)
+            break;
+
+        free(c);
+        if (errno != E2BIG) {
+            vmm_err("KVM_GET_SUPPORTED_CPUID: %s", strerror(errno));
+            return VMM_ERR_SYS;
+        }
+        nent *= 2;
+        if (nent > 4096)
+            return VMM_ERR_NOMEM;
+    }
+
+    *out = c;
+    return VMM_OK;
+}
+
+int kvm_set_cpuid2(int vcpu_fd, struct kvm_cpuid2 *cpuid)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_SET_CPUID2, cpuid) < 0
+           ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value)
+{
+    struct {
+        struct kvm_msrs hdr;
+        struct kvm_msr_entry ent[1];
+    } buf;
+
+    memset(&buf, 0, sizeof(buf));
+    buf.hdr.nmsrs   = 1;
+    buf.ent[0].index = index;
+
+    if (KVM_IOCTL(vcpu_fd, KVM_GET_MSRS, &buf.hdr) < 0)
+        return VMM_ERR_SYS;
+
+    *value = buf.ent[0].data;
+    return VMM_OK;
+}
+
+int kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value)
+{
+    struct {
+        struct kvm_msrs hdr;
+        struct kvm_msr_entry ent[1];
+    } buf;
+
+    memset(&buf, 0, sizeof(buf));
+    buf.hdr.nmsrs    = 1;
+    buf.ent[0].index = index;
+    buf.ent[0].data  = value;
+
+    return KVM_IOCTL(vcpu_fd, KVM_SET_MSRS, &buf.hdr) < 0
+           ? VMM_ERR_SYS : VMM_OK;
+}
