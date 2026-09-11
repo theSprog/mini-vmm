@@ -270,9 +270,12 @@ int boot_setup_real_mode(struct vmm_vcpu *vcpu, uint64_t entry_gpa)
     return VMM_OK;
 }
 
-int boot_setup_long_mode(struct vmm_vcpu *vcpu,
-                         const struct boot_mem_layout *l,
-                         uint64_t entry_gpa)
+/* 长模式公共部分：选择子和 RSI 由调用者决定 */
+static int setup_long_mode_common(struct vmm_vcpu *vcpu,
+                                  const struct boot_mem_layout *l,
+                                  uint64_t entry_gpa, uint16_t sel_code,
+                                  uint16_t sel_data, uint16_t gdt_limit,
+                                  uint64_t rsi)
 {
     struct kvm_sregs sregs;
     struct kvm_regs regs;
@@ -305,7 +308,7 @@ int boot_setup_long_mode(struct vmm_vcpu *vcpu,
      * 由下面的 sregs.cs/ds 直接给定了。但 guest 一旦执行 lgdt 之外的
      * 任何段加载（Linux 内核早期一定会），硬件就会真的去查这张表。 */
     sregs.gdt.base  = l->gdt_gpa;
-    sregs.gdt.limit = BOOT_GDT_NR_ENTRIES * 8 - 1;
+    sregs.gdt.limit = gdt_limit;
 
     /* 不装 IDT：Step 1.2 的 payload 不该产生任何异常。
      * 万一产生了，limit=0 会导致 #GP -> #DF -> triple fault，
@@ -314,8 +317,8 @@ int boot_setup_long_mode(struct vmm_vcpu *vcpu,
     sregs.idt.base  = 0;
     sregs.idt.limit = 0;
 
-    seg_from_desc(&code, GDT_DESC_CODE64, BOOT_SEL_CODE);
-    seg_from_desc(&data, GDT_DESC_DATA64, BOOT_SEL_DATA);
+    seg_from_desc(&code, GDT_DESC_CODE64, sel_code);
+    seg_from_desc(&data, GDT_DESC_DATA64, sel_data);
 
     sregs.cs = code;
     sregs.ds = sregs.es = sregs.fs = sregs.gs = sregs.ss = data;
@@ -330,6 +333,7 @@ int boot_setup_long_mode(struct vmm_vcpu *vcpu,
     regs.rip    = entry_gpa;
     regs.rflags = 0x2;
     regs.rsp    = 0x200000;   /* 2MiB 处向下growing，够 payload 用 */
+    regs.rsi    = rsi;
 
     r = kvm_set_regs(vcpu->fd, &regs);
     if (r != VMM_OK)
@@ -339,6 +343,42 @@ int boot_setup_long_mode(struct vmm_vcpu *vcpu,
              vcpu->id, (unsigned long long)sregs.cr3,
              (unsigned long long)entry_gpa);
     return VMM_OK;
+}
+
+int boot_setup_long_mode(struct vmm_vcpu *vcpu,
+                         const struct boot_mem_layout *l,
+                         uint64_t entry_gpa)
+{
+    return setup_long_mode_common(vcpu, l, entry_gpa,
+                                  BOOT_SEL_CODE, BOOT_SEL_DATA,
+                                  BOOT_GDT_NR_ENTRIES * 8 - 1, 0);
+}
+
+int boot_setup_linux64(struct vmm_vcpu *vcpu,
+                       const struct boot_mem_layout *l,
+                       uint64_t entry_gpa, uint64_t boot_params_gpa)
+{
+    uint64_t gdt[4] = {
+        GDT_DESC_NULL,
+        GDT_DESC_NULL,
+        GDT_DESC_CODE64,    /* 0x10 = __BOOT_CS */
+        GDT_DESC_DATA64,    /* 0x18 = __BOOT_DS */
+    };
+    int r;
+
+    /* 内核 startup_64 很快会 lgdt 自己的 GDT，这张表只需要撑到那一刻；
+     * 但在那之前如果有任何段重载，选择子必须对得上，所以还是按协议给。 */
+    if (mem_write(vcpu->vm, l->gdt_gpa, gdt, sizeof(gdt)) != VMM_OK)
+        return VMM_ERR_INVAL;
+
+    r = setup_long_mode_common(vcpu, l, entry_gpa,
+                               BOOT_LINUX_SEL_CODE, BOOT_LINUX_SEL_DATA,
+                               sizeof(gdt) - 1, boot_params_gpa);
+    if (r == VMM_OK)
+        vmm_info("vCPU %d: Linux boot protocol, CS=0x%02x DS=0x%02x RSI=0x%llx",
+                 vcpu->id, BOOT_LINUX_SEL_CODE, BOOT_LINUX_SEL_DATA,
+                 (unsigned long long)boot_params_gpa);
+    return r;
 }
 
 void boot_dump_page_walk(struct vmm_vm *vm, const struct boot_mem_layout *l,

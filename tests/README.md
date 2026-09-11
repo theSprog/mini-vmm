@@ -57,3 +57,14 @@ end_case                         # 判定；失败时自动打印完整实际输
 | 1.2 4 级页表 + GDT + 长模式  | `step1.sh` | 2 | — |
 | 错误路径诊断信息             | `step1.sh` | 3 | — |
 | SVM 能力 / ioctl 序列 / tracepoint | `step1.sh` | — | 5 |
+| 2.1 8250 UART（THR/SCR/LOOP） | `step2.sh` | 2 | — |
+| 2.2 vmlinux 直启 + MP/ACPI + PIT/RTC（含参数校验） | `step2.sh` | 3 | 2 |
+| 2.3 initramfs + shell + poweroff | `step2.sh` | 1 | 1 |
+| 2.4 bzImage 解压启动 + shell + poweroff | `step2.sh` | 2 | — |
+| 6.1 SMP 参数校验 | `step6.sh` | 2 | — |
+| 6.1 SMP 启动 / CPUID 拓扑 / 多 vCPU 停机 | `step6.sh` | 2 | 3 |
+| 固件表离线检查（MP/ACPI/boot_params，可选 iasl） | `boot_tables.sh` | 2 + 每张 ACPI 表 1 | — |
+
+`step2.sh` 的 2.2/2.3 与 `step6.sh` 的 guest 用例需要 guest 内核：`VMLINUX=/path/to/vmlinux ./tests/step2.sh`，未设置时 SKIP；2.4 另需 `BZIMAGE=/path/to/bzImage`。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调用 `tools/build_initramfs.sh`。
+
+`boot_tables.sh` 不需要 `/dev/kvm` 和 guest 内核，可以在任何 Linux 上跑：它把 `src/boot/{mptable,acpi,zeropage}.c` 与 `tests/unit/boot_tables_test.c` 编译成 host 程序，逐字段检查签名、长度、校验和、MP 表与 MADT 的一致性、E820 与 boot_params 的关键字段。找得到 `iasl`（`IASL=/path/to/iasl` 或在 PATH 里）时，再用它反汇编每张 ACPI 表，检查 `.dsl` 中没有 `Incorrect`/`Invalid`/`Error`/`Warning`。

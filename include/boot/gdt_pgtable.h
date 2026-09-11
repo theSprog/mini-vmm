@@ -137,6 +137,17 @@ int  boot_setup_long_mode(struct vmm_vcpu *vcpu,
                           const struct boot_mem_layout *l,
                           uint64_t entry_gpa);
 
+/* Step 2.2：Linux 64 位启动协议要求 __BOOT_CS=0x10、__BOOT_DS=0x18，
+ * 和 Step 1 的 0x08/0x10 不同。这里在 l->gdt_gpa 写一张
+ * [null, null, code64, data64] 的表，其余和 boot_setup_long_mode 相同，
+ * 另外把 RSI 设为 boot_params 的 GPA。页表须已构建。 */
+#define BOOT_LINUX_SEL_CODE 0x10
+#define BOOT_LINUX_SEL_DATA 0x18
+
+int  boot_setup_linux64(struct vmm_vcpu *vcpu,
+                        const struct boot_mem_layout *l,
+                        uint64_t entry_gpa, uint64_t boot_params_gpa);
+
 /* 调试：把已构建的页表按四级走一遍，打印 GPA 的翻译路径。
  * 排“写进去了但地址不对”这类 bug 时是救命工具。 */
 void boot_dump_page_walk(struct vmm_vm *vm, const struct boot_mem_layout *l,

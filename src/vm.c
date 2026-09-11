@@ -10,6 +10,7 @@
 #include "memory.h"
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
+#include "devices/irqchip.h"
 
 /* ------------------------------------------------------------------ */
 /* IO 总线                                                             */
@@ -271,13 +272,25 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
     vcpu->n_exits++;
 
     switch (run->exit_reason) {
-    case KVM_EXIT_IO:
-        vcpu->n_exit_io++;
-        return handle_io(vcpu);
+    case KVM_EXIT_IO: {
+        int r;
 
-    case KVM_EXIT_MMIO:
+        vcpu->n_exit_io++;
+        pthread_mutex_lock(&vcpu->vm->io_lock);
+        r = handle_io(vcpu);
+        pthread_mutex_unlock(&vcpu->vm->io_lock);
+        return r;
+    }
+
+    case KVM_EXIT_MMIO: {
+        int r;
+
         vcpu->n_exit_mmio++;
-        return handle_mmio(vcpu);
+        pthread_mutex_lock(&vcpu->vm->io_lock);
+        r = handle_mmio(vcpu);
+        pthread_mutex_unlock(&vcpu->vm->io_lock);
+        return r;
+    }
 
     case KVM_EXIT_HLT:
         vcpu->n_exit_hlt++;
@@ -328,6 +341,11 @@ int vcpu_run_loop(struct vmm_vcpu *vcpu)
 
     while (!vcpu->should_stop) {
         r = kvm_run(vcpu->fd);
+        /* 被打断时 kvm_run 页里的 exit_reason 不一定有效（immediate_exit
+         * 路径下 KVM 不会改写它，还是上一次的值），不能交给
+         * vcpu_handle_exit，否则会把上一次的 IO 再执行一遍 */
+        if (r == VMM_ERR_INTR)
+            continue;
         if (r != VMM_OK)
             return r;
 
@@ -390,6 +408,7 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     memset(vm, 0, sizeof(*vm));
     vm->kvm_fd = vm->vm_fd = -1;
     vm->cfg = *cfg;
+    pthread_mutex_init(&vm->io_lock, NULL);
 
     /* 1. 打开 /dev/kvm */
     vm->kvm_fd = kvm_open();
@@ -420,9 +439,20 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
         goto fail;
     }
 
+    r = kvm_check_extension(vm->kvm_fd, KVM_CAP_MAX_VCPUS);
     vmm_info("KVM API v%d, kvm_run size %zu bytes, max vCPUs %d",
-             vm->api_version, vm->vcpu_mmap_size,
-             kvm_check_extension(vm->kvm_fd, KVM_CAP_MAX_VCPUS));
+             vm->api_version, vm->vcpu_mmap_size, r);
+    if (r > 0 && cfg->nr_vcpus > r) {
+        vmm_err("%d vCPUs requested, KVM allows at most %d",
+                cfg->nr_vcpus, r);
+        goto fail;
+    }
+
+    /* 停机协调依赖 kvm_run->immediate_exit，见 smp.c vm_request_stop() */
+    if (!kvm_check_extension(vm->kvm_fd, KVM_CAP_IMMEDIATE_EXIT)) {
+        vmm_err("kernel does not support KVM_CAP_IMMEDIATE_EXIT (needs 4.11+)");
+        goto fail;
+    }
 
     /* 3. 探测 CPU 厂商并校验虚拟化能力 */
     vm->arch = arch_probe();
@@ -451,7 +481,15 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     if (r != VMM_OK)
         goto fail;
 
-    /* 7. 创建 vCPU */
+    /* 7. Linux 需要中断控制器和 PIT，且必须在创建 vCPU 之前建好：
+     *    KVM 在 KVM_CREATE_VCPU 时才决定是否给 vCPU 挂内核态 LAPIC。 */
+    if (cfg->mode == VMM_BOOT_LINUX) {
+        r = irqchip_create(vm);
+        if (r != VMM_OK)
+            goto fail;
+    }
+
+    /* 8. 创建 vCPU */
     for (i = 0; i < cfg->nr_vcpus; i++) {
         r = vm_create_vcpu(vm, i);
         if (r != VMM_OK)

@@ -1,6 +1,6 @@
 # Makefile — mini-vmm，基于 KVM 的极简 VMM
 #
-# Step 1 只编译下面 SRCS 里列出的文件。src/ 下其余 .c 目前仍是占位注释，
+# 只编译下面 SRCS 里列出的文件。src/ 下其余 .c 目前仍是占位注释，
 # 会在后续 Step 逐个填充并加进这个列表。
 #
 # 验收测试不放在这里，见 tests/ 目录：
@@ -24,12 +24,24 @@ SRCS := \
 	src/main.c \
 	src/arch/arch_detect.c \
 	src/arch/amd/svm.c \
-	src/boot/gdt_pgtable.c
+	src/boot/gdt_pgtable.c \
+	src/devices/serial8250.c \
+	src/devices/irqchip.c \
+	src/devices/i8042.c \
+	src/boot/elf_loader.c \
+	src/boot/bzimage.c \
+	src/boot/kernel_loader.c \
+	src/boot/zeropage.c \
+	src/boot/mptable.c \
+	src/boot/acpi.c \
+	src/devices/rtc.c \
+	src/console.c \
+	src/smp.c
 
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-PAYLOADS := $(BUILD)/payload16.bin $(BUILD)/payload64.bin
+PAYLOADS := $(BUILD)/payload16.bin $(BUILD)/payload64.bin $(BUILD)/serial64.bin
 
 .PHONY: all clean cc-json
 
@@ -54,6 +66,12 @@ $(BUILD)/payload64.elf: tools/payload/long_mode_stub.S
 	@mkdir -p $(dir $@)
 	$(AS) --64 -o $(BUILD)/payload64.o $<
 	$(LD) -m elf_x86_64 -N -e _start -Ttext 0x300000 -o $@ $(BUILD)/payload64.o
+
+# Step 2.1 串口载荷，和 payload64 一样放 0x300000，用 cpp 预处理 #define。
+$(BUILD)/serial64.elf: tools/payload/serial_stub.S
+	@mkdir -p $(dir $@)
+	$(CC) -c -o $(BUILD)/serial64.o $<
+	$(LD) -m elf_x86_64 -N -e _start -Ttext 0x300000 -o $@ $(BUILD)/serial64.o
 
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(OBJCOPY) -O binary $< $@

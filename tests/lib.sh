@@ -61,6 +61,7 @@ need_build() {
 #   expect_rc 0
 #   expect_has "某段文本"
 #   expect_not "不该出现的文本"
+#   expect_any "候选 1" "候选 2"
 #   end_case
 
 run_case() {
@@ -70,7 +71,10 @@ run_case() {
     printf '   $ %s\n' "$*"
     # stderr 合并进来一起断言：VMM 的日志走 stderr，
     # 调试端口的输出走 stdout，两边都要检查
-    CUR_OUT="$("$@" 2>&1)"
+    # stdin 接 /dev/null：被测程序不该碰终端。Step 2 起 VMM 会把
+    # 终端切 raw 模式并读输入，而 timeout 会把它放进后台进程组，
+    # 碰终端就会被 SIGTTOU/SIGTTIN 停住，整个测试挂死。
+    CUR_OUT="$("$@" 2>&1 </dev/null)"
     CUR_RC=$?
 }
 
@@ -93,6 +97,21 @@ expect_not() {
         printf '   %sFAIL%s 输出里不该出现: %s\n' "$C_RED" "$C_RST" "$1"
         CUR_BAD=1
     fi
+}
+
+# 候选里出现任意一个即可：同一件事有多条合法的日志路径时用。
+#   expect_any "候选 1" "候选 2" ...
+expect_any() {
+    local s
+    for s in "$@"; do
+        if printf '%s' "$CUR_OUT" | grep -qF -- "$s"; then
+            return 0
+        fi
+    done
+    printf '   %sFAIL%s none of these found:' "$C_RED" "$C_RST"
+    printf ' "%s"' "$@"
+    printf '\n'
+    CUR_BAD=1
 }
 
 end_case() {

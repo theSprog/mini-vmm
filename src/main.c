@@ -9,11 +9,30 @@
 #include "memory.h"
 #include "kvm_wrappers.h"
 #include "boot/gdt_pgtable.h"
+#include "devices/serial8250.h"
+#include "devices/irqchip.h"
+#include "devices/i8042.h"
+#include "boot/kernel_loader.h"
+#include "boot/zeropage.h"
+#include "boot/mptable.h"
+#include "boot/acpi.h"
+#include "devices/rtc.h"
+#include "console.h"
+#include "smp.h"
+#include <unistd.h>
 
 /* 长模式 payload 的默认载入地址。
  * 必须避开 [0x1000, 0x205000)（GDT + 四级页表最坏情况占用），
  * 也要避开 Step 1.2 的写入目标 0x500000。3MiB 处两边都不挨着。 */
 #define PAYLOAD_LONG_GPA 0x300000ULL
+
+/* Step 2 默认内核参数。
+ *   earlyprintk  在 8250 驱动加载之前就能看到输出，内核早期崩溃时救命
+ *   reboot=k     reboot 走 i8042 reset，VMM 据此退出
+ *   panic=-1     panic 后立刻 reboot，从而让 VMM 退出而不是挂住
+ *   noapictimer? 不加：内核态 LAPIC 的 timer 完全可用 */
+#define DEFAULT_LINUX_CMDLINE \
+    "console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1"
 
 /* ------------------------------------------------------------------ */
 /* Step 1 的两个调试设备                                                */
@@ -77,12 +96,18 @@ void vmm_config_default(struct vmm_config *cfg)
 void vmm_usage(const char *prog)
 {
     fprintf(stderr,
-"Usage: %s [options] <payload.bin>\n"
+"Usage: %s [options] <payload.bin | vmlinux | bzImage>\n"
 "\n"
-"  --mode real16|long64   Boot mode (default: real16)\n"
+"  --mode real16|long64|linux  Boot mode (default: real16)\n"
 "                           real16 = Step 1.1, 16-bit real mode, entry GPA 0x0\n"
 "                           long64 = Step 1.2, 64-bit long mode, entry GPA 0x%llx\n"
+"                           linux  = Step 2, boot Linux: vmlinux (ELF) or bzImage,\n"
+"                                    detected from the file header\n"
+"  --initrd FILE          linux: initramfs (cpio or cpio.gz), required\n"
+"  --cmdline STR          linux: replace the default kernel command line\n"
+"  --append STR           linux: append to the kernel command line\n"
 "  --mem SIZE             Guest RAM size, K/M/G suffix allowed (default: 128M)\n"
+"  --smp N                Number of vCPUs, 1..%d (default: 1, N > 1 needs linux)\n"
 "  --load GPA             Payload load address in hex (overrides mode default)\n"
 "  --entry GPA            First instruction address in hex (default: --load)\n"
 "  --gran 2m|4k           long64 page table granularity (default: 2m)\n"
@@ -99,8 +124,16 @@ void vmm_usage(const char *prog)
 "  # Step 1.1\n"
 "  %s --mem 2M build/payload16.bin\n"
 "  # Step 1.2\n"
-"  %s --mode long64 --dump 500000:16 -v build/payload64.bin\n",
-            prog, (unsigned long long)PAYLOAD_LONG_GPA, prog, prog);
+"  %s --mode long64 --dump 500000:16 -v build/payload64.bin\n"
+"  # Step 2.1\n"
+"  %s --mode long64 build/serial64.bin\n"
+"  # Step 2.2 / 2.3\n"
+"  %s --mode linux --mem 512M --initrd initramfs.cpio.gz vmlinux\n"
+"  %s --mode linux --mem 512M --initrd initramfs.cpio.gz bzImage\n"
+"  # SMP\n"
+"  %s --mode linux --smp 4 --mem 512M --initrd initramfs.cpio.gz vmlinux\n",
+            prog, (unsigned long long)PAYLOAD_LONG_GPA, VMM_MAX_VCPUS,
+            prog, prog, prog, prog, prog, prog);
 }
 
 static int parse_size(const char *s, uint64_t *out)
@@ -138,6 +171,7 @@ static int parse_hex(const char *s, uint64_t *out)
 static enum boot_page_gran g_gran = BOOT_PG_2M;
 static uint64_t g_map_size = BOOT_IDENTITY_MAP_SIZE;
 static uint64_t g_walk_gva = UINT64_MAX;
+static const char *g_append;
 
 int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
 {
@@ -166,6 +200,8 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
                 cfg->mode = VMM_BOOT_REAL16;
             else if (!strcmp(argv[i], "long64"))
                 cfg->mode = VMM_BOOT_LONG64;
+            else if (!strcmp(argv[i], "linux"))
+                cfg->mode = VMM_BOOT_LINUX;
             else {
                 vmm_err("unknown mode: %s", argv[i]);
                 return VMM_ERR_INVAL;
@@ -176,6 +212,27 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
                 vmm_err("cannot parse --mem: %s", argv[i]);
                 return VMM_ERR_INVAL;
             }
+        } else if (!strcmp(a, "--smp")) {
+            char *end;
+            long n;
+
+            NEED_ARG();
+            n = strtol(argv[i], &end, 10);
+            if (end == argv[i] || *end || n < 1 || n > VMM_MAX_VCPUS) {
+                vmm_err("--smp must be an integer in 1..%d: %s",
+                        VMM_MAX_VCPUS, argv[i]);
+                return VMM_ERR_INVAL;
+            }
+            cfg->nr_vcpus = (int)n;
+        } else if (!strcmp(a, "--initrd")) {
+            NEED_ARG();
+            cfg->initrd_path = argv[i];
+        } else if (!strcmp(a, "--cmdline")) {
+            NEED_ARG();
+            cfg->cmdline = argv[i];
+        } else if (!strcmp(a, "--append")) {
+            NEED_ARG();
+            g_append = argv[i];
         } else if (!strcmp(a, "--map")) {
             NEED_ARG();
             if (parse_size(argv[i], &g_map_size) != VMM_OK)
@@ -225,6 +282,53 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         return VMM_ERR_INVAL;
     }
 
+    if (cfg->mode != VMM_BOOT_LINUX &&
+        (cfg->initrd_path || cfg->cmdline || g_append)) {
+        vmm_err("--initrd/--cmdline/--append require --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    /* Linux 模式内核与 initramfs 缺一不可。没有 initramfs 时内核找不到
+     * rootfs，只会在启动末尾以 "VFS: Unable to mount root fs" panic，
+     * 现象离真正的原因（忘了传参、路径写错）太远，所以在创建 VM 之前
+     * 就拦下来。需要专门验证 panic -> reboot -> VMM 退出这条路径时，
+     * 照常提供 initramfs，再加 --append rdinit=/nonexistent：内核在
+     * initramfs 里找不到 init，转去挂载 root=，没有 root= 就同样 VFS panic。 */
+    if (cfg->mode == VMM_BOOT_LINUX) {
+        if (!cfg->initrd_path) {
+            vmm_err("--mode linux requires --initrd FILE "
+                    "(build one with tools/build_initramfs.sh)");
+            return VMM_ERR_INVAL;
+        }
+        if (access(cfg->initrd_path, R_OK) != 0) {
+            vmm_err("initrd %s: %s", cfg->initrd_path, strerror(errno));
+            return VMM_ERR_INVAL;
+        }
+        if (access(cfg->payload_path, R_OK) != 0) {
+            vmm_err("kernel %s: %s", cfg->payload_path, strerror(errno));
+            return VMM_ERR_INVAL;
+        }
+    }
+    /* Step 1 的裸 payload 不会去唤醒 AP，而且没有内核态 irqchip 时
+     * 所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时跑起来 */
+    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_vcpus > 1) {
+        vmm_err("--smp > 1 requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    if (cfg->mode == VMM_BOOT_LINUX) {
+        static char cmdline[ZP_CMDLINE_MAX];
+        int n;
+
+        n = snprintf(cmdline, sizeof(cmdline), "%s%s%s",
+                     cfg->cmdline ? cfg->cmdline : DEFAULT_LINUX_CMDLINE,
+                     g_append ? " " : "", g_append ? g_append : "");
+        if (n < 0 || (size_t)n >= sizeof(cmdline)) {
+            vmm_err("kernel command line is too long (max %d bytes)",
+                    ZP_CMDLINE_MAX - 1);
+            return VMM_ERR_INVAL;
+        }
+        cfg->cmdline = cmdline;
+    }
+
     /* 按模式补默认地址 */
     if (cfg->payload_gpa == UINT64_MAX)
         cfg->payload_gpa = (cfg->mode == VMM_BOOT_LONG64)
@@ -264,6 +368,88 @@ static int check_payload_overlap(const struct boot_mem_layout *l,
     return VMM_OK;
 }
 
+/* Step 2.2 / 2.3：vmlinux + boot_params + initrd，然后按 64 位启动协议
+ * 摆好 vCPU。串口中断接到内核态 PIC/IOAPIC 的 GSI 4。 */
+static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
+                      const struct vmm_config *cfg, struct serial8250 *com1)
+{
+    struct boot_mem_layout layout;
+    struct kernel_image kimg;
+    struct zp_config zc;
+    uint64_t rsdp;
+    int r;
+
+    com1->irq_set    = irqchip_irq_cb;
+    com1->irq_opaque = vm;
+
+    r = i8042_attach(vm);
+    if (r != VMM_OK)
+        return r;
+    r = rtc_attach(vm);
+    if (r != VMM_OK)
+        return r;
+    r = acpi_pm_attach(vm);
+    if (r != VMM_OK)
+        return r;
+
+    /* vmlinux 还是 bzImage 由文件头决定，见 boot/kernel_loader.h */
+    r = kernel_load(vm, cfg->payload_path, &kimg);
+    if (r != VMM_OK)
+        return r;
+    vmm_info("kernel format: %s", kernel_format_name(kimg.format));
+
+    /* 内核必须完全落在 1MiB 以上，不能碰到低端的 GDT/页表/zero page */
+    if (kimg.lo_gpa < ZP_HIGH_MEM_START) {
+        vmm_err("kernel starts at 0x%llx, below 1MiB",
+                (unsigned long long)kimg.lo_gpa);
+        return VMM_ERR_INVAL;
+    }
+
+    /* 中断拓扑同时用两种格式描述，guest 内核开了哪个就用哪个 */
+    r = mptable_setup(vm, vm->nr_vcpus);
+    if (r != VMM_OK)
+        return r;
+    r = acpi_setup(vm, vm->nr_vcpus, &rsdp);
+    if (r != VMM_OK)
+        return r;
+
+    memset(&zc, 0, sizeof(zc));
+    zc.acpi_rsdp   = rsdp;
+    zc.cmdline     = cfg->cmdline;
+    zc.initrd_path = cfg->initrd_path;
+    zc.kernel_end  = kimg.hi_gpa;
+    if (kimg.hdr_len) {
+        zc.kernel_hdr     = &kimg.hdr;
+        zc.kernel_hdr_len = kimg.hdr_len;
+        zc.initrd_addr_max = kimg.hdr.initrd_addr_max;
+    }
+    /* 协议不要求 initrd 恒等映射，但把它留在 VMM 页表覆盖的范围内不花
+     * 任何代价，出了问题也好用 --walk 查 */
+    if (zc.initrd_addr_max > BOOT_IDENTITY_MAP_SIZE - 1)
+        zc.initrd_addr_max = BOOT_IDENTITY_MAP_SIZE - 1;
+    r = zeropage_setup(vm, &zc);
+    if (r != VMM_OK)
+        return r;
+
+    /* 恒等映射 1GiB 就够：内核在 16MiB 附近（bzImage 的 init_size 区间
+     * 也在 16MiB 起的几十 MiB 内），zero page/cmdline 在低端，initrd 被
+     * 限制在 1GiB 以下。vmlinux 的 startup_64、bzImage 的解压器都会很快
+     * 换上自己的页表，这张表只用于最初那一小段。 */
+    boot_layout_default(&layout);
+    r = boot_layout_validate(vm, &layout);
+    if (r != VMM_OK)
+        return r;
+    r = boot_build_page_table(vm, &layout);
+    if (r != VMM_OK)
+        return r;
+
+    r = boot_setup_linux64(vcpu, &layout, kimg.entry_gpa, ZP_BOOT_PARAMS_GPA);
+    if (r != VMM_OK)
+        return r;
+
+    return console_start(vm, com1);
+}
+
 int main(int argc, char **argv)
 {
     struct vmm_config cfg;
@@ -271,6 +457,7 @@ int main(int argc, char **argv)
     struct boot_mem_layout layout;
     struct vmm_vcpu *vcpu;
     struct vmm_io_dev dev;
+    static struct serial8250 com1;
     size_t payload_len = 0;
     int r;
 
@@ -309,6 +496,19 @@ int main(int argc, char **argv)
     r = vmm_register_pio(&vm, &dev);
     if (r != VMM_OK)
         goto out;
+
+    /* COM1：所有模式都挂上，Step 2.1 起 guest 的主输出通道 */
+    serial8250_init(&com1, STDOUT_FILENO);
+    r = serial8250_attach(&vm, &com1, SERIAL_COM1_BASE, SERIAL_COM1_IRQ);
+    if (r != VMM_OK)
+        goto out;
+
+    if (cfg.mode == VMM_BOOT_LINUX) {
+        r = boot_linux(&vm, vcpu, &cfg, &com1);
+        if (r != VMM_OK)
+            goto out;
+        goto run;
+    }
 
     /* 载入 payload */
     r = mem_load_file(&vm, cfg.payload_gpa, cfg.payload_path, &payload_len);
@@ -352,12 +552,20 @@ int main(int argc, char **argv)
             goto out;
     }
 
+run:
     vmm_info("--- entering guest ---");
-    r = vcpu_run_loop(vcpu);
+    r = vm_run(&vm);
+    if (cfg.mode == VMM_BOOT_LINUX)
+        console_stop();
     vmm_info("--- left guest (%s) ---", r == VMM_OK ? "ok" : "error");
 
-    if (r == VMM_OK && vmm_log_level >= 3)
-        vcpu_dump_state(vcpu);
+    /* Ctrl-A x 打断的现场一定要看：guest 卡住时这是唯一的线索 */
+    if (r == VMM_OK && (vmm_log_level >= 3 || vm.user_stop)) {
+        int i;
+
+        for (i = 0; i < vm.nr_vcpus; i++)
+            vcpu_dump_state(&vm.vcpus[i]);
+    }
 
     if (cfg.dump_on_exit) {
         fprintf(stderr, "guest memory at GPA 0x%llx, %zu bytes:\n",

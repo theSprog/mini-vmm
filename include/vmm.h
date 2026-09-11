@@ -37,6 +37,7 @@ enum vmm_errno {
     VMM_ERR_UNSUPPORTED = -4,  /* KVM capability 缺失 */
     VMM_ERR_GUEST       = -5,  /* guest 行为异常（越界访问等） */
     VMM_ERR_EXIT        = -6,  /* 正常退出信号（HLT / shutdown） */
+    VMM_ERR_INTR        = -7,  /* KVM_RUN 被信号或 immediate_exit 打断 */
 };
 
 /* ------------------------------------------------------------------ */
@@ -113,6 +114,10 @@ struct vmm_config {
     bool        dump_on_exit;  /* 退出时 dump 一段 guest 内存（Step 1.2 验证用） */
     uint64_t    dump_gpa;
     size_t      dump_len;
+
+    /* Step 2：Linux 直启 */
+    const char *initrd_path;
+    const char *cmdline;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -130,8 +135,10 @@ struct vmm_vcpu {
     struct kvm_run *run;        /* mmap 出来的共享通信页 */
     size_t          run_size;
 
-    pthread_t       thread;     /* Step 6 SMP：每个 vCPU 一个线程 */
+    pthread_t       thread;     /* 每个 vCPU 一个线程，见 smp.c */
+    bool            thread_started;
     volatile bool   should_stop;
+    int             result;     /* vcpu_run_loop 的返回值 */
 
     /* 统计，方便排错和后面写博客画图 */
     uint64_t        n_exits;
@@ -157,14 +164,22 @@ struct vmm_vm {
 
     const struct arch_cpu_ops *arch;   /* 运行时探测出的 CPU 厂商后端 */
 
+    bool            has_irqchip;       /* KVM_CREATE_IRQCHIP 已完成 */
+
     struct vmm_io_dev pio_devs[VMM_MAX_PIO_DEVS];
     int               nr_pio_devs;
     struct vmm_io_dev mmio_devs[VMM_MAX_MMIO_DEVS];
     int               nr_mmio_devs;
 
+    /* 多个 vCPU 线程会同时陷出到用户态访问设备。设备模型本身不做
+     * 并发保护，统一由 exit 分发路径持有这把大锁串行化（和 QEMU 的
+     * BQL 同一个思路）。设备表在 guest 启动前注册完毕，之后只读。 */
+    pthread_mutex_t   io_lock;
+
     struct vmm_config cfg;
 
     volatile bool   running;
+    volatile bool   user_stop;         /* Ctrl-A x 触发的停机 */
     int             exit_code;
 };
 
@@ -173,7 +188,7 @@ int  vm_create(struct vmm_vm *vm, const struct vmm_config *cfg);
 int  vm_create_vcpu(struct vmm_vm *vm, int id);
 void vm_destroy(struct vmm_vm *vm);
 
-/* 主循环：Step 1 单线程直接调用；Step 6 由每个 vCPU 线程各自调用 */
+/* 单个 vCPU 的主循环，由 smp.c 的 vCPU 线程调用 */
 int  vcpu_run_loop(struct vmm_vcpu *vcpu);
 
 /* 单次 exit 的分发，独立出来便于 Step 4 事件循环复用 */

@@ -11,6 +11,7 @@
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
 #include "arch/amd/svm.h"
+#include "smp.h"
 
 int svm_query_caps(struct svm_caps *caps)
 {
@@ -152,27 +153,77 @@ static int amd_prepare_vm(struct vmm_vm *vm)
     return VMM_OK;
 }
 
+/*
+ * CPUID.1:ECX[31]，Linux 里叫 X86_FEATURE_HYPERVISOR（/proc/cpuinfo 的
+ * "hypervisor" 标志）。物理 CPU 上这一位恒为 0（Intel SDM 标为未使用，
+ * AMD APM 写明保留给 hypervisor 表示 guest 状态），虚拟化软件用它告诉
+ * guest“你在虚拟机里”。KVM_GET_SUPPORTED_CPUID 不报告这一位，要 VMM
+ * 自己置上（QEMU 默认也会置上）。
+ *
+ * 写 0（不置位）：guest 认为自己跑在物理机上。以 guest 的 v6.6 为例：
+ *   - 早期微码加载器启用，会去 initrd 里找微码并尝试更新（虚拟机里
+ *     改不了物理 CPU 的微码，只是白做）；
+ *   - 按物理机处理勘误：AMD 上会直接写 host 才有意义的 MSR（如
+ *     Zenbleed 的 chicken bit、erratum 1485 的 BP_CFG），海光
+ *     model <= 3 会按 APIC ID 第 6 位推算 socket 编号；
+ *   - ACPI 进入 S1-S3 前执行 WBINVD（ACPI_FLUSH_CPU_CACHE）；
+ *   - 漏洞与缓解按“裸机、host 状态已知”报告；
+ *   - 用户态的 systemd-detect-virt 之类工具判定为 "none"。
+ *
+ * 写 1（置位）：上面几项都按虚拟机处理：跳过微码加载和 host 专属的
+ * 勘误 MSR，不在睡眠前 WBINVD，漏洞按“可能迁移到有漏洞的主机”保守
+ * 报告（Intel 上的 ITS、AMD/海光上的 NULL_SEG），MDS 等条目注明
+ * "SMT Host state unknown"。
+ * 另外，开了 CONFIG_KVM_GUEST 的内核（发行版内核都开）只有看到这一位
+ * 才会继续查 0x40000000 叶的 "KVMKVMKVM" 签名，进而启用 kvmclock、
+ * PV EOI、steal time 等半虚拟化特性；这两片叶子 KVM_GET_SUPPORTED_CPUID
+ * 已经给出，功能本身也都由 KVM 内核实现，VMM 不需要额外做什么。
+ * mini-vmm 目前的 guest 没开 CONFIG_HYPERVISOR_GUEST，不受这一条影响。
+ *
+ * 顺带说明为什么不去改 HWCR（MSR 0xC0010015）的 bit 24 TscFreqSel：
+ * guest 内核在 constant_tsc 时检查它，为 0 就打印
+ * "[Firmware Bug]: TSC doesn't count with P0 frequency!"（写 1 表示
+ * TSC 按 P0 频率计数，这条日志就会消失；写 0 只是多一行日志，行为不变，
+ * TSC 在 KVM 下本来就恒定）。但 KVM 的 MSR_K7_HWCR 写处理（host v5.15
+ * 的 arch/x86/kvm/x86.c，到 v6.6 仍然一样）只接受 bit 18 McStatusWrEn，
+ * 其余非零位一律拒绝，KVM_SET_MSRS 会返回 0 表示一个都没写成功。
+ * 所以这一位用户态改不了，只能保持 KVM 的初值 0。
+ */
+#define CPUID_1_ECX_HYPERVISOR (1u << 31)
+
+static void cpuid_mark_hypervisor(struct kvm_cpuid2 *cpuid)
+{
+    uint32_t i;
+
+    for (i = 0; i < cpuid->nent; i++) {
+        if (cpuid->entries[i].function == 0x1)
+            cpuid->entries[i].ecx |= CPUID_1_ECX_HYPERVISOR;
+    }
+}
+
 static int amd_init_vcpu(struct vmm_vcpu *vcpu)
 {
     struct kvm_cpuid2 *cpuid = NULL;
     int r;
 
-    /* 把 host 支持的 CPUID 原样透传给 guest。
+    /* 把 host 支持的 CPUID 透传给 guest，只改写拓扑相关的 leaf，
+     * 再置上 hypervisor 位（见 cpuid_mark_hypervisor()）。
      *
      * Step 1.2 严格说不依赖它：KVM_SET_SREGS 这条路径不会去校验
      * guest CPUID 里有没有 LM 位。但 guest 里一旦执行 CPUID 指令
      * （Linux 内核启动第一件事就是），不设的话拿到的全是 0，
      * 内核会直接判定 CPU 不支持长模式然后停住。所以现在就设上。
      *
-     * 这里是原样透传，没有做任何裁剪。Step 6（SMP）时必须回来改：
-     * 至少要按 vcpu_id 改写 leaf 1 的 EBX[31:24]（initial APIC ID）
-     * 和 leaf 0xB 的拓扑信息，否则所有 vCPU 会自称同一个 APIC ID。 */
+     * 拓扑字段（initial APIC ID、核数等）是 host 的原始值，必须按
+     * vcpu_id 改写，否则多个 vCPU 会自称同一个 APIC ID，见 smp.c。 */
     r = kvm_get_supported_cpuid(vcpu->vm->kvm_fd, &cpuid);
     if (r != VMM_OK) {
         vmm_warn("KVM_GET_SUPPORTED_CPUID failed, skipping SET_CPUID2");
         return VMM_OK;
     }
 
+    smp_fixup_cpuid(vcpu, cpuid);
+    cpuid_mark_hypervisor(cpuid);
     r = kvm_set_cpuid2(vcpu->fd, cpuid);
     free(cpuid);
     if (r != VMM_OK) {
@@ -180,7 +231,8 @@ static int amd_init_vcpu(struct vmm_vcpu *vcpu)
         return VMM_OK;
     }
 
-    vmm_dbg("vCPU %d: host CPUID passed through", vcpu->id);
+    vmm_dbg("vCPU %d: host CPUID passed through, topology rewritten",
+            vcpu->id);
     return VMM_OK;
 }
 

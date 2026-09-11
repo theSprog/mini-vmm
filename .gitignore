@@ -1,3 +1,9 @@
 /build
 /Knowledge
 /*.tar.gz
+/KVM-VMM-step.md
+/amd_vol2.pdf
+/virtio-v1.4-spec.pdf
+/深度探索Linux系统虚拟化原理与实现 (王柏生谢广军).epub
+/perf.data.guest
+/compile_commands.json

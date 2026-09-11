@@ -130,11 +130,17 @@ int kvm_run(int vcpu_fd)
 {
     int r;
 
-    /* EINTR 在这里是正常现象：Step 4 之后我们会用信号把 vCPU 线程
-     * 从 guest 里踢出来。此处直接重入。 */
-    do {
-        r = ioctl(vcpu_fd, KVM_RUN, 0);
-    } while (r < 0 && errno == EINTR);
+    /* 两种“没有 exit 可处理、重进 KVM_RUN 即可”的返回：
+     *   EINTR   vm_request_stop() 用 immediate_exit + SIGUSR1 把 vCPU
+     *           踢出来（Ctrl-A x、另一个 vCPU 触发了停机）
+     *   EAGAIN  AP 处于 KVM_MP_STATE_UNINITIALIZED 时 KVM_RUN 阻塞到
+     *           收到 INIT/SIPI，醒来后返回 -EAGAIN 而不是进 guest，
+     *           见 host arch/x86/kvm/x86.c kvm_arch_vcpu_ioctl_run()
+     * 两者都不写（或不保证写）exit_reason，单独返回 VMM_ERR_INTR，
+     * 让 run loop 回去检查 should_stop 后重进。 */
+    r = ioctl(vcpu_fd, KVM_RUN, 0);
+    if (r < 0 && (errno == EINTR || errno == EAGAIN))
+        return VMM_ERR_INTR;
 
     if (r < 0) {
         vmm_err("KVM_RUN: %s", strerror(errno));
