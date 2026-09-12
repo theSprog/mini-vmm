@@ -9,6 +9,9 @@
 #   VMLINUX=/path/to/vmlinux ./tests/step6.sh -a     只跑自动用例
 #   ./tests/step6.sh -m                              只看人工指引
 #
+# 可选环境变量：
+#   SMP_MANY=16   多 vCPU 用例的 vCPU 数（默认 16，上限 VMM_MAX_VCPUS）
+#
 # 没设 VMLINUX 时，需要 guest 内核的用例 SKIP。
 
 set -u
@@ -19,10 +22,18 @@ INITRD="$ROOT/build/initramfs.cpio.gz"
 VMLINUX="${VMLINUX:-}"
 MEM=512M
 SMP=4
+# 并行启动（guest 的 CONFIG_HOTPLUG_PARALLEL）会把所有 AP 一起踢醒，它们
+# 随后一起抢实模式跳板的那把锁（linux-6.6 arch/x86/realmode/rm/
+# trampoline_64.S 的 tr_lock）。4 个 vCPU 压不到这条路径，用一个大一些的
+# 数再跑一遍。VMM_MAX_VCPUS 是 32，host 物理核少于这个数也没关系，超卖
+# 只是慢一点。
+SMP_MANY="${SMP_MANY:-16}"
+MEM_MANY=1024M
 
-# 同 step2.sh：等 shell 起来后逐条发送，最后 poweroff
+# 同 step2.sh：等 shell 起来后逐条发送，最后 poweroff。
+# vCPU 多的时候启动慢一些，用 FEED_WAIT 把首次等待拉长。
 feed_shell() {
-    sleep 6
+    sleep "${FEED_WAIT:-6}"
     local c
     for c in "$@"; do
         printf '%s\n' "$c"
@@ -112,6 +123,41 @@ expect_has "L2-1"
 expect_has "guest requested poweroff via ACPI S5"
 expect_not "Kernel panic"
 expect_not "stopped with error"
+end_case
+
+head1 "Step 6.1 — 多 vCPU（$SMP_MANY）"
+
+CUR_NAME="$SMP_MANY vCPU：全部上线 + LLC 域 + poweroff"
+printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
+CUR_BAD=0
+CUR_OUT="$(FEED_WAIT=10 feed_shell \
+    'echo NPROC-$(nproc)' \
+    'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
+    'echo L3A-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
+    "echo L3B-\$(cat /sys/devices/system/cpu/cpu$(( SMP_MANY - 1 ))/cache/index3/shared_cpu_list)" \
+    | timeout 120 "$VMM" --mode linux --smp "$SMP_MANY" --mem "$MEM_MANY" \
+          --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_RC=$?
+expect_rc 0
+expect_has "$SMP_MANY vCPU thread(s) running"
+expect_has "smpboot: Allowing $SMP_MANY CPUs, 0 hotplug CPUs"
+expect_has "smp: Brought up 1 node, $SMP_MANY CPUs"
+expect_has "NPROC-$SMP_MANY"
+expect_has "PKG-0-"
+# AP 争跳板锁失败、APIC ID 对不上、TSC 不同步的典型报错
+expect_not "failed to report alive state"
+expect_not "do_boot_cpu failed"
+expect_not "APIC id mismatch"
+expect_not "TSC synchronization"
+expect_not "Kernel panic"
+expect_not "stopped with error"
+# LLC 域：VMM 在 CPUID 0x8000001D 里报的是所有 vCPU 共享 L3，但海光
+# model < 5 的 guest 内核根本不看这个字段，而是直接
+#   per_cpu(cpu_llc_id, cpu) = c->apicid >> 3   (cacheinfo_hygon_init_llc_id)
+# 于是按 8 个 APIC ID 一组切开。两种结果都是已知且正确的行为，用
+# expect_any 同时接受；VMM 侧对应 smp.c 的 smp_warn_llc_split()。
+expect_any "L3A-0-$(( SMP_MANY - 1 ))" "L3A-0-7"
+expect_has "guest requested poweroff via ACPI S5"
 end_case
 
 }

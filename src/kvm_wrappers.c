@@ -155,8 +155,10 @@ int kvm_get_supported_cpuid(int kvm_fd, struct kvm_cpuid2 **out)
     int nent = 128;
 
     for (;;) {
+        /* 多分配 KVM_CPUID_SPARE 条但只向 KVM 声明 nent 条，
+         * 于是返回后 entries[] 末尾必然还有这么多空位可供追加 */
         c = calloc(1, sizeof(*c) +
-                      nent * sizeof(struct kvm_cpuid_entry2));
+                      (nent + KVM_CPUID_SPARE) * sizeof(struct kvm_cpuid_entry2));
         if (!c)
             return VMM_ERR_NOMEM;
         c->nent = nent;
@@ -182,6 +184,30 @@ int kvm_set_cpuid2(int vcpu_fd, struct kvm_cpuid2 *cpuid)
 {
     return KVM_IOCTL(vcpu_fd, KVM_SET_CPUID2, cpuid) < 0
            ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_get_mp_state(int vcpu_fd, uint32_t *state)
+{
+    struct kvm_mp_state st;
+
+    memset(&st, 0, sizeof(st));
+    if (KVM_IOCTL(vcpu_fd, KVM_GET_MP_STATE, &st) < 0)
+        return VMM_ERR_SYS;
+
+    *state = st.mp_state;
+    return VMM_OK;
+}
+
+const char *kvm_mp_state_str(uint32_t state)
+{
+    switch (state) {
+    case KVM_MP_STATE_RUNNABLE:      return "RUNNABLE";
+    case KVM_MP_STATE_UNINITIALIZED: return "UNINITIALIZED";
+    case KVM_MP_STATE_INIT_RECEIVED: return "INIT_RECEIVED";
+    case KVM_MP_STATE_HALTED:        return "HALTED";
+    case KVM_MP_STATE_SIPI_RECEIVED: return "SIPI_RECEIVED";
+    default:                         return "?";
+    }
 }
 
 int kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value)

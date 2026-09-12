@@ -344,8 +344,23 @@ int vcpu_run_loop(struct vmm_vcpu *vcpu)
         /* 被打断时 kvm_run 页里的 exit_reason 不一定有效（immediate_exit
          * 路径下 KVM 不会改写它，还是上一次的值），不能交给
          * vcpu_handle_exit，否则会把上一次的 IO 再执行一遍 */
-        if (r == VMM_ERR_INTR)
+        if (r == VMM_ERR_INTR) {
+            /* AP 唤醒（EAGAIN）和停机（EINTR）都走这条路，每个 vCPU 整个
+             * 生命周期里只会走几次，所以在这里查一次 mp_state 的代价可以
+             * 忽略，而它是判断 AP 卡在哪一步的决定性证据：
+             *   UNINITIALIZED   还没收到 INIT，查 MADT 里这颗 CPU 的登记
+             *   INIT_RECEIVED   收到 INIT 在等 SIPI
+             *   RUNNABLE        已经在跑或正要跑
+             * 必须在本 vCPU 的线程里调，见 kvm_get_mp_state() 的说明。 */
+            if (vmm_log_level >= 3) {
+                uint32_t st;
+
+                if (kvm_get_mp_state(vcpu->fd, &st) == VMM_OK)
+                    vmm_dbg("vCPU %d: KVM_RUN interrupted, mp_state=%u (%s)",
+                            vcpu->id, st, kvm_mp_state_str(st));
+            }
             continue;
+        }
         if (r != VMM_OK)
             return r;
 
