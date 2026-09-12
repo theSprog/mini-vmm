@@ -44,6 +44,11 @@
 #define UART_FCR_CLR_TX 0x04
 
 #define UART_LCR_DLAB  0x80
+/* LCR 写成 0xBF 时，扩展 16550 兼容芯片把偏移 2 变成 EFR。我们不是那种
+ * 芯片，但也不能让这些访问落到 IIR/FCR 上——autoconfig_16550a() 的变体
+ * 探测会往 EFR 写 0xA8，落到 FCR 上正好会把 FIFO 使能位清掉。读回 0、
+ * 写丢弃，等价于“这颗芯片没有 EFR”。 */
+#define UART_LCR_CONF_B 0xbf
 
 #define UART_MCR_DTR   0x01
 #define UART_MCR_RTS   0x02
@@ -124,7 +129,12 @@ static uint8_t msr_value(const struct serial8250 *s)
 
     /* 回环时 modem 输入线由 MCR 输出线直接驱动（16550 datasheet 规定）：
      *   RTS -> CTS, DTR -> DSR, OUT1 -> RI, OUT2 -> DCD
-     * Linux autoconfig 写 MCR=LOOP|0x0A 后要读到 MSR 高 4 位 = 0x90。 */
+     * 谁会用到：autoconfig() 的 LOOP 测试写 MCR=LOOP|OUT2|RTS 后要读到
+     * MSR 高 4 位 = DCD|CTS = 0x90；size_fifo() 也靠回环数 FIFO 深度。
+     * 但在当前这套 guest 上两者都不会执行——x86 的 SERIAL_PORT_DFNS 给
+     * COM1-COM3 带了 UPF_SKIP_TEST 跳过 LOOP 测试，size_fifo() 则被
+     * CONFIG_SERIAL_8250_16550A_VARIANTS=n 挡在 autoconfig_16550a() 门口。
+     * 把串口挪到 0x2e8（COM4 没有 UPF_SKIP_TEST）就会走到这里。 */
     m = 0;
     if (s->mcr & UART_MCR_RTS)  m |= UART_MSR_CTS;
     if (s->mcr & UART_MCR_DTR)  m |= UART_MSR_DSR;
@@ -157,6 +167,8 @@ static int serial_read(void *opaque, uint64_t off, uint32_t size, void *data)
         v = (s->lcr & UART_LCR_DLAB) ? s->dlm : s->ier;
         break;
     case UART_IIR:
+        if (s->lcr == UART_LCR_CONF_B)
+            break;              /* EFR 不存在，读回 0 */
         v = s->iir;
         /* 读 IIR 拿到 THRI 即视为已应答，这是 16550 的语义 */
         if ((v & 0x0f) == UART_IIR_THRI)
@@ -219,6 +231,8 @@ static int serial_write(void *opaque, uint64_t off, uint32_t size,
         }
         break;
     case UART_FCR:
+        if (s->lcr == UART_LCR_CONF_B)
+            break;              /* EFR 不存在，写丢弃 */
         if (v & UART_FCR_CLR_RX)
             s->rx_head = s->rx_tail = 0;
         s->fcr = v & UART_FCR_ENABLE;

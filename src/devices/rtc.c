@@ -1,9 +1,13 @@
 /* src/devices/rtc.c — MC146818 CMOS RTC（只读时钟 + 128 字节 CMOS）
  *
  * 不模拟它的话，端口 0x70/0x71 读回 0xFF，寄存器 A 的 UIP 位
- * （update in progress）永远为 1。Linux 的 mach_get_cmos_time 会一直
- * 等 UIP 清零，每次等待都是一次 PIO exit，实测启动时白白多出约
- * 4 万次 exit、1.4 秒，最后还打印 "Unable to read current time from RTC"。
+ * （update in progress）永远为 1，mc146818_avoid_UIP() 的等待循环只能
+ * 跑满超时：10000 圈、每圈 udelay(100) 加两次 CMOS_READ。两个调用者
+ * （mach_get_cmos_time 和 rtc-cmos 探测里的 mc146818_does_rtc_work）
+ * 各超时一次，实测整次启动多出 8 万次 PIO exit、约 2 秒（--trace-pio
+ * 对比：30449 -> 110187 条，Run /init 从 0.75s 推到 2.70s），
+ * 日志里还会留下 "Unable to read current time from RTC" 和
+ * "rtc_cmos rtc_cmos: broken or not accessible"。
  *
  * 这里只做读时间：每次读时间寄存器都现取 host 的 UTC 时间，
  * 不跑内部时钟、不产生中断（IRQ 8），写时间寄存器被当作普通 CMOS 字节。

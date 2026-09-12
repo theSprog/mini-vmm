@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <time.h>
 
 #include "vmm.h"
 #include "memory.h"
@@ -155,6 +157,82 @@ void vcpu_dump_state(struct vmm_vcpu *vcpu)
 /* exit 处理                                                           */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* PIO 追踪（--trace-pio）                                              */
+/* ------------------------------------------------------------------ */
+/*
+ * 设备模拟到什么程度，由驱动的探测逻辑决定，而不是由芯片手册决定——
+ * 想知道驱动到底要什么，最直接的办法是把它读写寄存器的顺序原样记下来。
+ *
+ * 每行一次访问：
+ *   <单调时钟秒>.<微秒> <设备名> <端口> R|W<字节数> <值> [rip=<guest RIP>]
+ *
+ * rip 只对未注册端口输出：已注册端口的设备名已经回答了“谁在访问”，
+ * 而未注册端口恰恰是需要反查调用者的那一类。拿 RIP 到 guest 的
+ * vmlinux 上 `nm -n` 一查就知道是哪个函数在盲探，例如 0x87 读回 0xFF
+ * 正是 i8237A_init_ops() 判定“这台机器没有 8237 DMA 控制器”的依据。
+ *
+ * 只在 --trace-pio 给出时才打开。写文件本身不加锁——handle_io() 全程
+ * 持有 vm->io_lock，多 vCPU 下也是串行的。
+ */
+static FILE *g_pio_trace;
+
+static void pio_trace_open(struct vmm_vm *vm)
+{
+    if (!vm->cfg.trace_pio_path)
+        return;
+    g_pio_trace = fopen(vm->cfg.trace_pio_path, "w");
+    if (!g_pio_trace)
+        vmm_warn("cannot open PIO trace file %s: %s",
+                 vm->cfg.trace_pio_path, strerror(errno));
+    else
+        vmm_info("tracing PIO to %s", vm->cfg.trace_pio_path);
+}
+
+static void pio_trace_close(void)
+{
+    if (g_pio_trace) {
+        fclose(g_pio_trace);
+        g_pio_trace = NULL;
+    }
+}
+
+static void pio_trace(const char *name, uint16_t port, bool is_out,
+                      uint32_t size, const uint8_t *val, uint64_t rip)
+{
+    unsigned long long v = 0;
+    struct timespec ts;
+    uint32_t i;
+
+    if (!g_pio_trace)
+        return;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    for (i = 0; i < size && i < sizeof(v); i++)
+        v |= (unsigned long long)val[i] << (8 * i);
+
+    fprintf(g_pio_trace, "%lld.%06ld %-11s %04x %c%u %0*llx",
+            (long long)ts.tv_sec, ts.tv_nsec / 1000, name, port,
+            is_out ? 'W' : 'R', size, (int)(size * 2), v);
+    if (rip)
+        fprintf(g_pio_trace, " rip=%016llx", (unsigned long long)rip);
+    fputc('\n', g_pio_trace);
+}
+
+/* 未注册端口的访问才去取一次 RIP。这是一次 vCPU ioctl，只发生在
+ * --trace-pio 打开、且访问落在没有设备的端口上的时候。 */
+static uint64_t pio_trace_rip(struct vmm_vcpu *vcpu)
+{
+    struct kvm_regs regs;
+
+    if (!g_pio_trace)
+        return 0;
+    memset(&regs, 0, sizeof(regs));
+    if (ioctl(vcpu->fd, KVM_GET_REGS, &regs) < 0)
+        return 0;
+    return regs.rip;
+}
+
 static int handle_io(struct vmm_vcpu *vcpu)
 {
     struct vmm_vm *vm = vcpu->vm;
@@ -176,6 +254,9 @@ static int handle_io(struct vmm_vcpu *vcpu)
         vmm_dbg("unhandled PIO %s port=0x%04x size=%u count=%u",
                 run->io.direction == KVM_EXIT_IO_OUT ? "OUT" : "IN",
                 run->io.port, run->io.size, run->io.count);
+        pio_trace("unhandled", (uint16_t)run->io.port,
+                  run->io.direction == KVM_EXIT_IO_OUT, run->io.size,
+                  data, pio_trace_rip(vcpu));
         return VMM_OK;
     }
 
@@ -194,6 +275,10 @@ static int handle_io(struct vmm_vcpu *vcpu)
             r = dev->read ? dev->read(dev->opaque, off,
                                       run->io.size, p)
                           : VMM_OK;
+        /* 先记录再判错：设备回调用返回值表示“guest 请求关机/复位”，
+         * 触发退出的那一次写恰恰是最值得留在 trace 里的一行。 */
+        pio_trace(dev->name, (uint16_t)run->io.port,
+                  run->io.direction == KVM_EXIT_IO_OUT, run->io.size, p, 0);
         if (r != VMM_OK)
             return r;
     }
@@ -424,6 +509,7 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     vm->kvm_fd = vm->vm_fd = -1;
     vm->cfg = *cfg;
     pthread_mutex_init(&vm->io_lock, NULL);
+    pio_trace_open(vm);
 
     /* 1. 打开 /dev/kvm */
     vm->kvm_fd = kvm_open();
@@ -541,4 +627,5 @@ void vm_destroy(struct vmm_vm *vm)
         close(vm->kvm_fd);
     vm->vm_fd = vm->kvm_fd = -1;
     vm->running = false;
+    pio_trace_close();
 }

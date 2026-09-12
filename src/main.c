@@ -115,6 +115,9 @@ void vmm_usage(const char *prog)
 "                           4k = full 4 levels, 1GiB needs 512 page tables\n"
 "  --map SIZE             Identity mapped range (default: 1G)\n"
 "  --dump GPA:LEN         Hexdump guest memory on exit (hex GPA : decimal len)\n"
+"  --trace-pio FILE       Log every PIO access that exits to user space,\n"
+"                           one line per access; rip= is appended for ports\n"
+"                           that have no device behind them\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -253,6 +256,9 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
                 g_gran = BOOT_PG_4K;
             else
                 return VMM_ERR_INVAL;
+        } else if (!strcmp(a, "--trace-pio")) {
+            NEED_ARG();
+            cfg->trace_pio_path = argv[i];
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)

@@ -118,6 +118,10 @@ struct vmm_config {
     /* Step 2：Linux 直启 */
     const char *initrd_path;
     const char *cmdline;
+
+    /* 把每一次陷出到用户态的 PIO 访问写进这个文件（--trace-pio）。
+     * 用来回答“驱动到底按什么顺序读写了哪些寄存器”，见 learning-note 卷七。 */
+    const char *trace_pio_path;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
