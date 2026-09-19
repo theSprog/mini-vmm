@@ -192,7 +192,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     struct acpi_fadt *fadt;
     struct acpi_madt *madt;
     struct acpi_header *h;
-    uint64_t *xsdt_ent;
+    uint64_t xsdt_ent[2];
     uint8_t *p;
     uint32_t len;
     int i;
@@ -271,9 +271,13 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 
     /* XSDT：列出除 DSDT 以外的顶层表（DSDT 由 FADT 引用） */
     h = (struct acpi_header *)(base + xsdt_off);
-    xsdt_ent = (uint64_t *)(h + 1);
+    /* XSDT 的条目紧跟在 36 字节的表头之后，所以这些 64 位字段天生只有
+     * 4 字节对齐——ACPI 规范就是这么定的，ACPICA 为此专门有
+     * ACPI_MOVE_64_TO_64。直接用 uint64_t* 写是未定义行为（UBSan 报
+     * misaligned store），改成 memcpy；x86 上生成的代码是一样的。 */
     xsdt_ent[0] = ACPI_TABLES_GPA + fadt_off;
     xsdt_ent[1] = ACPI_TABLES_GPA + madt_off;
+    memcpy((uint8_t *)(h + 1), xsdt_ent, sizeof(xsdt_ent));
     fill_header(h, "XSDT", sizeof(*h) + 2 * 8, 1);
 
     /* RSDP */

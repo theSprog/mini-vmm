@@ -88,6 +88,21 @@ struct vmm_io_dev {
                  const void *data);
 };
 
+/* IO 总线分发。handle_io()/handle_mmio() 只是它们在 KVM_EXIT 路径上的
+ * 薄封装——从 kvm_run 里取出字段，然后调这里。
+ *
+ * 单独暴露出来有两个理由：一是这条路径是所有设备（含后续每一个 VirtIO
+ * transport）唯一的入口，值得能在不启动 VM 的情况下直接驱动它做单元测试
+ * （见 tests/unit/io_bus_test.c）；二是 Step 4 的事件循环也要复用它。
+ *
+ * data 的长度：PIO 是 size * count（串操作逐次前进 size 字节），
+ * MMIO 是 len。返回值语义同设备回调：VMM_OK 表示已处理，
+ * VMM_ERR_EXIT 是 guest 请求停机的约定信号，其余负值是错误。 */
+int  io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
+                         uint32_t size, uint32_t count, uint8_t *data);
+int  io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
+                          uint32_t len, uint8_t *data);
+
 int  vmm_register_pio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
 int  vmm_register_mmio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
 const struct vmm_io_dev *vmm_lookup_pio(struct vmm_vm *vm, uint64_t port);

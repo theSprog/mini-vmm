@@ -15,7 +15,7 @@
 # Linux 模式必须带 --initrd；initramfs 不存在时用 tools/build_initramfs.sh 现做。
 
 set -u
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 SERIAL64="$ROOT/build/serial64.bin"
 INITRD="$ROOT/build/initramfs.cpio.gz"

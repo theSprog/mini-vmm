@@ -17,7 +17,7 @@
 # 没设 VMLINUX 时全部 SKIP。
 
 set -u
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 INITRD="$ROOT/build/initramfs.cpio.gz"
 VMLINUX="${VMLINUX:-}"

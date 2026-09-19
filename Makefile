@@ -112,3 +112,122 @@ compile_commands.json: Makefile
 
 clean:
 	rm -rf $(BUILD) compile_commands.json
+# ---- 验收测试 ----
+#
+#   make test              默认集合：unit tables step1 step2 step6 step7
+#   make test step1        只跑一个 suite
+#   make test unit fuzz    跑多个
+#   make test all          默认集合 + fuzz
+#   make test-list         列出所有 suite
+#
+# 分工延续 tests/README.md 那条：make 负责“把要跑的东西编出来”，
+# tests/ 负责“判断产物对不对”。所以这里只有构建规则和一次转发，
+# 断言逻辑一行都不放在 Makefile 里。
+
+TEST_SUITES := all offline e2e unit negctl tables fuzz step1 step2 step6 step7
+
+# `make test step1` 里的 step1 对 make 来说也是一个 goal，不声明的话
+# 会报 "No rule to make target 'step1'"。all 例外——它是真实目标。
+TEST_SEL      := $(filter $(TEST_SUITES),$(MAKECMDGOALS))
+TEST_SEL_NOOP := $(filter-out all,$(TEST_SEL))
+ifneq ($(TEST_SEL_NOOP),)
+$(TEST_SEL_NOOP):
+	@:
+endif
+
+# 单元测试一律带 ASan + UBSan。-fno-sanitize-recover=all 是关键：
+# 默认 UBSan 只打一行警告然后继续跑，退出码仍是 0，等于没测。
+CFLAGS_TEST := -Wall -Wextra -Wno-unused-parameter -O1 -g -std=gnu11 \
+               -Iinclude -Itests/unit \
+               -fsanitize=address,undefined -fno-sanitize-recover=all \
+               -fno-omit-frame-pointer
+
+FUZZ_CC     := clang
+FUZZ_CFLAGS := -Wall -Wextra -Wno-unused-parameter -O1 -g -std=gnu11 \
+               -Iinclude -Itests/fuzz \
+               -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all \
+               -fno-omit-frame-pointer
+
+UNIT_BINS := $(BUILD)/tests/boot_tables_test \
+             $(BUILD)/tests/boot_tables_test_noalign \
+             $(BUILD)/tests/mem_test \
+             $(BUILD)/tests/io_bus_test
+
+# 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
+# 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
+# 关掉 alignment 检查的版本负责让 iasl 这个外部 oracle 还能跑起来
+# （tables suite 用它）。否则一处 UB 会把一整类判据全挡在门外。
+CFLAGS_TEST_NOALIGN := $(CFLAGS_TEST) -fno-sanitize=alignment
+
+FUZZ_BINS := $(BUILD)/fuzz/elf_loader_fuzz \
+             $(BUILD)/fuzz/bzimage_fuzz \
+             $(BUILD)/fuzz/elf_loader_fuzz_noalign \
+             $(BUILD)/fuzz/bzimage_fuzz_noalign
+
+# 为什么每个加载器有两个 target：
+# 严格版一旦发现未对齐访问就立刻终止（-fno-sanitize-recover），这在
+# x86 上虽然跑得通、但确实是 C 标准里的未定义行为，值得单独报出来。
+# 问题是它会把 fuzz 预算全部消耗在同一个浅层发现上，越界和整数溢出这些
+# 更值钱的目标反而永远探不到。所以再编一份关掉 alignment 检查的，
+# 用它去跑长时间的深度探索；ASan 与其余 UBSan 检查都还在。
+FUZZ_CFLAGS_NOALIGN := $(FUZZ_CFLAGS) -fno-sanitize=alignment
+
+$(BUILD)/tests/boot_tables_test: tests/unit/boot_tables_test.c \
+                                 src/boot/mptable.c src/boot/acpi.c \
+                                 src/boot/zeropage.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $^
+
+$(BUILD)/tests/boot_tables_test_noalign: tests/unit/boot_tables_test.c \
+                                         src/boot/mptable.c src/boot/acpi.c \
+                                         src/boot/zeropage.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST_NOALIGN) -o $@ $^
+
+$(BUILD)/tests/mem_test: tests/unit/mem_test.c tests/unit/mem_mutants.c \
+                         src/mem.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $^
+
+$(BUILD)/tests/io_bus_test: tests/unit/io_bus_test.c \
+                            tests/unit/io_bus_mutants.c src/vm.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $^ -lpthread
+
+$(BUILD)/fuzz/elf_loader_fuzz: tests/fuzz/elf_loader_fuzz.c \
+                               src/boot/elf_loader.c
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $^
+
+$(BUILD)/fuzz/bzimage_fuzz: tests/fuzz/bzimage_fuzz.c src/boot/bzimage.c
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $^
+
+$(BUILD)/fuzz/elf_loader_fuzz_noalign: tests/fuzz/elf_loader_fuzz.c \
+                                       src/boot/elf_loader.c
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $^
+
+$(BUILD)/fuzz/bzimage_fuzz_noalign: tests/fuzz/bzimage_fuzz.c \
+                                    src/boot/bzimage.c
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $^
+
+# 没有 clang 就不构建 fuzz target，fuzz suite 会自己 SKIP 并说明原因。
+HAVE_FUZZ_CC := $(shell command -v $(FUZZ_CC) 2>/dev/null)
+
+TEST_PREREQ := $(BUILD)/vmm $(PAYLOADS) $(UNIT_BINS)
+ifneq ($(HAVE_FUZZ_CC),)
+TEST_PREREQ += $(FUZZ_BINS)
+endif
+
+.PHONY: test test-list tests-clean $(TEST_SEL_NOOP)
+
+test: $(TEST_PREREQ)
+	@./tests/run.sh $(TEST_SEL)
+
+test-list:
+	@./tests/run.sh --list
+
+tests-clean:
+	rm -rf $(BUILD)/tests $(BUILD)/fuzz

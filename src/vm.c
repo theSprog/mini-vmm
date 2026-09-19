@@ -233,84 +233,91 @@ static uint64_t pio_trace_rip(struct vmm_vcpu *vcpu)
     return regs.rip;
 }
 
-static int handle_io(struct vmm_vcpu *vcpu)
+int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
+                        uint32_t size, uint32_t count, uint8_t *data)
 {
     struct vmm_vm *vm = vcpu->vm;
-    struct kvm_run *run = vcpu->run;
     const struct vmm_io_dev *dev;
-    uint8_t *data;
     uint32_t i;
 
-    /* 数据缓冲区在 kvm_run 页内，偏移由内核填在 io.data_offset。
-     * 不能假设它紧跟在结构体后面——必须按 data_offset 算。 */
-    data = (uint8_t *)run + run->io.data_offset;
-    dev  = vmm_lookup_pio(vm, run->io.port);
+    dev = vmm_lookup_pio(vm, port);
 
     if (!dev) {
         /* 未注册端口：写丢弃，读返回全 1（真机上空闲总线的行为）。
          * 不能直接报错退出——Linux 内核启动时会盲探一堆遗留端口。 */
-        if (run->io.direction == KVM_EXIT_IO_IN)
-            memset(data, 0xFF, (size_t)run->io.size * run->io.count);
+        if (!is_write)
+            memset(data, 0xFF, (size_t)size * count);
         vmm_dbg("unhandled PIO %s port=0x%04x size=%u count=%u",
-                run->io.direction == KVM_EXIT_IO_OUT ? "OUT" : "IN",
-                run->io.port, run->io.size, run->io.count);
-        pio_trace("unhandled", (uint16_t)run->io.port,
-                  run->io.direction == KVM_EXIT_IO_OUT, run->io.size,
-                  data, pio_trace_rip(vcpu));
+                is_write ? "OUT" : "IN", port, size, count);
+        pio_trace("unhandled", port, is_write, size, data,
+                  pio_trace_rip(vcpu));
         return VMM_OK;
     }
 
     /* count > 1 出现在 ins/outs 串操作指令上。逐次调设备回调，
      * 每次前进 size 字节。Step 2 的串口用 outsb 批量输出时会走到。 */
-    for (i = 0; i < run->io.count; i++) {
-        uint8_t *p = data + (size_t)i * run->io.size;
-        uint64_t off = run->io.port - dev->base;
+    for (i = 0; i < count; i++) {
+        uint8_t *p = data + (size_t)i * size;
+        uint64_t off = port - dev->base;
         int r;
 
-        if (run->io.direction == KVM_EXIT_IO_OUT)
-            r = dev->write ? dev->write(dev->opaque, off,
-                                        run->io.size, p)
-                           : VMM_OK;
+        if (is_write)
+            r = dev->write ? dev->write(dev->opaque, off, size, p) : VMM_OK;
         else
-            r = dev->read ? dev->read(dev->opaque, off,
-                                      run->io.size, p)
-                          : VMM_OK;
+            r = dev->read ? dev->read(dev->opaque, off, size, p) : VMM_OK;
         /* 先记录再判错：设备回调用返回值表示“guest 请求关机/复位”，
          * 触发退出的那一次写恰恰是最值得留在 trace 里的一行。 */
-        pio_trace(dev->name, (uint16_t)run->io.port,
-                  run->io.direction == KVM_EXIT_IO_OUT, run->io.size, p, 0);
+        pio_trace(dev->name, port, is_write, size, p, 0);
         if (r != VMM_OK)
             return r;
     }
     return VMM_OK;
 }
 
-static int handle_mmio(struct vmm_vcpu *vcpu)
+int io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
+                         uint32_t len, uint8_t *data)
 {
-    struct vmm_vm *vm = vcpu->vm;
-    struct kvm_run *run = vcpu->run;
     const struct vmm_io_dev *dev;
     uint64_t off;
 
-    dev = vmm_lookup_mmio(vm, run->mmio.phys_addr);
+    dev = vmm_lookup_mmio(vcpu->vm, addr);
     if (!dev) {
-        if (!run->mmio.is_write)
-            memset(run->mmio.data, 0xFF, sizeof(run->mmio.data));
+        if (!is_write)
+            memset(data, 0xFF, len);
         vmm_dbg("unhandled MMIO %s addr=0x%llx len=%u",
-                run->mmio.is_write ? "W" : "R",
-                (unsigned long long)run->mmio.phys_addr,
-                run->mmio.len);
+                is_write ? "W" : "R", (unsigned long long)addr, len);
         return VMM_OK;
     }
 
-    off = run->mmio.phys_addr - dev->base;
-    if (run->mmio.is_write)
-        return dev->write ? dev->write(dev->opaque, off,
-                                       run->mmio.len, run->mmio.data)
-                          : VMM_OK;
-    return dev->read ? dev->read(dev->opaque, off,
-                                 run->mmio.len, run->mmio.data)
-                     : VMM_OK;
+    off = addr - dev->base;
+    if (is_write)
+        return dev->write ? dev->write(dev->opaque, off, len, data) : VMM_OK;
+    return dev->read ? dev->read(dev->opaque, off, len, data) : VMM_OK;
+}
+
+/* 以下两个是 KVM_EXIT 路径上的薄封装：只负责从 kvm_run 里把字段取出来。 */
+
+static int handle_io(struct vmm_vcpu *vcpu)
+{
+    struct kvm_run *run = vcpu->run;
+    uint8_t *data;
+
+    /* 数据缓冲区在 kvm_run 页内，偏移由内核填在 io.data_offset。
+     * 不能假设它紧跟在结构体后面——必须按 data_offset 算。 */
+    data = (uint8_t *)run + run->io.data_offset;
+
+    return io_bus_dispatch_pio(vcpu, (uint16_t)run->io.port,
+                               run->io.direction == KVM_EXIT_IO_OUT,
+                               run->io.size, run->io.count, data);
+}
+
+static int handle_mmio(struct vmm_vcpu *vcpu)
+{
+    struct kvm_run *run = vcpu->run;
+
+    return io_bus_dispatch_mmio(vcpu, run->mmio.phys_addr,
+                                run->mmio.is_write != 0,
+                                run->mmio.len, run->mmio.data);
 }
 
 static void report_internal_error(struct vmm_vcpu *vcpu)

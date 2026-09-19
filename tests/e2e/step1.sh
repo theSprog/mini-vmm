@@ -10,7 +10,7 @@
 #   ./tests/step1.sh -m       只打印人工验收指引
 
 set -u
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 P16="$ROOT/build/payload16.bin"
 P64="$ROOT/build/payload64.bin"

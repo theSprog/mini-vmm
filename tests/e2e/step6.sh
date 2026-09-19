@@ -15,7 +15,7 @@
 # 没设 VMLINUX 时，需要 guest 内核的用例 SKIP。
 
 set -u
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 SERIAL64="$ROOT/build/serial64.bin"
 INITRD="$ROOT/build/initramfs.cpio.gz"
