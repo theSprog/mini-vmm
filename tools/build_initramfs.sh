@@ -6,6 +6,7 @@
 # 依赖一个静态链接的 busybox（Ubuntu: apt install busybox-static，
 # 或者 BUSYBOX=/path/to/busybox 指定）。initramfs 里没有动态链接器，
 # 动态 busybox 放进去会报 "No such file or directory"（找不到 ld.so）。
+# 打包用 bsdtar（libarchive），原因见下方 /dev/console 一段。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,6 +15,10 @@ BUSYBOX="${BUSYBOX:-$(command -v busybox || true)}"
 
 if [ -z "$BUSYBOX" ] || [ ! -x "$BUSYBOX" ]; then
     echo "busybox not found, set BUSYBOX=/path/to/static/busybox" >&2
+    exit 1
+fi
+if ! command -v bsdtar >/dev/null; then
+    echo "bsdtar not found (package: libarchive / libarchive-tools)" >&2
     exit 1
 fi
 if ! file -L "$BUSYBOX" | grep -q 'statically linked'; then
@@ -32,11 +37,22 @@ for app in $("$STAGE/bin/busybox" --list-full); do
     ln -sf /bin/busybox "$STAGE/$app"
 done
 
-# /init 是内核解开 initramfs 后执行的第一个用户态程序（PID 1）。
-# 它退出会导致 kernel panic，所以最后用 exec 把 PID 1 交给 shell，
-# shell 退出后再 poweroff，让 VMM 正常结束。
-cat > "$STAGE/init" <<'EOF'
-#!/bin/sh
+# /init 是内核解开 initramfs 后执行的第一个用户态程序（PID 1），这里让它就是
+# busybox 本身（argv[0] 为 init，即 busybox init）。
+#
+# 为什么不写成 #!/bin/sh 脚本：执行脚本要靠内核的 binfmt_script，发行版式配置
+# 常把它编成模块（CONFIG_BINFMT_SCRIPT=m），而 initramfs 里没有模块，
+# 内核会报 "Failed to execute /init (error -8)"。ELF 的 /init 不依赖它。
+# 同理 inittab 里调用脚本一律显式写 /bin/sh 前缀：busybox init 对不含 shell
+# 元字符的命令直接 execve，脚本同样会撞上 binfmt_script。
+#
+# PID 1 退出会导致 kernel panic，busybox init 自己永不退出。流程是 sysinit
+# 跑初始化，第一条 wait 跑交互 shell，shell 退出后第二条 wait 跑 poweroff，
+# 让 VMM 正常结束。
+ln -sf /bin/busybox "$STAGE/init"
+
+mkdir -p "$STAGE/etc/init.d"
+cat > "$STAGE/etc/init.d/rcS" <<'EOF'
 mount -t proc     proc     /proc
 mount -t sysfs    sysfs    /sys
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
@@ -46,18 +62,31 @@ echo
 echo "mini-vmm initramfs: $(uname -sr), $(nproc) CPU(s), $(awk '/MemTotal/{print $2" kB"}' /proc/meminfo)"
 echo "type 'poweroff -f' to exit the VM"
 echo
-
-# setsid + cttyhack 让 shell 拿到 ttyS0 作为控制终端，Ctrl-C 才有效
-setsid cttyhack /bin/sh -l
-poweroff -f
 EOF
-chmod +x "$STAGE/init"
+
+# busybox init 给每个子进程 setsid()，cttyhack 再把 /dev/console 背后的真实
+# 终端（ttyS0）设成 shell 的控制终端，Ctrl-C 才有效。
+cat > "$STAGE/etc/inittab" <<'EOF'
+::sysinit:/bin/sh /etc/init.d/rcS
+::wait:/bin/cttyhack /bin/sh -l
+::wait:/bin/poweroff -f
+EOF
 
 cat > "$STAGE/etc/profile" <<'EOF'
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export PS1='[guest \w]# '
 EOF
 
+# 内核在执行 /init 之前就要打开 /dev/console 作为 PID 1 的 stdin/stdout/stderr，
+# 此时 /init 还没来得及挂 devtmpfs，所以设备节点必须预先放进 cpio。
+# 缺了它内核报 "unable to open an initial console"，/init 的输出全部丢失。
+# 普通用户不能 mknod，这里用 bsdtar 从 mtree 描述直接生成设备节点条目，不需要 root。
+cat > "$STAGE.mtree" <<'EOF'
+#mtree
+./dev/console type=char mode=0600 uid=0 gid=0 device=native,5,1
+EOF
+trap 'rm -rf "$STAGE" "$STAGE.mtree"' EXIT
+
 mkdir -p "$(dirname "$OUT")"
-( cd "$STAGE" && find . -print0 | cpio --null -o -H newc --quiet ) | gzip -9 > "$OUT"
+( cd "$STAGE" && bsdtar --format newc -cf - . "@$STAGE.mtree" ) | gzip -9 > "$OUT"
 echo "wrote $OUT ($(stat -c %s "$OUT") bytes)"
