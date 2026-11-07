@@ -43,12 +43,16 @@
 #define UART_FCR_CLR_RX 0x02
 #define UART_FCR_CLR_TX 0x04
 
+/* DLAB 只切换偏移 0/1（DLL/DLM），偏移 2 不受 LCR 影响，永远是 IIR/FCR。
+ *
+ * 不要给 LCR=0xBF 加特殊处理（比如读回 0、写丢弃）：0xBF 是 ST16C650V2
+ * 等扩展芯片打开 EFR 的“钥匙”，Linux autoconfig_16550a() 在
+ * CONFIG_SERIAL_8250_16550A_VARIANTS=y 时会在 LCR=0xBF 下读偏移 2，
+ * 读到 0 就判定“有 EFR”，把端口认成 ST16650V2。真 16550A 此时读到的是
+ * IIR（FIFO 开启后高两位为 11，不可能是 0），探测才会继续往下走并最终
+ * 认成 16550A。tests/unit/serial8250_test.c 按 8250_port.c 的顺序回放了
+ * 整段探测，改这里的寄存器语义要先过那个测试。 */
 #define UART_LCR_DLAB  0x80
-/* LCR 写成 0xBF 时，扩展 16550 兼容芯片把偏移 2 变成 EFR。我们不是那种
- * 芯片，但也不能让这些访问落到 IIR/FCR 上——autoconfig_16550a() 的变体
- * 探测会往 EFR 写 0xA8，落到 FCR 上正好会把 FIFO 使能位清掉。读回 0、
- * 写丢弃，等价于“这颗芯片没有 EFR”。 */
-#define UART_LCR_CONF_B 0xbf
 
 #define UART_MCR_DTR   0x01
 #define UART_MCR_RTS   0x02
@@ -131,10 +135,10 @@ static uint8_t msr_value(const struct serial8250 *s)
      *   RTS -> CTS, DTR -> DSR, OUT1 -> RI, OUT2 -> DCD
      * 谁会用到：autoconfig() 的 LOOP 测试写 MCR=LOOP|OUT2|RTS 后要读到
      * MSR 高 4 位 = DCD|CTS = 0x90；size_fifo() 也靠回环数 FIFO 深度。
-     * 但在当前这套 guest 上两者都不会执行——x86 的 SERIAL_PORT_DFNS 给
-     * COM1-COM3 带了 UPF_SKIP_TEST 跳过 LOOP 测试，size_fifo() 则被
-     * CONFIG_SERIAL_8250_16550A_VARIANTS=n 挡在 autoconfig_16550a() 门口。
-     * 把串口挪到 0x2e8（COM4 没有 UPF_SKIP_TEST）就会走到这里。 */
+     * LOOP 测试只在没有 UPF_SKIP_TEST 的端口上执行（x86 的 COM1-COM3 带这个
+     * 标志，COM4 0x2e8 不带）；size_fifo() 在 guest 打开
+     * CONFIG_SERIAL_8250_16550A_VARIANTS 时执行。它只关心数出来是不是 64
+     * （区分 U6_16550A），我们的接收缓冲能装 255 字节，数出 255 不影响结论。 */
     m = 0;
     if (s->mcr & UART_MCR_RTS)  m |= UART_MSR_CTS;
     if (s->mcr & UART_MCR_DTR)  m |= UART_MSR_DSR;
@@ -167,8 +171,6 @@ static int serial_read(void *opaque, uint64_t off, uint32_t size, void *data)
         v = (s->lcr & UART_LCR_DLAB) ? s->dlm : s->ier;
         break;
     case UART_IIR:
-        if (s->lcr == UART_LCR_CONF_B)
-            break;              /* EFR 不存在，读回 0 */
         v = s->iir;
         /* 读 IIR 拿到 THRI 即视为已应答，这是 16550 的语义 */
         if ((v & 0x0f) == UART_IIR_THRI)
@@ -231,8 +233,6 @@ static int serial_write(void *opaque, uint64_t off, uint32_t size,
         }
         break;
     case UART_FCR:
-        if (s->lcr == UART_LCR_CONF_B)
-            break;              /* EFR 不存在，写丢弃 */
         if (v & UART_FCR_CLR_RX)
             s->rx_head = s->rx_tail = 0;
         s->fcr = v & UART_FCR_ENABLE;

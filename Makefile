@@ -151,7 +151,8 @@ FUZZ_CFLAGS := -Wall -Wextra -Wno-unused-parameter -O1 -g -std=gnu11 \
 UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/boot_tables_test_noalign \
              $(BUILD)/tests/mem_test \
-             $(BUILD)/tests/io_bus_test
+             $(BUILD)/tests/io_bus_test \
+             $(BUILD)/tests/serial8250_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
 # 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
@@ -191,6 +192,11 @@ $(BUILD)/tests/mem_test: tests/unit/mem_test.c tests/unit/mem_mutants.c \
 
 $(BUILD)/tests/io_bus_test: tests/unit/io_bus_test.c \
                             tests/unit/io_bus_mutants.c src/vm.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $^ -lpthread
+
+$(BUILD)/tests/serial8250_test: tests/unit/serial8250_test.c \
+                                src/devices/serial8250.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $^ -lpthread
 
