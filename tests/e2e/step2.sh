@@ -96,16 +96,8 @@ expect_has "Linux version"
 expect_has "BIOS-e820: [mem 0x0000000000100000-"
 expect_has "ACPI: Using ACPI (MADT) for SMP configuration information"
 expect_has "APIC: Switch to symmetric I/O mode setup"
-# TSC 校准有三种合法结局，取决于读一次 PIT 有多贵：裸机 KVM 上快路
-# quick_pit_calibrate() 能过（Fast TSC calibration using PIT）；嵌套
-# 虚拟化下每次 inb(0x42) 太贵，快路在 500ppm 外推处静默返回 0，由慢路
-# pit_calibrate_tsc() 接手（Using PIT calibration value）；host 负载大时
-# 慢路的 tscmax > 10*tscmin 抽查又会把三轮采样全判废，退回 refined-jiffies
-# （Unable to calibrate against PIT）。三种都不是 VMM 的问题，一并接受。
-# 详见 learning-note 卷七第 3 节。
-expect_any "tsc: Fast TSC calibration using PIT" \
-           "tsc: Using PIT calibration value" \
-           "tsc: Unable to calibrate against PIT"
+# TSC 频率的合法来源随内核配置变，判据见 lib.sh 的 expect_tsc_calibrated
+expect_tsc_calibrated
 expect_has "rtc_cmos rtc_cmos: setting system clock"
 expect_has "VFS: Unable to mount root fs"
 expect_has "guest requested reset via i8042"

@@ -100,17 +100,9 @@ expect_not "broken or not accessible"
 expect_not "only 24-hr supported"
 expect_not "Reading current time from RTC took around"
 
-# PIT：TSC 校准有三种合法结局，取决于读一次 PIT 有多贵。
-#   裸机 KVM（soc63）：quick_pit_calibrate() 成功 -> Fast TSC calibration using PIT
-#   嵌套 KVM（WSL2）  ：快路在 500ppm 外推处静默返回 0，慢路接手
-#                       -> Using PIT calibration value
-#   host 负载大时      ：慢路的 tscmax > 10*tscmin 抽查把三轮全判废
-#                       -> Unable to calibrate against PIT，退回 refined-jiffies
-# 三种都不是 VMM 的问题（PIT 通道 2 由 KVM 内核模块提供），一并接受。
-# 详见 learning-note 卷七第 3 节。
-expect_any "tsc: Fast TSC calibration using PIT" \
-           "tsc: Using PIT calibration value" \
-           "tsc: Unable to calibrate against PIT"
+# PIT / TSC：合法结局随内核配置变（有 kvmclock 时根本不做 PIT 校准），
+# 判据见 lib.sh 的 expect_tsc_calibrated
+expect_tsc_calibrated
 
 # PCI 不存在是预期结果，不是故障
 expect_has "PCI: System does not support PCI"

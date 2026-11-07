@@ -114,6 +114,30 @@ expect_any() {
     CUR_BAD=1
 }
 
+# TSC 频率已经确定，且路径与 guest 内核配置相符。
+#
+# 内核开了 CONFIG_KVM_GUEST 并检测到 KVM 时（日志有 "kvm-clock: Using msrs"），
+# TSC 频率直接取自 kvmclock，根本不做 PIT 校准，只会打印
+# "tsc: Detected ... MHz processor"。
+#
+# 没有 kvmclock 时走 PIT 校准，有三种合法结局，取决于读一次 PIT 有多贵：
+#   裸机 KVM：quick_pit_calibrate() 成功 -> Fast TSC calibration using PIT
+#   嵌套 KVM（WSL2）：快路在 500ppm 外推处静默返回 0，慢路接手
+#                     -> Using PIT calibration value
+#   host 负载大时：慢路的 tscmax > 10*tscmin 抽查把三轮全判废
+#                     -> Unable to calibrate against PIT，退回 refined-jiffies
+# 这些都不是 VMM 的问题（PIT 通道 2 由 KVM 内核模块提供），一并接受。
+# 详见 learning-note 卷七第 3 节。
+expect_tsc_calibrated() {
+    if printf '%s' "$CUR_OUT" | grep -qF -- "kvm-clock: Using msrs"; then
+        expect_has "tsc: Detected "
+    else
+        expect_any "tsc: Fast TSC calibration using PIT" \
+                   "tsc: Using PIT calibration value" \
+                   "tsc: Unable to calibrate against PIT"
+    fi
+}
+
 end_case() {
     if [ "$CUR_BAD" -eq 0 ]; then
         printf '   %sPASS%s\n' "$C_GRN" "$C_RST"
