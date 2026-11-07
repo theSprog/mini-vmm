@@ -69,8 +69,41 @@ EOF
 cat > "$STAGE/etc/inittab" <<'EOF'
 ::sysinit:/bin/sh /etc/init.d/rcS
 ::wait:/bin/cttyhack /bin/sh -l
-::wait:/bin/poweroff -f
+::wait:/sbin/poweroff -f
 EOF
+
+# inittab 和 /init 里写的绝对路径必须在 initramfs 内真实存在。busybox 把每个
+# applet 装在 --list-full 给出的固定目录（例如 poweroff 在 sbin，sh 在 bin），
+# 路径写错不会在构建时暴露：guest 里 init 只打印 "can't run" 然后跳过这一条，
+# 关机那一条失效时 VM 就停在 init 里不退出。所以这里在打包前逐个核对。
+#
+# 链接按 initramfs 根解析而不是 host 根：applet 链接的目标是 /bin/busybox，
+# 直接 test -e 会去看 host 的 /bin/busybox，host 有没有它都和 guest 无关。
+stage_has() {
+    local p="$1" n
+    for n in 1 2 3 4 5 6 7 8; do
+        if [ -L "$STAGE$p" ]; then
+            local t
+            t="$(readlink "$STAGE$p")"
+            case "$t" in
+                /*) p="$t" ;;
+                *)  p="$(dirname "$p")/$t" ;;
+            esac
+        else
+            [ -e "$STAGE$p" ]
+            return
+        fi
+    done
+    return 1
+}
+missing=0
+for p in /init $(cut -d: -f4- "$STAGE/etc/inittab" | tr ' ' '\n' | grep '^/'); do
+    if ! stage_has "$p"; then
+        echo "initramfs self-check: $p does not exist in the image" >&2
+        missing=1
+    fi
+done
+[ "$missing" -eq 0 ] || exit 1
 
 cat > "$STAGE/etc/profile" <<'EOF'
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin

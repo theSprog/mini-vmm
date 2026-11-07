@@ -3,7 +3,7 @@
 #
 #   Step 2.1  8250 UART：THR 输出、SCR 读写、MCR.LOOP 回环
 #   Step 2.2  vmlinux ELF 加载 + boot_params + MP/ACPI 表，内核打印横幅
-#   Step 2.3  initramfs，busybox shell 交互，poweroff 退出 VMM
+#   Step 2.3  initramfs，busybox shell 交互，poweroff 或 shell exit 退出 VMM
 #   Step 2.4  bzImage：64 位启动协议 + 解压器 + KASLR，同样进 shell 并关机
 #
 # 用法：
@@ -23,7 +23,8 @@ VMLINUX="${VMLINUX:-}"
 BZIMAGE="${BZIMAGE:-}"
 MEM=512M
 
-# 给 guest 喂一串命令：先等 shell 起来，再逐条发送，最后 poweroff。
+# 给 guest 喂一串命令：先等 shell 起来，再逐条发送。最后一条由调用方给出
+# 结束方式（poweroff -f 或 exit），两条关机路径各有用例。
 # 每条之间留点时间，串口 FIFO 只有 256 字节，一次灌太多会丢。
 feed_shell() {
     sleep 6
@@ -32,7 +33,6 @@ feed_shell() {
         printf '%s\n' "$c"
         sleep 1
     done
-    printf 'poweroff -f\n'
     sleep 5
 }
 
@@ -117,7 +117,7 @@ head1 "Step 2.3 — initramfs + busybox shell"
 CUR_NAME="initramfs: shell 交互 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'cat /proc/interrupts' \
+CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'cat /proc/interrupts' 'poweroff -f' \
            | timeout 60 "$VMM" --mode linux --mem "$MEM" \
                  --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
@@ -128,6 +128,23 @@ expect_has "mini-vmm initramfs: Linux 6."
 expect_has "MARK-42"
 expect_has "IO-APIC   4-edge      ttyS0"
 expect_has "guest requested poweroff via ACPI S5"
+expect_not "Kernel panic"
+end_case
+
+# 交互 shell 退出后由 inittab 的下一条 wait 关机，这条路径只靠 inittab
+# 里写对的命令路径，写错时 init 只打印 "can't run" 并停在那里，
+# VMM 不会退出，表现为 timeout 杀掉进程（退出码 124）
+CUR_NAME="initramfs: shell exit 后 init 自动关机"
+printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
+CUR_BAD=0
+CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'exit' \
+           | timeout 60 "$VMM" --mode linux --mem "$MEM" \
+                 --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_RC=$?
+expect_rc 0
+expect_has "MARK-42"
+expect_has "guest requested poweroff via ACPI S5"
+expect_not "can't run"
 expect_not "Kernel panic"
 end_case
 
@@ -145,7 +162,7 @@ head1 "Step 2.4 — bzImage"
 CUR_NAME="bzImage: 解压 + shell 交互 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' \
+CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'poweroff -f' \
            | timeout 60 "$VMM" --mode linux --mem "$MEM" \
                  --initrd "$INITRD" "$BZIMAGE" 2>&1)"
 CUR_RC=$?
