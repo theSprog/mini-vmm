@@ -8,3 +8,4 @@
 /perf.data.guest
 /compile_commands.json
 /**/*.bin
+/vmlinux

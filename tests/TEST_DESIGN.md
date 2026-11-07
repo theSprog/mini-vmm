@@ -62,7 +62,7 @@
 
 - 设备模型的寄存器语义错误，只要不让 Linux 驱动报错就发现不了；
 - 只在多 vCPU 竞争下出现的数据竞争；
-- 换一份 guest 内核 config 才会走到的探测分支（例如 `CONFIG_SERIAL_8250_16550A_VARIANTS=y` 才会执行的 EFR 路径）。
+- 换一份 guest 内核 config 才会走到的探测分支。8250 的变体探测（`CONFIG_SERIAL_8250_16550A_VARIANTS=y` 才执行的 EFR / NatSemi / TI16750 / XScale / `size_fifo()` 路径）已由 `tests/unit/serial8250_test.c` 按 `8250_port.c` 的访问顺序回放，与内核配置无关；其余设备的配置相关分支仍只靠手头那一个内核的 e2e。
 
 ---
 
@@ -147,6 +147,8 @@
 
 - **O1 — 跨越设备末端的 IO 访问该是什么语义？**
   `handle_io()` / `handle_mmio()` 算出 `off = addr - dev->base` 之后没有校验 `off + size <= dev->len`，直接交给设备回调。三种可选契约：总线层拒绝、总线层截断、交给设备自己判断。在定下来之前，`io_bus_test.c` 的对应用例标记为 `[CHARACTERIZATION]`，只记录当前行为、不做对错判定。定了之后那条用例要改写成契约断言。
+- **O3 — 多内核配置矩阵还没有搭。**
+  e2e 只能覆盖手头那一个 guest 内核的配置，而 VMM 的目标是换一个 vmlinux 也能启动。会让 guest 走不同路径的配置项见 `AGENT_GUIDE_KVM_VMM_CN.md` 11.2 节的清单。理想做法是 `tests/run.sh` 接受多个 `VMLINUX`，对每个内核跑 step2/6/7、结果按内核分列；候选内核是发行版式的大配置（大量 `=m`、`ACPI_REDUCED_HARDWARE_ONLY=y`）、`make defconfig` + `kvm_guest.config`、以及不开 `HYPERVISOR_GUEST` 的精简配置。卡在手头没有这么多内核，每份要单独编译。在搭起来之前，配置相关的设备语义优先用单元测试按内核源码回放（如 `serial8250_test.c`）。
 - **O2 — 分发接口（已解决）。**
   已把分发提成 `io_bus_dispatch_pio()` / `io_bus_dispatch_mmio()`（`include/vmm.h` 声明，`src/vm.c` 实现），`handle_io()` / `handle_mmio()` 退化成从 `kvm_run` 取字段的薄封装。`io_bus_test.c` 不再 `#include src/vm.c`，改为正常链接并通过公开接口调用。
   代价要记下来：**KVM_EXIT 路径上从 `kvm_run` 取字段那几行现在没有单元测试覆盖**，尤其是“必须按 `io.data_offset` 定位缓冲区、不能假设它紧跟结构体”这一条。它只由 e2e 覆盖（任何一次 guest IO 都会走到）。

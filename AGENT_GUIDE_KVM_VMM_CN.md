@@ -706,7 +706,13 @@ docs/
 
 - Host 是海光 Hygon C86 3280，vendor string 为 `HygonGenuine`，微架构派生自 Zen1，走 `kvm_amd`，所以 `src/arch/amd/` 同时服务 AMD 和 Hygon。系统是 Ubuntu 22.04，host 内核 5.15。
 - Host 内核源码在 `~/china_os/linux-5.15`，guest 内核源码和预编译的 vmlinux 在 `~/china_os/linux-6.6`。查 KVM 行为以 5.15 源码为准，查 guest 行为以 6.6 源码为准，不要凭记忆。
-- Guest 内核配置里跟 VMM 相关的事实：`CONFIG_X86_MPPARSE` 未开启，所以 MP table 会被忽略；`CONFIG_ACPI=y`；`CONFIG_KVM_GUEST` 未开启，所以没有 kvmclock，clocksource 用的是 TSC。
+- VMM 不能假设 guest 内核是哪一份配置：目标是换一个 vmlinux 也能启动，测试断言也不能写死某一份配置下的日志。下面这些配置项会让 guest 走不同的路径，改设备模型或固件表时逐条想一遍：
+  - `CONFIG_X86_MPPARSE`：开了才读 MP table，否则只用 ACPI MADT。两份表都要提供且内容一致（见 11.3）。
+  - `CONFIG_HYPERVISOR_GUEST` / `CONFIG_KVM_GUEST`：开了会启用 kvmclock，TSC 频率直接取自 KVM，不做 PIT 校准，日志里只有 `tsc: Detected ... MHz processor`；没开时走 PIT 校准。判据见 `tests/lib.sh` 的 `expect_tsc_calibrated`。
+  - `CONFIG_SERIAL_8250_16550A_VARIANTS`：开了会在 LCR=0x80 / 0xBF / 0xE0 下探测 EFR、NatSemi、TI16750、XScale 并调用 `size_fifo()`。串口必须在这些组合下都表现得像真 16550A，`tests/unit/serial8250_test.c` 回放了整段探测。
+  - `CONFIG_ACPI_REDUCED_HARDWARE_ONLY`：开了 ACPICA 不访问 PM1 寄存器，关机只走 FADT 的 SLEEP_CONTROL/SLEEP_STATUS，重启走 RESET_REG。三者都已在 FADT 里提供（`src/boot/acpi.c`）。
+  - `CONFIG_BINFMT_SCRIPT=m`：initramfs 里的 `/init` 必须是 ELF，脚本执行不了。`tools/build_initramfs.sh` 让 `/init` 就是 busybox init。
+  - 8250、i8042、rtc_cmos 等驱动编成 `=m`：initramfs 里要有对应模块并加载，这是准备 initramfs 的人的责任，VMM 和 QEMU 一样管不了。
 - 两棵内核树都有 `compile_commands.json` 和 clangd background index，index 由 `~/.local/bin/clangd`（clangd 22）建立。非交互 ssh 的 PATH 里是 `/usr/bin/clangd`（clangd 14），版本对不上，必须显式指定 22 版。符号查询用 `~/.local/bin/clangd_query.py`，调用时带上环境变量 `CLANGD=~/.local/bin/clangd`。clangd 在打开第一个文件之前不会加载 index，所以先对任意 `.c` 执行一次 `outline`，再用 `symbol`。纯文本搜索用 `~/.local/bin/rg`，它同样不在 ssh 的 PATH 里。
 - 远端命令如果超时，被中断的只是连接，远端的循环和子进程可能还在跑，事后要检查有没有残留的 `vmm` 或 clangd 进程。
 
