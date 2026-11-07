@@ -303,6 +303,39 @@ static void check_acpi(uint64_t rsdp_gpa, int nr_cpus, struct platform *pf)
           "DSDT 0x%x != X_DSDT 0x%llx", rd32(fadt + 40),
           (unsigned long long)rd64(fadt + 140));
 
+    /* RESET_REG（offset 116 GAS）+ RESET_VALUE（128），FLAGS bit10 宣告有效。
+     * Linux acpi_reboot() 只接受 bit_width 8、bit_offset 0 的寄存器。
+     * 必须是 i8042 命令口 + 脉冲 reset 命令，VMM 的 reset 退出路径只在那里。 */
+    CHECK(rd32(fadt + 112) & (1u << 10), "FADT lacks RESET_REG_SUP");
+    CHECK(fadt[116] == 1 && fadt[117] == 8 && fadt[118] == 0,
+          "RESET_REG: space %u width %u offset %u, want SystemIO/8/0",
+          fadt[116], fadt[117], fadt[118]);
+    CHECK(rd64(fadt + 120) == 0x64 && fadt[128] == 0xfe,
+          "RESET_REG 0x%llx value 0x%02x, want i8042 0x64 / 0xfe",
+          (unsigned long long)rd64(fadt + 120), fadt[128]);
+
+    /* 扩展睡眠寄存器（offset 244 / 256，各 12 字节 GAS）：
+     * CONFIG_ACPI_REDUCED_HARDWARE_ONLY 内核关机只认这两个。
+     * acpi_hw_extended_sleep() 要求两者地址都非零，按 8 位 SystemIO 访问。 */
+    {
+        static const struct { unsigned off; uint16_t port; const char *name; } sr[] = {
+            { 244, ACPI_SLEEP_CTL_PORT, "SLEEP_CONTROL_REG" },
+            { 256, ACPI_SLEEP_STS_PORT, "SLEEP_STATUS_REG" },
+        };
+        unsigned i;
+
+        for (i = 0; i < 2; i++) {
+            const uint8_t *g = fadt + sr[i].off;
+
+            CHECK(g[0] == 1 && g[1] == 8 && g[2] == 0,
+                  "%s: space %u width %u offset %u, want SystemIO/8/0",
+                  sr[i].name, g[0], g[1], g[2]);
+            CHECK(rd64(g + 4) == sr[i].port, "%s address 0x%llx, the acpi_pm "
+                  "device answers at 0x%x", sr[i].name,
+                  (unsigned long long)rd64(g + 4), sr[i].port);
+        }
+    }
+
     /* DSDT：\_S5 的 SLP_TYP 必须是 3 位以内，并与 PM1 设备的约定一致 */
     dsdt = acpi_table(rd64(fadt + 140), "DSDT");
     if (dsdt) {

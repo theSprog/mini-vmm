@@ -28,8 +28,6 @@
 #include "devices/i8042.h"
 #include "devices/irqchip.h"
 
-#define I8042_DATA_PORT 0x60
-#define I8042_CMD_PORT  0x64
 #define I8042_KBD_IRQ   1
 
 /* 状态寄存器 */

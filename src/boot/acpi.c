@@ -12,6 +12,7 @@
 #include "memory.h"
 #include "boot/acpi.h"
 #include "boot/mptable.h"
+#include "devices/i8042.h"
 
 #define ACPI_OEM_ID       "MINVMM"
 #define ACPI_OEM_TABLE_ID "MINIVMM "
@@ -135,6 +136,7 @@ _Static_assert(sizeof(struct madt_lapic_nmi) == 6, "madt_lapic_nmi size");
 #define FADT_F_WBINVD        (1u << 0)
 #define FADT_F_PWR_BUTTON    (1u << 4)   /* 置 1 = 没有固定功能电源键 */
 #define FADT_F_SLP_BUTTON    (1u << 5)
+#define FADT_F_RESET_REG_SUP (1u << 10)  /* RESET_REG / RESET_VALUE 有效 */
 #define FADT_BOOT_LEGACY_DEV (1u << 0)
 #define FADT_BOOT_8042       (1u << 1)
 
@@ -156,6 +158,21 @@ static const uint8_t dsdt_aml[] = {
 };
 
 #define S5_SLP_TYP 5
+
+/* Generic Address Structure 的 Address Space ID 与 Access Size */
+#define GAS_SPACE_SYSTEM_IO 1
+#define GAS_ACCESS_BYTE     1
+
+/* 12 字节 GAS：space_id, bit_width, bit_offset, access_size, address(64) */
+static void fill_gas(uint8_t gas[12], uint8_t space, uint8_t bit_width,
+                     uint8_t access, uint64_t addr)
+{
+    gas[0] = space;
+    gas[1] = bit_width;
+    gas[2] = 0;
+    gas[3] = access;
+    memcpy(gas + 4, &addr, 8);
+}
 
 static uint8_t acpi_checksum(const void *p, size_t len)
 {
@@ -224,8 +241,23 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     fadt->pm1_cnt_len    = ACPI_PM1_CNT_LEN;
     fadt->century        = 0x32;          /* CMOS 世纪寄存器，见 rtc.c */
     fadt->iapc_boot_arch = FADT_BOOT_LEGACY_DEV | FADT_BOOT_8042;
-    fadt->flags          = FADT_F_WBINVD | FADT_F_PWR_BUTTON | FADT_F_SLP_BUTTON;
+    fadt->flags          = FADT_F_WBINVD | FADT_F_PWR_BUTTON | FADT_F_SLP_BUTTON |
+                           FADT_F_RESET_REG_SUP;
+    /* RESET_REG 指向 i8042 命令口，RESET_VALUE 是脉冲 reset 命令，复用
+     * i8042 设备已有的 reset 路径。x86 Linux 的默认重启顺序先试 ACPI
+     * （reboot_type 缺省 BOOT_ACPI），用户用 --cmdline 换掉默认的 reboot=k
+     * 时靠它一次成功；只支持硬件精简 ACPI 的平台上这也是规范规定的重启方式。
+     * 不用 q35 常见的 0xCF9：那要新增一个设备，且它和 PCI conf1 的
+     * 0xCF8-0xCFF 窗口重叠，Linux 的 pci_check_type1() 会探测这段端口；
+     * i8042 的 reset 已经有实现和测试。 */
+    fill_gas(fadt->reset_reg, GAS_SPACE_SYSTEM_IO, 8, GAS_ACCESS_BYTE,
+             I8042_CMD_PORT);
+    fadt->reset_value    = I8042_CMD_PULSE_RESET;
     fadt->minor_version  = 4;
+    fill_gas(fadt->sleep_control, GAS_SPACE_SYSTEM_IO, 8, GAS_ACCESS_BYTE,
+             ACPI_SLEEP_CTL_PORT);
+    fill_gas(fadt->sleep_status, GAS_SPACE_SYSTEM_IO, 8, GAS_ACCESS_BYTE,
+             ACPI_SLEEP_STS_PORT);
     fill_header(&fadt->h, "FACP", sizeof(*fadt), 6);
 
     /* MADT */
@@ -308,23 +340,39 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 #define PM1_CNT_SLP_TYP(v) (((v) >> 10) & 0x7)
 #define PM1_CNT_SLP_EN   (1u << 13)
 
+/* 扩展睡眠控制寄存器：SLP_TYP 在 bit 4:2，SLP_EN 在 bit 5（ACPI 6.x 4.8.3.7） */
+#define SLEEP_CTL_SLP_TYP(v) (((v) >> 2) & 0x7)
+#define SLEEP_CTL_SLP_EN     (1u << 5)
+/* 扩展睡眠状态寄存器：WAK_STS 在 bit 7，写 1 清零 */
+#define SLEEP_STS_WAK_STS    (1u << 7)
+
+#define PM_OFF_PM1_STS    0
+#define PM_OFF_PM1_EN     2
+#define PM_OFF_PM1_CNT    (ACPI_PM1A_CNT_PORT - ACPI_PM1A_EVT_PORT)
+#define PM_OFF_SLEEP_CTL  (ACPI_SLEEP_CTL_PORT - ACPI_PM1A_EVT_PORT)
+#define PM_OFF_SLEEP_STS  (ACPI_SLEEP_STS_PORT - ACPI_PM1A_EVT_PORT)
+
 static struct {
     uint16_t sts;
     uint16_t en;
     uint16_t cnt;
+    uint8_t  sleep_sts;
 } g_pm;
 
-/* 端口 [0x600, 0x606)：0x600 STS, 0x602 EN, 0x604 CNT。
- * guest 可能按字节或按字访问，统一当成 6 字节的小端寄存器文件处理。 */
+/* 端口 [0x600, 0x608)：0x600 PM1_STS, 0x602 PM1_EN, 0x604 PM1_CNT,
+ * 0x606 SLEEP_CONTROL, 0x607 SLEEP_STATUS。
+ * guest 可能按字节或按字访问，统一当成 8 字节的小端寄存器文件处理。
+ * SLEEP_CONTROL 只写有意义（SLP_EN 是一次性触发位），读回 0。 */
 static int pm_read(void *opaque, uint64_t off, uint32_t size, void *data)
 {
-    uint8_t regs[6];
+    uint8_t regs[ACPI_PM_IO_LEN] = {0};
     uint16_t cnt = g_pm.cnt | PM1_CNT_SCI_EN;   /* 永远处于 ACPI 模式 */
 
     (void)opaque;
-    memcpy(regs + 0, &g_pm.sts, 2);
-    memcpy(regs + 2, &g_pm.en, 2);
-    memcpy(regs + 4, &cnt, 2);
+    memcpy(regs + PM_OFF_PM1_STS, &g_pm.sts, 2);
+    memcpy(regs + PM_OFF_PM1_EN, &g_pm.en, 2);
+    memcpy(regs + PM_OFF_PM1_CNT, &cnt, 2);
+    regs[PM_OFF_SLEEP_STS] = g_pm.sleep_sts;
 
     memset(data, 0, size);
     if (off + size <= sizeof(regs))
@@ -340,19 +388,29 @@ static int pm_write(void *opaque, uint64_t off, uint32_t size,
 
     memcpy(&v, data, size > 2 ? 2 : size);
     switch (off) {
-    case 0:
+    case PM_OFF_PM1_STS:
         g_pm.sts &= (uint16_t)~v;    /* 写 1 清零 */
         break;
-    case 2:
+    case PM_OFF_PM1_EN:
         g_pm.en = v;
         break;
-    case 4:
+    case PM_OFF_PM1_CNT:
         if ((v & PM1_CNT_SLP_EN) && PM1_CNT_SLP_TYP(v) == S5_SLP_TYP) {
             vmm_info("guest requested poweroff via ACPI S5");
             vm->exit_code = 0;
             return VMM_ERR_EXIT;
         }
         g_pm.cnt = v & (uint16_t)~PM1_CNT_SLP_EN;
+        break;
+    case PM_OFF_SLEEP_CTL:
+        if ((v & SLEEP_CTL_SLP_EN) && SLEEP_CTL_SLP_TYP(v) == S5_SLP_TYP) {
+            vmm_info("guest requested poweroff via ACPI S5 (sleep control register)");
+            vm->exit_code = 0;
+            return VMM_ERR_EXIT;
+        }
+        break;
+    case PM_OFF_SLEEP_STS:
+        g_pm.sleep_sts &= (uint8_t)~(v & SLEEP_STS_WAK_STS);
         break;
     }
     return VMM_OK;
@@ -366,7 +424,7 @@ int acpi_pm_attach(struct vmm_vm *vm)
     memset(&dev, 0, sizeof(dev));
     dev.name   = "acpi-pm1a";
     dev.base   = ACPI_PM1A_EVT_PORT;
-    dev.len    = ACPI_PM1_EVT_LEN + ACPI_PM1_CNT_LEN;
+    dev.len    = ACPI_PM_IO_LEN;
     dev.opaque = vm;
     dev.read   = pm_read;
     dev.write  = pm_write;
