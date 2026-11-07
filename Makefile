@@ -114,7 +114,7 @@ clean:
 	rm -rf $(BUILD) compile_commands.json
 # ---- 验收测试 ----
 #
-#   make test              默认集合：unit tables step1 step2 step6 step7
+#   make test              默认集合：unit negctl tables gshell step1 step2 step6 step7
 #   make test step1        只跑一个 suite
 #   make test unit fuzz    跑多个
 #   make test all          默认集合 + fuzz
@@ -124,7 +124,7 @@ clean:
 # tests/ 负责“判断产物对不对”。所以这里只有构建规则和一次转发，
 # 断言逻辑一行都不放在 Makefile 里。
 
-TEST_SUITES := all offline e2e unit negctl tables fuzz step1 step2 step6 step7
+TEST_SUITES := all offline e2e unit negctl tables gshell fuzz step1 step2 step6 step7
 
 # `make test step1` 里的 step1 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'step1'"。all 例外——它是真实目标。

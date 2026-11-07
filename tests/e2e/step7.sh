@@ -27,20 +27,6 @@ TRACE=""
 cleanup() { [ -n "$TRACE" ] && rm -f "$TRACE"; }
 trap cleanup EXIT
 
-# 同 step2/step6：等 shell 起来后逐条发送，最后按参数决定怎么停机。
-# $1 = 停机命令（poweroff -f 或 reboot -f），其余是要执行的命令。
-feed_shell() {
-    local stop="$1"; shift
-    sleep "${FEED_WAIT:-8}"
-    local c
-    for c in "$@"; do
-        printf '%s\n' "$c"
-        sleep 1
-    done
-    printf '%s\n' "$stop"
-    sleep 5
-}
-
 # ------------------------------------------------------------------
 auto_tests() {
 
@@ -62,13 +48,14 @@ TRACE="$(mktemp -t mini-vmm-pio.XXXXXX)"
 CUR_NAME="四个传统设备都被正确探测，且一次超时都没有"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'poweroff -f' \
-    'echo SER-$(sed -n "s/^0: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
-    'echo SER1-$(sed -n "s/^1: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
-    'echo SERIRQ-$(sed -n "s/^ *4: *\([0-9]*\).*/\1/p" /proc/interrupts)-END' \
-    'echo KBDIRQ-$(sed -n "s/^ *1: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
-    'echo RTCIRQ-$(sed -n "s/^ *8: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
-    | timeout 90 "$VMM" --mode linux --mem "$MEM" --trace-pio "$TRACE" \
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 90 \
+    --cmd 'echo SER-$(sed -n "s/^0: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
+    --cmd 'echo SER1-$(sed -n "s/^1: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
+    --cmd 'echo SERIRQ-$(sed -n "s/^ *4: *\([0-9]*\).*/\1/p" /proc/interrupts)-END' \
+    --cmd 'echo KBDIRQ-$(sed -n "s/^ *1: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
+    --cmd 'echo RTCIRQ-$(sed -n "s/^ *8: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
+    --stop 'poweroff -f' \
+    -- "$VMM" --mode linux --mem "$MEM" --trace-pio "$TRACE" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0
@@ -153,8 +140,8 @@ head1 "Step 7.3 — 两条退出路径"
 CUR_NAME="reboot -f 走 i8042 的 0xFE 脉冲"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'reboot -f' \
-    | timeout 90 "$VMM" --mode linux --mem "$MEM" --trace-pio "$TRACE" \
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 90 --stop 'reboot -f' \
+    -- "$VMM" --mode linux --mem "$MEM" --trace-pio "$TRACE" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 # trace 的最后一行就是触发退出的那次写，见 vm.c 里 pio_trace() 的位置

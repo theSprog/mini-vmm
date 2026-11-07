@@ -79,7 +79,7 @@
 | P3-full | 按 `HANDOFF_STEP2_CN.md` 第 5 节对四个传统设备逐条注入已知缺陷 | 需要先有 P2 的设备单元测试 | 同上 | 同上 | — | 未批准（依赖 P2） |
 | P4a | ASan+UBSan 与 TSan 构建下各跑一次完整启动关机 | 需要 `/dev/kvm`；TSan 下明显变慢 | 无 sanitizer 报告 | 报告全文 | 单次超过 300s 即中止 | 未批准 |
 | P4b | 把 `pio_decode.py --summary` 变成带容差的回归断言 | 扩 `tests/e2e/step7.sh` | 总数 30449 ±5%、PIT 端口恒为 0 | 每次的统计输出 | — | 未批准 |
-| P4c | guest 用例各跑 10 遍，统计 `feed_shell` 的时序稳定性 | 只跑不改 | 失败率为 0 | 10 次的退出码 | — | 未批准 |
+| P4c | 去掉 guest 用例对固定延迟的依赖：命令改由 `tests/guest_shell.py` 等 shell 提示符后发送，`gshell` suite 用假 guest 证明固定延迟会丢命令而新驱动不丢；再把 guest 用例连跑多遍确认稳定 | 新增 `tests/guest_shell.py`、`tests/offline/{guest_shell.sh,fake_guest.py}`，改 `tests/e2e/step{2,6,7}.sh` | `gshell` 全过；guest 用例多遍连跑无 FAIL | `gshell` 输出、连跑的逐遍结果 | 出现 FAIL 即停 | **已批准，已执行** |
 
 ---
 
@@ -202,5 +202,5 @@ E5 的最小复现输入是一个 177 字节的 ELF：`e_phoff = 0xFFFFFFFFFFFFF
 - **fuzz 只跑了 5 分钟/target、单 worker。** 覆盖率见日志里的 `cov:`。修复前 fuzzer 在首次发现处就停（`-fno-sanitize-recover=all`），所以“修好了这两个”不等于“后面没有别的”——修复后的重跑结果见执行结果摘要。
 - **`gpa_to_hva` 的模型对照有一个已知盲区**：结束地址正好等于 2^64 的 slot。实现里 `s->gpa + s->size` 会回绕成 0，该 slot 完全不可用。测试布局刻意避开，因为现实中不会出现；将来 MMIO hole 的划分变复杂时要重新评估。
 - **`bzimage_fuzz_noalign` 编出来了但没跑过。** 理由：`bzimage_load()` 把 setup header `memcpy` 进对齐的局部变量再访问，严格版跑满 300 秒也没被 alignment 挡住。这是判断，不是证据。
-- **P0 只做了一半。** 修复之后 `make test` 默认集合完整跑过一次并全绿（7 个 suite / 48 条用例 / 98 秒），所以“改完还能启动 Linux”是有证据的。但 P0 原本要的是**各跑 3 遍以分清 flaky**，那部分没做——`feed_shell` 用 `sleep` 定时喂命令，时序稳定性仍然未知（P4c）。
+- **P0 只做了一半。** 修复之后 `make test` 默认集合完整跑过一次并全绿（7 个 suite / 48 条用例 / 98 秒），所以“改完还能启动 Linux”是有证据的。但 P0 原本要的是**各跑 3 遍以分清 flaky**，那部分没做。已知的一个 flaky 来源是 guest 命令按固定延迟发送，已由 P4c 消除；其余用例的重复稳定性没有系统统计。
 - **P1 完全没有触及设备状态机、并发、启动流程**，那些行为目前仍然只有整机启动这一条间接证据。

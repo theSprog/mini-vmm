@@ -13,6 +13,8 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$TESTS_DIR")"
 VMM="$ROOT/build/vmm"
+# 启动 VMM 并在 guest shell 里按提示符逐条执行命令，用法见脚本头注释
+GUEST_SHELL="$ROOT/tests/guest_shell.py"
 
 if [ -t 1 ]; then
     C_RED=$'\e[31m'; C_GRN=$'\e[32m'; C_YEL=$'\e[33m'

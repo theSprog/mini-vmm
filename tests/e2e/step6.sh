@@ -30,19 +30,6 @@ SMP=4
 SMP_MANY="${SMP_MANY:-16}"
 MEM_MANY=1024M
 
-# 同 step2.sh：等 shell 起来后逐条发送，最后 poweroff。
-# vCPU 多的时候启动慢一些，用 FEED_WAIT 把首次等待拉长。
-feed_shell() {
-    sleep "${FEED_WAIT:-6}"
-    local c
-    for c in "$@"; do
-        printf '%s\n' "$c"
-        sleep 1
-    done
-    printf 'poweroff -f\n'
-    sleep 5
-}
-
 # ------------------------------------------------------------------
 auto_tests() {
 
@@ -101,14 +88,15 @@ printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
 # 标记串都由 guest 的命令替换生成，回显的命令行里只有 $(...)，
 # 不会误匹配
-CUR_OUT="$(feed_shell \
-    'echo NPROC-$(nproc)' \
-    'echo APIC-$(sed -n "s/^apicid.*: //p" /proc/cpuinfo | tr "\n" -)' \
-    'echo CORE-$(sed -n "s/^core id.*: //p" /proc/cpuinfo | tr "\n" -)' \
-    'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
-    'echo L3-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
-    'echo L2-$(cat /sys/devices/system/cpu/cpu1/cache/index2/shared_cpu_list)' \
-    | timeout 60 "$VMM" --mode linux --smp "$SMP" --mem "$MEM" \
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+    --cmd 'echo NPROC-$(nproc)' \
+    --cmd 'echo APIC-$(sed -n "s/^apicid.*: //p" /proc/cpuinfo | tr "\n" -)' \
+    --cmd 'echo CORE-$(sed -n "s/^core id.*: //p" /proc/cpuinfo | tr "\n" -)' \
+    --cmd 'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
+    --cmd 'echo L3-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
+    --cmd 'echo L2-$(cat /sys/devices/system/cpu/cpu1/cache/index2/shared_cpu_list)' \
+    --stop 'poweroff -f' \
+    -- "$VMM" --mode linux --smp "$SMP" --mem "$MEM" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0
@@ -130,12 +118,13 @@ head1 "Step 6.1 — 多 vCPU（$SMP_MANY）"
 CUR_NAME="$SMP_MANY vCPU：全部上线 + LLC 域 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(FEED_WAIT=10 feed_shell \
-    'echo NPROC-$(nproc)' \
-    'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
-    'echo L3A-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
-    "echo L3B-\$(cat /sys/devices/system/cpu/cpu$(( SMP_MANY - 1 ))/cache/index3/shared_cpu_list)" \
-    | timeout 120 "$VMM" --mode linux --smp "$SMP_MANY" --mem "$MEM_MANY" \
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 120 \
+    --cmd 'echo NPROC-$(nproc)' \
+    --cmd 'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
+    --cmd 'echo L3A-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
+    --cmd "echo L3B-\$(cat /sys/devices/system/cpu/cpu$(( SMP_MANY - 1 ))/cache/index3/shared_cpu_list)" \
+    --stop 'poweroff -f' \
+    -- "$VMM" --mode linux --smp "$SMP_MANY" --mem "$MEM_MANY" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0

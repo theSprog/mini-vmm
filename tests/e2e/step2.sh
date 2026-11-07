@@ -23,19 +23,6 @@ VMLINUX="${VMLINUX:-}"
 BZIMAGE="${BZIMAGE:-}"
 MEM=512M
 
-# 给 guest 喂一串命令：先等 shell 起来，再逐条发送。最后一条由调用方给出
-# 结束方式（poweroff -f 或 exit），两条关机路径各有用例。
-# 每条之间留点时间，串口 FIFO 只有 256 字节，一次灌太多会丢。
-feed_shell() {
-    sleep 6
-    local c
-    for c in "$@"; do
-        printf '%s\n' "$c"
-        sleep 1
-    done
-    sleep 5
-}
-
 # ------------------------------------------------------------------
 auto_tests() {
 
@@ -117,9 +104,9 @@ head1 "Step 2.3 — initramfs + busybox shell"
 CUR_NAME="initramfs: shell 交互 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'cat /proc/interrupts' 'poweroff -f' \
-           | timeout 60 "$VMM" --mode linux --mem "$MEM" \
-                 --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --cmd 'cat /proc/interrupts' --stop 'poweroff -f' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0
 expect_has "Run /init as init process"
@@ -137,9 +124,9 @@ end_case
 CUR_NAME="initramfs: shell exit 后 init 自动关机"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'exit' \
-           | timeout 60 "$VMM" --mode linux --mem "$MEM" \
-                 --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --stop 'exit' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0
 expect_has "MARK-42"
@@ -162,9 +149,9 @@ head1 "Step 2.4 — bzImage"
 CUR_NAME="bzImage: 解压 + shell 交互 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
-CUR_OUT="$(feed_shell 'echo MARK-$((6*7))' 'poweroff -f' \
-           | timeout 60 "$VMM" --mode linux --mem "$MEM" \
-                 --initrd "$INITRD" "$BZIMAGE" 2>&1)"
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --stop 'poweroff -f' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$BZIMAGE" 2>&1)"
 CUR_RC=$?
 expect_rc 0
 expect_has "kernel format: bzImage"

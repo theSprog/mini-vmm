@@ -5,7 +5,7 @@
 # 选 suite、按顺序跑、把各自的结果汇总成一张表和一个退出码。
 #
 # 用法：
-#   ./tests/run.sh                 默认集合（unit tables step1 step2 step6 step7）
+#   ./tests/run.sh                 默认集合（unit negctl tables gshell step1 step2 step6 step7）
 #   ./tests/run.sh unit io         只跑指定 suite
 #   ./tests/run.sh all             默认集合 + fuzz
 #   ./tests/run.sh --list          列出所有 suite
@@ -39,6 +39,7 @@ suite_script() {
     negctl) echo "offline/negctl.sh" ;;
     tables) echo "offline/boot_tables.sh" ;;
     fuzz)   echo "offline/fuzz.sh" ;;
+    gshell) echo "offline/guest_shell.sh" ;;
     step1)  echo "e2e/step1.sh" ;;
     step2)  echo "e2e/step2.sh" ;;
     step6)  echo "e2e/step6.sh" ;;
@@ -60,6 +61,7 @@ suite_desc() {
     negctl) echo "negative control：每个 mutant 都必须让单元测试变红" ;;
     tables) echo "ACPI 表交给 iasl 反汇编（外部 oracle）" ;;
     fuzz)   echo "vmlinux / bzImage 加载器的 libFuzzer 跑批（按时间计费）" ;;
+    gshell) echo "e2e 驱动脚本 guest_shell.py 自测（假 guest）" ;;
     step1)  echo "实模式、长模式页表、错误路径诊断" ;;
     step2)  echo "8250 UART、vmlinux/bzImage 直启、initramfs shell" ;;
     step6)  echo "SMP：多 vCPU 启动、CPUID 拓扑、停机" ;;
@@ -67,8 +69,8 @@ suite_desc() {
     esac
 }
 
-ALL_SUITES="unit negctl tables fuzz step1 step2 step6 step7"
-DEFAULT_SUITES="unit negctl tables step1 step2 step6 step7"
+ALL_SUITES="unit negctl tables gshell fuzz step1 step2 step6 step7"
+DEFAULT_SUITES="unit negctl tables gshell step1 step2 step6 step7"
 
 usage() {
     echo "用法: $0 [--list|--manual] [suite...]"
@@ -93,7 +95,7 @@ while [ $# -gt 0 ]; do
     --auto|-a)   MODE="-a" ;;
     -h|--help)   usage; exit 0 ;;
     all)         SELECTED="$SELECTED $ALL_SUITES" ;;
-    offline)     SELECTED="$SELECTED unit negctl tables fuzz" ;;
+    offline)     SELECTED="$SELECTED unit negctl tables gshell fuzz" ;;
     e2e)         SELECTED="$SELECTED step1 step2 step6 step7" ;;
     -*)          echo "未知选项: $1" >&2; usage >&2; exit 2 ;;
     *)

@@ -742,5 +742,5 @@ docs/
 
 - **`timeout` 包着运行时 VMM 会卡死**：`timeout` 会把子进程放进单独的后台进程组。stdin 是终端时，`tcsetattr` 会触发 SIGTTOU，`read` 会触发 SIGTTIN，进程被停住，Ctrl-C 也没反应。现在 `console_start()` 发现 stdin 是终端、但自己不在前台进程组时，不切 raw 模式也不读输入，只打印 warning；`tests/lib.sh` 的 `run_case` 把 stdin 接到 `/dev/null`。人工运行时请用 `timeout --foreground`。
 - **测试要在带 pty 的环境下也跑一遍**：通过无 pty 的 ssh 运行时 stdin 不是终端，碰不到上面那类问题。用户是在交互式终端里跑测试的，所以要用 `python3 -c 'import pty; pty.spawn(["/bin/sh","-c","..."])'` 复现。不要用 `script` 管道，实测会挂住；也不要在 pty 里用 `bash -c`，它会被用户的 profile 切到 zsh。
-- **给 guest shell 喂命令要留间隔**：串口 RX FIFO 只有 256 字节，一次灌入太多会丢字符。`feed_shell` 先等 6 秒让 shell 起来，之后每条命令间隔 1 秒。
+- **给 guest shell 送命令要等提示符**：guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，用例表现为 VMM 超时，和 VMM 卡死分不开。启动耗时随内核配置、vCPU 数、host 负载变化，任何固定延迟都会有猜错的时候，所以 e2e 用例统一用 `tests/guest_shell.py`，它等输出里出现 `[guest ...]# ` 才发下一条。提示符格式来自 `tools/build_initramfs.sh` 写的 `PS1`，两边要一起改。单条命令（含换行）不能超过 255 字节，这是 VMM 串口 RX 环形缓冲区（`SERIAL_RX_BUF`）的容量，`console.c` 逐字节推入，满了就丢，`guest_shell.py` 对超长命令直接报用法错误。
 - **断言用的标记必须由 guest 计算生成**：guest 会回显命令行，直接断言 `nproc` 的输出会被回显误匹配。正确写法是 `echo MARK-$((6*7))` 然后断言 `MARK-42`，或者 `echo NPROC-$(nproc)` 然后断言 `NPROC-4`。

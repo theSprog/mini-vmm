@@ -3,7 +3,7 @@
 <!-- tests/README.md -->
 
 ```
-make test                 默认集合：unit tables step1 step2 step6 step7
+make test                 默认集合：unit negctl tables gshell step1 step2 step6 step7
 make test step2           只跑一个 suite
 make test unit fuzz       跑多个
 make test all             默认集合 + fuzz
@@ -22,11 +22,14 @@ make test-list            列出所有 suite
 tests/
 ├── run.sh          总入口，被 make test 调用；选 suite、跑、汇总
 ├── lib.sh          shell 断言框架，被各 suite source，不直接执行
+├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── TEST_DESIGN.md  验证设计与批准记录
 ├── offline/        不需要 /dev/kvm，秒级，可以在任何 Linux 上跑
 │   ├── unit.sh         跑 build/tests/*_test，外加回归输入重放
 │   ├── negctl.sh       negative control：每个 mutant 都必须让测试变红
 │   ├── boot_tables.sh  把 ACPI 表交给 iasl 反汇编
+│   ├── guest_shell.sh  guest_shell.py 的自测
+│   ├── fake_guest.py   冒充 VMM+guest：启动期间丢弃输入，给上面那条用
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核
 │   ├── step1.sh  step2.sh  step6.sh  step7.sh
@@ -53,6 +56,7 @@ tests/
 | `unit` | 否 | 否 | 头文件里写明的契约 + 一份独立写出的模型 + ASan/UBSan |
 | `negctl` | 否 | 否 | 反过来判：mutant 没让测试变红就是 FAIL |
 | `tables` | 否 | 否 | iasl（ACPICA）反汇编，外部 oracle |
+| `gshell` | 否 | 否 | 假 guest 复现“启动期间输入丢失”，先证明固定延迟会丢，再要求 `guest_shell.py` 不丢 |
 | `fuzz` | 否 | 否（有则用作种子） | ASan/UBSan + “必须有限时间内返回” |
 | `step1` | 是 | 否 | VMM 日志 + payload 自检码 |
 | `step2` | 是 | 是 | guest Linux 的启动日志 |
@@ -62,6 +66,8 @@ tests/
 `step2` / `step6` / `step7` 需要 `VMLINUX=/path/to/vmlinux`（`step2` 的 2.4 另需 `BZIMAGE=`），
 没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
 不存在时会先调 `tools/build_initramfs.sh`。
+
+要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。
 
 `fuzz` 不在默认集合里：它按墙钟时间计费（默认每 target 300 秒），而 `make test`
 应该是随手就能跑的。要跑就显式写出来。可用 `FUZZ_TIME=` 调整预算。
