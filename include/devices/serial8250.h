@@ -1,4 +1,4 @@
-/* include/devices/serial8250.h — 16550A UART 模拟（Step 2.1）
+/* include/devices/serial8250.h — 16550A UART 模拟
  *
  * 只模拟 Linux 8250 驱动真正会碰到的那部分寄存器语义：
  *   - THR 写出字符 -> host 输出 fd
@@ -8,7 +8,7 @@
  *   - SCR 可读写：autoconfig 用它判断是不是 8250 以上的芯片
  *
  * 中断通过 irq_set 回调送出去，串口自己不关心中断控制器是谁。
- * Step 2.1 阶段回调可以为空（纯轮询输出）。
+ * 串口载荷模式下回调可以为空（纯轮询输出）。
  */
 #ifndef DEVICES_SERIAL8250_H
 #define DEVICES_SERIAL8250_H

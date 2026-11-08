@@ -1,4 +1,4 @@
-/* tools/payload/serial_stub.S — Step 2.1 串口测试载荷
+/* tools/payload/serial_stub.S — linux-boot 的串口测试载荷
  *
  * 长模式下，载入 GPA 0x300000。按 Linux early_serial 的方式轮询 LSR.THRE
  * 再写 THR，把一行字符串打到 COM1。然后顺手做一次 SCR 读写回环和

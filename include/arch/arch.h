@@ -1,6 +1,6 @@
 /* include/arch/arch.h — CPU 厂商抽象层
  *
- * 为什么 Step 1 就要有这一层？
+ * 为什么从第一个裸 payload 起就要有这一层？
  * 因为从创建 VM 的第一步开始，Intel 和 AMD 的准备工作就不同：
  *   - Intel (VMX)：老 CPU 无 unrestricted guest 时跑实模式需要 vm86 兜底，
  *     且 KVM 要求先用 KVM_SET_TSS_ADDR 划一块 3 页的 TSS 区域，

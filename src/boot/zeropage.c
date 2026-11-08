@@ -1,4 +1,4 @@
-/* src/boot/zeropage.c — 构造 boot_params / E820 内存图 / initrd  [Step 2] */
+/* src/boot/zeropage.c — 构造 boot_params / E820 内存图 / initrd  [linux-boot] */
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>

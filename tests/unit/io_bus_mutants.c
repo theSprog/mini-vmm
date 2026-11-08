@@ -1,6 +1,6 @@
 /* tests/unit/io_bus_mutants.c — io_bus_dispatch_* 的故意错误实现
  *
- * 每个 mutant 对应 include/vmm.h 与 HANDOFF_STEP2_CN.md 里写明的一条
+ * 每个 mutant 对应 include/vmm.h 里写明的一条
  * 分发契约。写法照抄真实实现，只改目标那一处。
  */
 #include <string.h>

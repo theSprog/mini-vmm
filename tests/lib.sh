@@ -73,7 +73,7 @@ run_case() {
     printf '   $ %s\n' "$*"
     # stderr 合并进来一起断言：VMM 的日志走 stderr，
     # 调试端口的输出走 stdout，两边都要检查
-    # stdin 接 /dev/null：被测程序不该碰终端。Step 2 起 VMM 会把
+    # stdin 接 /dev/null：被测程序不该碰终端。Linux 模式下 VMM 会把
     # 终端切 raw 模式并读输入，而 timeout 会把它放进后台进程组，
     # 碰终端就会被 SIGTTOU/SIGTTIN 停住，整个测试挂死。
     CUR_OUT="$("$@" 2>&1 </dev/null)"

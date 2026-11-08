@@ -1,4 +1,4 @@
-/* src/boot/mptable.c — 构造 MP 浮动指针 + MP 配置表           [Step 2]
+/* src/boot/mptable.c — 构造 MP 浮动指针 + MP 配置表           [linux-boot]
  *
  * 内存布局（全部在 MPTABLE_GPA 起的 1KiB 内）：
  *   mpf_intel      16 字节，"_MP_"，physptr 指向紧随其后的 mpc_table

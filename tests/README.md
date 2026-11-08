@@ -3,12 +3,12 @@
 <!-- tests/README.md -->
 
 ```
-make test                 默认集合：unit negctl tables gshell step1 step2 step6 step7
-make test step2           只跑一个 suite
+make test                 默认集合：unit negctl tables gshell milestones 加所有 e2e
+make test linux-boot      只跑一个 suite
 make test unit fuzz       跑多个
 make test all             默认集合 + fuzz
 make test-list            列出所有 suite
-./tests/run.sh --manual step2    只看人工验收指引
+./tests/run.sh --manual linux-boot    只看人工验收指引
 ```
 
 退出码：`0` 全过，`1` 有 suite 失败，`2` 用法错。
@@ -30,9 +30,10 @@ tests/
 │   ├── boot_tables.sh  把 ACPI 表交给 iasl 反汇编
 │   ├── guest_shell.sh  guest_shell.py 的自测
 │   ├── fake_guest.py   冒充 VMM+guest：启动期间丢弃输入，给上面那条用
+│   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
-├── e2e/            需要 /dev/kvm，多数还需要 guest 内核
-│   ├── step1.sh  step2.sh  step6.sh  step7.sh
+├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -57,13 +58,14 @@ tests/
 | `negctl` | 否 | 否 | 反过来判：mutant 没让测试变红就是 FAIL |
 | `tables` | 否 | 否 | iasl（ACPICA）反汇编，外部 oracle |
 | `gshell` | 否 | 否 | 假 guest 复现“启动期间输入丢失”，先证明固定延迟会丢，再要求 `guest_shell.py` 不丢 |
+| `milestones` | 否 | 否 | `tools/check_milestones.py` 按依赖重算的层级表；对照用例注入错误后必须变红 |
 | `fuzz` | 否 | 否（有则用作种子） | ASan/UBSan + “必须有限时间内返回” |
-| `step1` | 是 | 否 | VMM 日志 + payload 自检码 |
-| `step2` | 是 | 是 | guest Linux 的启动日志 |
-| `step6` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑 |
-| `step7` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
+| `kvm-basics` | 是 | 否 | VMM 日志 + payload 自检码 |
+| `linux-boot` | 是 | 是 | guest Linux 的启动日志 |
+| `smp` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑 |
+| `legacy-devices` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
 
-`step2` / `step6` / `step7` 需要 `VMLINUX=/path/to/vmlinux`（`step2` 的 2.4 另需 `BZIMAGE=`），
+`linux-boot` / `smp` / `legacy-devices` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
 没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
 不存在时会先调 `tools/build_initramfs.sh`。
 
@@ -94,7 +96,7 @@ expect_any "候选 1" "候选 2"     # 出现任意一个即可
 end_case                         # 判定；失败时自动打印完整实际输出
 ```
 
-`expect_not` 同样重要：`step1.sh` 里 `expect_not "SHUTDOWN"` 才能区分
+`expect_not` 同样重要：`kvm-basics.sh` 里 `expect_not "SHUTDOWN"` 才能区分
 “跑对了”和“跑飞了但恰好也打印了那行日志”。
 
 判不了就老实写进 `manual_guide`，不要为了凑自动化去断言一个其实证明不了什么的字符串。

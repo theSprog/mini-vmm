@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# tests/step1.sh — Step 1 验收
+# tests/e2e/kvm-basics.sh — 里程碑 kvm-basics 的验收
 #
-#   Step 1.1  实模式 16 位汇编执行，KVM_EXIT_IO / KVM_EXIT_HLT
-#   Step 1.2  4 级恒等映射页表 + GDT，64 位长模式写内存
+#   实模式 16 位汇编执行，KVM_EXIT_IO / KVM_EXIT_HLT
+#   4 级恒等映射页表 + GDT，64 位长模式写内存
 #
 # 用法：
-#   ./tests/step1.sh          跑全部自动用例，再打印人工验收指引
-#   ./tests/step1.sh -a       只跑自动用例
-#   ./tests/step1.sh -m       只打印人工验收指引
+#   ./tests/e2e/kvm-basics.sh          跑全部自动用例，再打印人工验收指引
+#   ./tests/e2e/kvm-basics.sh -a       只跑自动用例
+#   ./tests/e2e/kvm-basics.sh -m       只打印人工验收指引
 
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
@@ -15,14 +15,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 P16="$ROOT/build/payload16.bin"
 P64="$ROOT/build/payload64.bin"
 
-# Step 1.2 payload 写入的两个 8 字节魔数，小端排布后的样子。
+# 长模式 payload 写入的两个 8 字节魔数，小端排布后的样子。
 # 直接比对整行 hexdump，比只查一个 0x11 之类的片段可靠得多。
 EXPECT_BYTES="88 77 66 55 44 33 22 11  be ba fe ca ef be ad de"
 
 # ------------------------------------------------------------------
 auto_tests() {
 
-head1 "Step 1.1 — 16 位实模式"
+head1 "16 位实模式"
 
 # payload: mov al,0x42; out 0x10,al; in al,0x10; out 0x10,al; hlt
 #
@@ -44,7 +44,7 @@ expect_not "SHUTDOWN"
 expect_not "INTERNAL_ERROR"
 end_case
 
-# 2MiB 是 Step 1.1 spec 里写的最小内存。能跑说明我们没有偷偷
+# 2MiB 是实模式 payload 设计的最小内存。能跑说明我们没有偷偷
 # 依赖低端内存里的其它东西（BIOS/IVT/页表都不需要）。
 run_case "real16: 入口地址显式指定" \
     "$VMM" --mem 2M --load 0 --entry 0 "$P16"
@@ -52,7 +52,7 @@ expect_rc 0
 expect_has "guest wrote port 0x10: 0x42"
 end_case
 
-head1 "Step 1.2 — 64 位长模式（2MiB 大页）"
+head1 "64 位长模式（2MiB 大页）"
 
 # 0x64 = 'd'，payload 里读回校验通过才会输出这个值；
 # 校验失败会输出 0x21 = '!'。
@@ -69,7 +69,7 @@ expect_not "SHUTDOWN"
 expect_not "INTERNAL_ERROR"
 end_case
 
-head1 "Step 1.2 — 64 位长模式（完整四级，4KiB 粒度）"
+head1 "64 位长模式（完整四级，4KiB 粒度）"
 
 # 同一个 payload 换一套页表跑通，才能说明"页表建对了"而不是
 # "碰巧 KVM 帮我们兜住了"。
@@ -93,7 +93,7 @@ end_case
 
 head1 "错误路径"
 
-# 这几条验的是"报错要有用"。Step 1 阶段最费时间的不是写对，
+# 这几条验的是"报错要有用"。裸 payload 阶段最费时间的不是写对，
 # 是写错之后看不懂为什么错，所以诊断信息本身也要测。
 
 # payload 载入地址 0x300000，1MiB 内存放不下
@@ -138,7 +138,7 @@ guide "用 KVM 的 tracepoint 核对 exit 次数" \
 "kvm:kvm_entry 与 kvm:kvm_exit 计数应相等。
 exit 总数会明显大于 VMM 打印的 exits=N —— 因为绝大多数 exit
 （比如 NPT violation 造成的缺页）被 kvm_amd 在内核态就地处理掉了，
-根本没返回用户态。这个差值本身就是 Step 4 做 ioeventfd 优化的动机。"
+根本没返回用户态。这个差值本身就是 ioeventfd-irqfd 里程碑的动机。"
 
 guide "看清楚 VMM 到底发了哪些 ioctl" \
 "strace -f -e trace=ioctl,openat,mmap ./build/vmm --mem 2M build/payload16.bin 2>&1 | grep -E 'kvm|KVM'" \

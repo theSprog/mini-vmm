@@ -1,6 +1,6 @@
 /* include/boot/gdt_pgtable.h — GDT + 4 级恒等映射页表 + 长模式进入
  *
- * Step 1.2 的全部内容。核心事实：KVM 允许我们“作弊”——
+ * 长模式 payload 和 Linux 直启共用的 CPU 状态准备。核心事实：KVM 允许我们“作弊”——
  * 不需要真的在 guest 里执行 lgdt / mov cr0 / jmp far 那套实模式切换代码，
  * 而是通过 KVM_SET_SREGS 直接把 vCPU 的段寄存器影子缓存（segment cache）、
  * CR0/CR3/CR4/EFER 一次性设成“已经处于长模式”的样子，
@@ -23,7 +23,7 @@ struct vmm_vcpu;
 /* ------------------------------------------------------------------ */
 /* Guest 物理地址布局（低 1 MiB 以下的“VMM 私有区”）                    */
 /* ------------------------------------------------------------------ */
-/* 布局原则：避开 payload（Step 1 放在 0x0，Step 2 vmlinux 放 0x100000），
+/* 布局原则：避开 payload（实模式 payload 放在 0x0，vmlinux 放 0x100000），
  * 并且全部页对齐。0x0 处保留一页给 payload/IVT。                        */
 #define BOOT_GDT_GPA     0x1000ULL   /* GDT，1 页足够（最多 512 项） */
 #define BOOT_PML4_GPA    0x2000ULL
@@ -77,7 +77,7 @@ struct vmm_vcpu;
 #define BOOT_GDT_ENTRY_NULL  0
 #define BOOT_GDT_ENTRY_CODE  1
 #define BOOT_GDT_ENTRY_DATA  2
-#define BOOT_GDT_ENTRY_TSS   3   /* Step 2 之后 Linux 需要，先占位 */
+#define BOOT_GDT_ENTRY_TSS   3   /* 占位；Linux 模式的 GDT 由 boot_setup_linux64 另写 */
 #define BOOT_GDT_NR_ENTRIES  4
 
 #define BOOT_SEL_CODE (BOOT_GDT_ENTRY_CODE * 8)  /* 0x08 */
@@ -126,19 +126,19 @@ int  boot_build_gdt(struct vmm_vm *vm, const struct boot_mem_layout *l);
 /* 应用：设置 vCPU 寄存器                                               */
 /* ------------------------------------------------------------------ */
 
-/* Step 1.1：把 vCPU 摆成 16 位实模式，CS.base=0，CS.selector=0，RIP=entry。
+/* 实模式 payload：把 vCPU 摆成 16 位实模式，CS.base=0，CS.selector=0，RIP=entry。
  * 必须显式覆盖 KVM 的 reset 值（CS.base=0xffff0000, RIP=0xfff0）。 */
 int  boot_setup_real_mode(struct vmm_vcpu *vcpu, uint64_t entry_gpa);
 
-/* Step 1.2：设置 CR0(PE|PG)、CR3=pml4、CR4(PAE)、EFER(LME|LMA)，
+/* 长模式 payload：设置 CR0(PE|PG)、CR3=pml4、CR4(PAE)、EFER(LME|LMA)，
  * 段寄存器按 64 位平坦模型填，GDTR 指向 l->gdt_gpa，RIP=entry。
  * 调用前 boot_build_page_table / boot_build_gdt 必须已经执行。 */
 int  boot_setup_long_mode(struct vmm_vcpu *vcpu,
                           const struct boot_mem_layout *l,
                           uint64_t entry_gpa);
 
-/* Step 2.2：Linux 64 位启动协议要求 __BOOT_CS=0x10、__BOOT_DS=0x18，
- * 和 Step 1 的 0x08/0x10 不同。这里在 l->gdt_gpa 写一张
+/* Linux 直启：64 位启动协议要求 __BOOT_CS=0x10、__BOOT_DS=0x18，
+ * 和长模式 payload 的 0x08/0x10 不同。这里在 l->gdt_gpa 写一张
  * [null, null, code64, data64] 的表，其余和 boot_setup_long_mode 相同，
  * 另外把 RSI 设为 boot_params 的 GPA。页表须已构建。 */
 #define BOOT_LINUX_SEL_CODE 0x10

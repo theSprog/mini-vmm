@@ -57,7 +57,7 @@ int svm_query_caps(struct svm_caps *caps)
  *
  * 为什么要跟内核对齐：我们是自己跑 CPUID Fn8000_000A 读的位，内核是
  * 另一条独立路径读的同一份硬件寄存器。名字一致，两边输出才能直接
- * 做集合比对，位定义抄错时能当场发现（见 tests/step1.sh 的人工验收）。
+ * 做集合比对，位定义抄错时能当场发现（见 tests/e2e/kvm-basics.sh 的人工验收）。
  * 名字不一致的话，这个交叉验证就退化成人肉对照两份命名表，
  * 迟早对错。
  */
@@ -99,7 +99,7 @@ void svm_dump_caps(const struct svm_caps *c)
     }
     buf[off] = '\0';
 
-    /* 必须是单独一行、单一前缀，tests/step1.sh 的人工验收会用
+    /* 必须是单独一行、单一前缀，tests/e2e/kvm-basics.sh 的人工验收会用
      * sed 把这行剪下来跟 /proc/cpuinfo 做集合比对。 */
     vmm_info("SVM features:%s", off ? buf : " (none)");
 }
@@ -127,7 +127,7 @@ static int amd_check_features(struct vmm_vm *vm)
 
     if (!(caps.features & SVM_FEAT_NP)) {
         /* 没有 NPT 的话 KVM 会退回影子页表（shadow paging）。功能上
-         * 仍然能跑，但 Step 1.2 的恒等映射页表会被 KVM 接管重写，
+         * 仍然能跑，但长模式 payload 的恒等映射页表会被 KVM 接管重写，
          * 调试时看到的现象会非常反直觉，这里显式警告。 */
         vmm_warn("no NPT support: KVM falls back to shadow paging, "
                  "slower and much harder to debug");
@@ -209,7 +209,7 @@ static int amd_init_vcpu(struct vmm_vcpu *vcpu)
     /* 把 host 支持的 CPUID 透传给 guest，只改写拓扑相关的 leaf，
      * 再置上 hypervisor 位（见 cpuid_mark_hypervisor()）。
      *
-     * Step 1.2 严格说不依赖它：KVM_SET_SREGS 这条路径不会去校验
+     * 长模式 payload 严格说不依赖它：KVM_SET_SREGS 这条路径不会去校验
      * guest CPUID 里有没有 LM 位。但 guest 里一旦执行 CPUID 指令
      * （Linux 内核启动第一件事就是），不设的话拿到的全是 0，
      * 内核会直接判定 CPU 不支持长模式然后停住。所以现在就设上。
@@ -227,7 +227,7 @@ static int amd_init_vcpu(struct vmm_vcpu *vcpu)
     r = kvm_set_cpuid2(vcpu->fd, cpuid);
     free(cpuid);
     if (r != VMM_OK) {
-        vmm_warn("KVM_SET_CPUID2 failed (harmless for Step 1)");
+        vmm_warn("KVM_SET_CPUID2 failed (harmless for bare payloads)");
         return VMM_OK;
     }
 

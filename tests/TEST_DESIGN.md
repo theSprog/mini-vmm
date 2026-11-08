@@ -19,15 +19,15 @@
 
 ## 我要确认什么
 
-- **当前准备验收的改动**：不是某一次改动，而是 Step 1/2/6 完成后的既有实现。触发点是仓库里的测试方法过于单一，见下节。
+- **当前准备验收的改动**：不是某一次改动，而是 kvm-basics、linux-boot、smp 完成后的既有实现。触发点是仓库里的测试方法过于单一，见下节。
 - **希望确认的行为**：
-  1. `gpa_to_hva()` 对越界、跨 slot、零长度和整数回绕的地址范围一律拒绝（`AGENT_GUIDE` 第 4 节的头号 invariant）；
-  2. PIO/MMIO 总线的注册、查找、分发语义符合 `include/vmm.h` 与 `HANDOFF_STEP2_CN.md` 第 8 节写明的约定；
+  1. `gpa_to_hva()` 对越界、跨 slot、零长度和整数回绕的地址范围一律拒绝（`AGENTS.md`「长期 invariant」里的头号 invariant）；
+  2. PIO/MMIO 总线的注册、查找、分发语义符合 `include/vmm.h` 写明的约定；
   3. `elf_load_vmlinux()` 与 `bzimage_load()` 面对任意畸形文件都不会越界访问或崩溃。
-- **为什么这些行为重要**：这三处是 Step 3（VirtIO）唯一会直接依赖的地基。virtqueue 的每一个 descriptor segment 都要过 `gpa_to_hva()`；virtio-mmio 的配置空间会按各种宽度访问总线；内核镜像是这个 VMM 唯一解析的外部文件。三者出错的后果都是 VMM 进程内的内存破坏，而不是“guest 跑不起来”这种一眼能看见的失败。
+- **为什么这些行为重要**：这三处是后面 PCI 设备和 VirtIO 会直接依赖的地基。virtqueue 的每一个 descriptor segment 都要过 `gpa_to_hva()`；virtio-mmio 的配置空间会按各种宽度访问总线；内核镜像是这个 VMM 唯一解析的外部文件。三者出错的后果都是 VMM 进程内的内存破坏，而不是“guest 跑不起来”这种一眼能看见的失败。
 - **用来比较的旧行为、规范或其他正确标准**：
   - `include/memory.h` 对 `gpa_to_hva()` 的语义注释（契约本身）；
-  - `include/vmm.h` 对 `vmm_io_dev` 回调的语义注释、`HANDOFF_STEP2_CN.md` 第 5.6 / 第 8 节；
+  - `include/vmm.h` 对 `vmm_io_dev` 回调的语义注释、`learning-note/07` 第 7.3 节（未注册端口读回 0xFF）；
   - `arch/x86/kernel/i8237.c` 的 `i8237A_init_ops()`（未注册端口必须读回 0xFF）；
   - ASan / UBSan（内存安全与未定义行为的判据，完全独立于本实现）。
 
@@ -76,9 +76,9 @@
 | P1c | 伪造 `kvm_run` 页，直接驱动真实的 `handle_io()`/`handle_mmio()` | 新增 `tests/unit/io_bus_test.c`；`#include src/vm.c` | 断言全过且 `0 failed` | 摘要行 | 首次失败即停 | **已批准，已执行** |
 | P2 | host 侧直接驱动四个设备的读写回调，期望值取自 datasheet / Linux 驱动源码 / 卷七实测序列 | 新增 `tests/unit/devices_*.c`；可能需要设备解耦 | 逐寄存器比对通过 | 每条契约对应的用例名 | 首次失败即停 | 未批准 |
 | P3-min | **接口层** negative control：把被测函数换成故意写错的完整实现（`tests/unit/*_mutants.c`），跑同一套用例，要求每个 mutant 都让测试非零退出 | 只在测试代码内，`--mutant N` 选择 | 每个 mutant 都被抓住，且是因为断言失败而红 | `make test negctl` 的逐条结果 | 全部 mutant 跑完 | **已批准，已执行** |
-| P3-full | 按 `HANDOFF_STEP2_CN.md` 第 5 节对四个传统设备逐条注入已知缺陷 | 需要先有 P2 的设备单元测试 | 同上 | 同上 | — | 未批准（依赖 P2） |
+| P3-full | 按 `learning-note/07` 记录的设备契约对四个传统设备逐条注入已知缺陷 | 需要先有 P2 的设备单元测试 | 同上 | 同上 | — | 未批准（依赖 P2） |
 | P4a | ASan+UBSan 与 TSan 构建下各跑一次完整启动关机 | 需要 `/dev/kvm`；TSan 下明显变慢 | 无 sanitizer 报告 | 报告全文 | 单次超过 300s 即中止 | 未批准 |
-| P4b | 把 `pio_decode.py --summary` 变成带容差的回归断言 | 扩 `tests/e2e/step7.sh` | 总数 30449 ±5%、PIT 端口恒为 0 | 每次的统计输出 | — | 未批准 |
+| P4b | 把 `pio_decode.py --summary` 变成带容差的回归断言 | 扩 `tests/e2e/legacy-devices.sh` | 总数 30449 ±5%、PIT 端口恒为 0 | 每次的统计输出 | — | 未批准 |
 | P4c | 去掉 guest 用例对固定延迟的依赖：命令改由 `tests/guest_shell.py` 等 shell 提示符后发送，`gshell` suite 用假 guest 证明固定延迟会丢命令而新驱动不丢；再把 guest 用例连跑多遍确认稳定 | 新增 `tests/guest_shell.py`、`tests/offline/{guest_shell.sh,fake_guest.py}`，改 `tests/e2e/step{2,6,7}.sh` | `gshell` 全过；guest 用例多遍连跑无 FAIL | `gshell` 输出、连跑的逐遍结果 | 出现 FAIL 即停 | **已批准，已执行** |
 
 ---
@@ -103,8 +103,8 @@
   make test unit                 # P1b + P1c + 固件表字段检查
   make test tables               # iasl 外部 oracle
   FUZZ_TIME=300 make test fuzz   # P1a
-  make test                      # 默认集合（unit tables step1 step2 step6 step7）
-  make test step2                # 单个 suite
+  make test                      # 默认集合
+  make test linux-boot           # 单个 suite
   ```
 
 - **允许在不重新审批时替换的同类命令及限制**：可以调整 `FUZZ_TIME`（上限 600s/target）、`mem_test` 的随机轮数、`-max_len`。不得在未批准的情况下开多 worker（`FUZZ_JOBS>1`）或让 fuzz 无限跑。
@@ -148,7 +148,7 @@
 - **O1 — 跨越设备末端的 IO 访问该是什么语义？**
   `handle_io()` / `handle_mmio()` 算出 `off = addr - dev->base` 之后没有校验 `off + size <= dev->len`，直接交给设备回调。三种可选契约：总线层拒绝、总线层截断、交给设备自己判断。在定下来之前，`io_bus_test.c` 的对应用例标记为 `[CHARACTERIZATION]`，只记录当前行为、不做对错判定。定了之后那条用例要改写成契约断言。
 - **O3 — 多内核配置矩阵还没有搭。**
-  e2e 只能覆盖手头那一个 guest 内核的配置，而 VMM 的目标是换一个 vmlinux 也能启动。会让 guest 走不同路径的配置项见 `AGENT_GUIDE_KVM_VMM_CN.md` 11.2 节的清单。理想做法是 `tests/run.sh` 接受多个 `VMLINUX`，对每个内核跑 step2/6/7、结果按内核分列；候选内核是发行版式的大配置（大量 `=m`、`ACPI_REDUCED_HARDWARE_ONLY=y`）、`make defconfig` + `kvm_guest.config`、以及不开 `HYPERVISOR_GUEST` 的精简配置。卡在手头没有这么多内核，每份要单独编译。在搭起来之前，配置相关的设备语义优先用单元测试按内核源码回放（如 `serial8250_test.c`）。
+  e2e 只能覆盖手头那一个 guest 内核的配置，而 VMM 的目标是换一个 vmlinux 也能启动。会让 guest 走不同路径的配置项见 `HANDOFF.md`「guest 内核配置兼容」。理想做法是 `tests/run.sh` 接受多个 `VMLINUX`，对每个内核跑 linux-boot / smp / legacy-devices、结果按内核分列；候选内核是发行版式的大配置（大量 `=m`、`ACPI_REDUCED_HARDWARE_ONLY=y`）、`make defconfig` + `kvm_guest.config`、以及不开 `HYPERVISOR_GUEST` 的精简配置。卡在手头没有这么多内核，每份要单独编译。在搭起来之前，配置相关的设备语义优先用单元测试按内核源码回放（如 `serial8250_test.c`）。
 - **O2 — 分发接口（已解决）。**
   已把分发提成 `io_bus_dispatch_pio()` / `io_bus_dispatch_mmio()`（`include/vmm.h` 声明，`src/vm.c` 实现），`handle_io()` / `handle_mmio()` 退化成从 `kvm_run` 取字段的薄封装。`io_bus_test.c` 不再 `#include src/vm.c`，改为正常链接并通过公开接口调用。
   代价要记下来：**KVM_EXIT 路径上从 `kvm_run` 取字段那几行现在没有单元测试覆盖**，尤其是“必须按 `io.data_offset` 定位缓冲区、不能假设它紧跟结构体”这一条。它只由 e2e 覆盖（任何一次 guest IO 都会走到）。
@@ -172,7 +172,7 @@
 | E9 | E5/E6 的最小复现输入在修复后被干净拒绝（RED→GREEN） | **PASS** — 两个样本 × 两个 target，全部退出码 0 无 sanitizer 报告；已沉淀为 `tests/fuzz/regress/*.bin`，每次 `make test unit` 重放 | `make test unit` → regress 段 |
 | E10 | 单元测试有能力报警（negative control） | **PASS** — 15 个接口层 mutant 全部被抓住，且都是因断言失败而红 | `make test negctl`，15/15 |
 | E11 | negctl 反过来查出了 `mem_test` 自身的覆盖漏洞 | **已修复** — 长度表缺“低 32 位小、高 32 位非零”一类，`len-truncated-32` 最初逃逸；补齐取值后 15/15 | `mem_test.c` 的 `g_lens` |
-| E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `step1` 7/7、`step2` 8/8、`step7` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test step1 step2 step7` |
+| E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令
 

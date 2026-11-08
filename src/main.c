@@ -1,4 +1,4 @@
-/* src/main.c — 命令行解析与 Step 1 的两条启动路径 */
+/* src/main.c — 命令行解析与三种启动模式（real16 / long64 / linux） */
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,10 +23,10 @@
 
 /* 长模式 payload 的默认载入地址。
  * 必须避开 [0x1000, 0x205000)（GDT + 四级页表最坏情况占用），
- * 也要避开 Step 1.2 的写入目标 0x500000。3MiB 处两边都不挨着。 */
+ * 也要避开长模式 payload 的写入目标 0x500000。3MiB 处两边都不挨着。 */
 #define PAYLOAD_LONG_GPA 0x300000ULL
 
-/* Step 2 默认内核参数。
+/* Linux 模式默认内核参数。
  *   earlyprintk  在 8250 驱动加载之前就能看到输出，内核早期崩溃时救命
  *   reboot=k     reboot 走 i8042 reset，VMM 据此退出
  *   panic=-1     panic 后立刻 reboot，从而让 VMM 退出而不是挂住
@@ -35,7 +35,7 @@
     "console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1"
 
 /* ------------------------------------------------------------------ */
-/* Step 1 的两个调试设备                                                */
+/* 裸 payload 模式的两个调试设备                                       */
 /* ------------------------------------------------------------------ */
 
 /* 端口 0x10：guest 往这里写一个字节，VMM 打印出来。
@@ -99,9 +99,9 @@ void vmm_usage(const char *prog)
 "Usage: %s [options] <payload.bin | vmlinux | bzImage>\n"
 "\n"
 "  --mode real16|long64|linux  Boot mode (default: real16)\n"
-"                           real16 = Step 1.1, 16-bit real mode, entry GPA 0x0\n"
-"                           long64 = Step 1.2, 64-bit long mode, entry GPA 0x%llx\n"
-"                           linux  = Step 2, boot Linux: vmlinux (ELF) or bzImage,\n"
+"                           real16 = 16-bit real mode payload, entry GPA 0x0\n"
+"                           long64 = 64-bit long mode payload, entry GPA 0x%llx\n"
+"                           linux  = boot Linux: vmlinux (ELF) or bzImage,\n"
 "                                    detected from the file header\n"
 "  --initrd FILE          linux: initramfs (cpio or cpio.gz), required\n"
 "  --cmdline STR          linux: replace the default kernel command line\n"
@@ -124,13 +124,13 @@ void vmm_usage(const char *prog)
 "  -h                     Show this help\n"
 "\n"
 "Examples:\n"
-"  # Step 1.1\n"
+"  # real mode payload\n"
 "  %s --mem 2M build/payload16.bin\n"
-"  # Step 1.2\n"
+"  # long mode payload, dump the bytes it wrote\n"
 "  %s --mode long64 --dump 500000:16 -v build/payload64.bin\n"
-"  # Step 2.1\n"
+"  # serial payload\n"
 "  %s --mode long64 build/serial64.bin\n"
-"  # Step 2.2 / 2.3\n"
+"  # Linux direct boot\n"
 "  %s --mode linux --mem 512M --initrd initramfs.cpio.gz vmlinux\n"
 "  %s --mode linux --mem 512M --initrd initramfs.cpio.gz bzImage\n"
 "  # SMP\n"
@@ -314,7 +314,7 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
             return VMM_ERR_INVAL;
         }
     }
-    /* Step 1 的裸 payload 不会去唤醒 AP，而且没有内核态 irqchip 时
+    /* 裸 payload 不会去唤醒 AP，而且没有内核态 irqchip 时
      * 所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时跑起来 */
     if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_vcpus > 1) {
         vmm_err("--smp > 1 requires --mode linux");
@@ -374,7 +374,7 @@ static int check_payload_overlap(const struct boot_mem_layout *l,
     return VMM_OK;
 }
 
-/* Step 2.2 / 2.3：vmlinux + boot_params + initrd，然后按 64 位启动协议
+/* Linux 直启：vmlinux + boot_params + initrd，然后按 64 位启动协议
  * 摆好 vCPU。串口中断接到内核态 PIC/IOAPIC 的 GSI 4。 */
 static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
                       const struct vmm_config *cfg, struct serial8250 *com1)
@@ -503,7 +503,7 @@ int main(int argc, char **argv)
     if (r != VMM_OK)
         goto out;
 
-    /* COM1：所有模式都挂上，Step 2.1 起 guest 的主输出通道 */
+    /* COM1：所有模式都挂上，串口载荷和 Linux guest 的主输出通道 */
     serial8250_init(&com1, STDOUT_FILENO);
     r = serial8250_attach(&vm, &com1, SERIAL_COM1_BASE, SERIAL_COM1_IRQ);
     if (r != VMM_OK)

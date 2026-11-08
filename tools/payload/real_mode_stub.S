@@ -1,4 +1,4 @@
-/* tools/payload/real_mode_stub.S — Step 1.1 的 16 位实模式测试载荷
+/* tools/payload/real_mode_stub.S — kvm-basics 的 16 位实模式测试载荷
  *
  * 载入到 GPA 0x0，vCPU 以 CS:IP = 0000:0000 开始执行。
  *

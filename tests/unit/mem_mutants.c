@@ -70,7 +70,7 @@ static void *m_accepts_zero_len(struct vmm_vm *vm, uint64_t gpa, uint64_t len)
 }
 
 /* M4：只按起始地址查 slot，完全不看长度。
- * 这是 AGENT_GUIDE 第 4 节点名要防的那种写法，也是 virtqueue 最容易
+ * 这是 AGENTS.md「长期 invariant」点名要防的那种写法，也是 virtqueue 最容易
  * 踩的坑：descriptor 的 addr 落在 RAM 里，len 却把范围拖出去。 */
 static void *m_ignores_length(struct vmm_vm *vm, uint64_t gpa, uint64_t len)
 {

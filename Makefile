@@ -1,10 +1,9 @@
 # Makefile — mini-vmm，基于 KVM 的极简 VMM
 #
 # 只编译下面 SRCS 里列出的文件。src/ 下其余 .c 目前仍是占位注释，
-# 会在后续 Step 逐个填充并加进这个列表。
+# 首行标着所属里程碑，实现时再加进这个列表。
 #
-# 验收测试不放在这里，见 tests/ 目录：
-#   ./tests/step1.sh
+# 验收测试不放在这里，见 tests/ 目录和下面的 make test。
 
 CC      := gcc
 AS      := as
@@ -67,7 +66,7 @@ $(BUILD)/payload64.elf: tools/payload/long_mode_stub.S
 	$(AS) --64 -o $(BUILD)/payload64.o $<
 	$(LD) -m elf_x86_64 -N -e _start -Ttext 0x300000 -o $@ $(BUILD)/payload64.o
 
-# Step 2.1 串口载荷，和 payload64 一样放 0x300000，用 cpp 预处理 #define。
+# 串口测试载荷，和 payload64 一样放 0x300000，用 cpp 预处理 #define。
 $(BUILD)/serial64.elf: tools/payload/serial_stub.S
 	@mkdir -p $(dir $@)
 	$(CC) -c -o $(BUILD)/serial64.o $<
@@ -114,8 +113,8 @@ clean:
 	rm -rf $(BUILD) compile_commands.json
 # ---- 验收测试 ----
 #
-#   make test              默认集合：unit negctl tables gshell step1 step2 step6 step7
-#   make test step1        只跑一个 suite
+#   make test              默认集合：unit negctl tables gshell milestones 加所有 e2e
+#   make test linux-boot   只跑一个 suite（e2e suite 以里程碑 ID 命名）
 #   make test unit fuzz    跑多个
 #   make test all          默认集合 + fuzz
 #   make test-list         列出所有 suite
@@ -124,10 +123,11 @@ clean:
 # tests/ 负责“判断产物对不对”。所以这里只有构建规则和一次转发，
 # 断言逻辑一行都不放在 Makefile 里。
 
-TEST_SUITES := all offline e2e unit negctl tables gshell fuzz step1 step2 step6 step7
+TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
+               kvm-basics linux-boot smp legacy-devices
 
-# `make test step1` 里的 step1 对 make 来说也是一个 goal，不声明的话
-# 会报 "No rule to make target 'step1'"。all 例外——它是真实目标。
+# `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
+# 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
 TEST_SEL      := $(filter $(TEST_SUITES),$(MAKECMDGOALS))
 TEST_SEL_NOOP := $(filter-out all,$(TEST_SEL))
 ifneq ($(TEST_SEL_NOOP),)

@@ -29,7 +29,7 @@
 #define SVM_FEAT_FLUSH_BY_ASID  (1u << 6)
 #define SVM_FEAT_DECODE_ASSISTS (1u << 7)   /* 影响 MMIO exit 是否带解码信息 */
 #define SVM_FEAT_PAUSE_FILTER   (1u << 10)
-#define SVM_FEAT_AVIC           (1u << 13)  /* 硬件中断虚拟化，Step 6 相关 */
+#define SVM_FEAT_AVIC           (1u << 13)  /* 硬件中断虚拟化，和 smp、中断注入相关 */
 #define SVM_FEAT_V_VMSAVE_VMLOAD (1u << 15)
 #define SVM_FEAT_VGIF           (1u << 16)
 

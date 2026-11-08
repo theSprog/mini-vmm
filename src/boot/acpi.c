@@ -1,4 +1,4 @@
-/* src/boot/acpi.c — 最小 ACPI 表 + PM1a 寄存器块               [Step 2]
+/* src/boot/acpi.c — 最小 ACPI 表 + PM1a 寄存器块               [linux-boot]
  *
  * 内存布局（ACPI_TABLES_GPA 起，每张表 16 字节对齐）：
  *   RSDP  -> XSDT -> { FADT -> DSDT, MADT }

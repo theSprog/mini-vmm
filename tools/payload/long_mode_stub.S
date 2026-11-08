@@ -1,4 +1,4 @@
-/* tools/payload/long_mode_stub.S — Step 1.2 的 64 位长模式测试载荷
+/* tools/payload/long_mode_stub.S — kvm-basics 的 64 位长模式测试载荷
  *
  * 载入到 GPA 0x300000，vCPU 由 VMM 预先设置成长模式后从这里开始执行。
  *

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# tests/step7.sh — Step 7 验收：传统设备的驱动探测
+# tests/e2e/legacy-devices.sh — 里程碑 legacy-devices 的验收：传统设备的驱动探测
 #
-#   Step 7.1  四个传统设备都被探测出来，而且一次超时都没有；guest 自报的
-#             串口型号与中断计数也对得上
-#   Step 7.2  PIO trace 的结构：PIT 不落用户态、0x87 读回 0xFF、S5 分两次写
-#   Step 7.3  退出路径：reboot -f 走 i8042 的 0xFE 脉冲
+#   - 四个传统设备都被探测出来，而且一次超时都没有；guest 自报的
+#     串口型号与中断计数也对得上
+#   - PIO trace 的结构：PIT 不落用户态、0x87 读回 0xFF、S5 分两次写
+#   - 退出路径：reboot -f 走 i8042 的 0xFE 脉冲
 #
 # 这些断言都是“驱动探测走对了分支”的证据，配套 learning-note
 # 《07. Linux 眼中的 PC 传统设备》。失败时先看 --trace-pio 的记录。
 #
 # 用法：
-#   VMLINUX=/path/to/vmlinux ./tests/step7.sh        全部
-#   VMLINUX=/path/to/vmlinux ./tests/step7.sh -a     只跑自动用例
-#   ./tests/step7.sh -m                              只看人工指引
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/legacy-devices.sh        全部
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/legacy-devices.sh -a     只跑自动用例
+#   ./tests/e2e/legacy-devices.sh -m                              只看人工指引
 #
 # 没设 VMLINUX 时全部 SKIP。
 
@@ -31,7 +31,7 @@ trap cleanup EXIT
 auto_tests() {
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "Step 7 全部用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "legacy-devices 全部用例" "set VMLINUX=/path/to/vmlinux to enable"
     return
 fi
 if [ ! -f "$INITRD" ]; then
@@ -41,7 +41,7 @@ if [ ! -f "$INITRD" ]; then
     }
 fi
 
-head1 "Step 7.1 — 设备探测的结论"
+head1 "设备探测的结论"
 
 TRACE="$(mktemp -t mini-vmm-pio.XXXXXX)"
 
@@ -106,7 +106,7 @@ expect_not "Kernel panic"
 expect_not "stopped with error"
 end_case
 
-head1 "Step 7.2 — PIO trace 的结构"
+head1 "PIO trace 的结构"
 
 CUR_NAME="trace 里 PIT 端口为空、0x87 读回 0xFF、S5 分两次写"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
@@ -135,7 +135,7 @@ expect_has "DMA0-R1-ff"
 expect_has "S5-1401-3401-"
 end_case
 
-head1 "Step 7.3 — 两条退出路径"
+head1 "两条退出路径"
 
 CUR_NAME="reboot -f 走 i8042 的 0xFE 脉冲"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"

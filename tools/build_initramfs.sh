@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/build_initramfs.sh — Step 2.3 用的最小 busybox initramfs
+# tools/build_initramfs.sh — linux-boot 等 e2e 用的最小 busybox initramfs
 #
 # 用法：tools/build_initramfs.sh [输出文件]   默认 build/initramfs.cpio.gz
 #

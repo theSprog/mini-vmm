@@ -4,8 +4,7 @@
  * "virtual wire mode with no configuration"，不知道 IOAPIC 在哪、
  * ISA 中断怎么路由，结果 PIT 中断送不到 LAPIC，定时器校准死等。
  * MP table 是描述这些信息最简单的格式（比 ACPI 简单一个数量级），
- * kvmtool / Firecracker 都用它。Step 6 做 SMP 时每个 vCPU 一个
- * processor entry，也是在这里加。
+ * kvmtool / Firecracker 都用它。每个 vCPU 一个 processor entry。
  *
  * 结构体按规范自己定义：内核的 asm/mpspec_def.h 不是 uapi，用户态拿不到。
  */

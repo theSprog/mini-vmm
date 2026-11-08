@@ -1,7 +1,7 @@
 /* tests/unit/io_bus_test.c — IO 总线的注册、查找与分发语义  [P1c]
  *
  * 为什么要单独测这一层：PIO/MMIO 分发是所有设备共用的唯一入口，
- * Step 3 起的每一个 VirtIO transport 都要挂在上面。现在它只被四个
+ * 后面的 PCI 配置空间和每一个 VirtIO transport 都要挂在上面。现在它只被四个
  * 传统设备间接覆盖，而那四个设备恰好都“按 offset 分派、忽略 size”，
  * 把这一层自身的边界行为完全遮住了。
  *
@@ -572,7 +572,7 @@ static void case_characterize_overrun(void)
     /* handle_io()/handle_mmio() 算出 off = addr - dev->base 之后，
      * 没有校验 off + size <= dev->len，直接把访问交给设备回调。
      * 当前四个传统设备都按 off 分派、忽略 size，所以看不出影响；
-     * Step 3 的 virtio-mmio 配置空间按宽度访问，一定会碰到。
+     * 后面的 PCI 和 virtio 配置空间按宽度访问，一定会碰到。
      *
      * 这一条不是契约断言，是把现状钉下来：语义该怎么定见
      * TEST_DESIGN.md 的 open question O1，定了之后本用例要改写。 */

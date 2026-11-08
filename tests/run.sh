@@ -5,11 +5,11 @@
 # 选 suite、按顺序跑、把各自的结果汇总成一张表和一个退出码。
 #
 # 用法：
-#   ./tests/run.sh                 默认集合（unit negctl tables gshell step1 step2 step6 step7）
+#   ./tests/run.sh                 默认集合（offline 里除 fuzz 外的全部 + 所有 e2e）
 #   ./tests/run.sh unit io         只跑指定 suite
 #   ./tests/run.sh all             默认集合 + fuzz
 #   ./tests/run.sh --list          列出所有 suite
-#   ./tests/run.sh --manual step2  只打印某个 suite 的人工验收指引
+#   ./tests/run.sh --manual linux-boot  只打印某个 suite 的人工验收指引
 #
 # 环境变量：
 #   VMLINUX=  BZIMAGE=   guest 内核，缺省时相关用例自行 SKIP
@@ -40,18 +40,16 @@ suite_script() {
     tables) echo "offline/boot_tables.sh" ;;
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
-    step1)  echo "e2e/step1.sh" ;;
-    step2)  echo "e2e/step2.sh" ;;
-    step6)  echo "e2e/step6.sh" ;;
-    step7)  echo "e2e/step7.sh" ;;
+    milestones) echo "offline/milestones.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    step1|step2|step6|step7) return 0 ;;
-    *)                       return 1 ;;
+    kvm-basics|linux-boot|smp|legacy-devices) return 0 ;;
+    *) return 1 ;;
     esac
 }
 
@@ -62,15 +60,18 @@ suite_desc() {
     tables) echo "ACPI 表交给 iasl 反汇编（外部 oracle）" ;;
     fuzz)   echo "vmlinux / bzImage 加载器的 libFuzzer 跑批（按时间计费）" ;;
     gshell) echo "e2e 驱动脚本 guest_shell.py 自测（假 guest）" ;;
-    step1)  echo "实模式、长模式页表、错误路径诊断" ;;
-    step2)  echo "8250 UART、vmlinux/bzImage 直启、initramfs shell" ;;
-    step6)  echo "SMP：多 vCPU 启动、CPUID 拓扑、停机" ;;
-    step7)  echo "传统设备探测、PIO trace 结构、退出路径" ;;
+    milestones) echo "MILESTONES.md 依赖关系与层级表一致" ;;
+    kvm-basics)     echo "实模式、长模式页表、错误路径诊断" ;;
+    linux-boot)     echo "8250 UART、vmlinux/bzImage 直启、initramfs shell" ;;
+    smp)            echo "SMP：多 vCPU 启动、CPUID 拓扑、停机" ;;
+    legacy-devices) echo "传统设备探测、PIO trace 结构、退出路径" ;;
     esac
 }
 
-ALL_SUITES="unit negctl tables gshell fuzz step1 step2 step6 step7"
-DEFAULT_SUITES="unit negctl tables gshell step1 step2 step6 step7"
+# e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices"
+ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
+DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
 
 usage() {
     echo "用法: $0 [--list|--manual] [suite...]"
@@ -78,7 +79,7 @@ usage() {
     echo "suite:"
     local s
     for s in $ALL_SUITES; do
-        printf '  %-8s %s\n' "$s" "$(suite_desc "$s")"
+        printf '  %-15s %s\n' "$s" "$(suite_desc "$s")"
     done
     echo
     echo "  all      = $DEFAULT_SUITES fuzz"
@@ -95,8 +96,8 @@ while [ $# -gt 0 ]; do
     --auto|-a)   MODE="-a" ;;
     -h|--help)   usage; exit 0 ;;
     all)         SELECTED="$SELECTED $ALL_SUITES" ;;
-    offline)     SELECTED="$SELECTED unit negctl tables gshell fuzz" ;;
-    e2e)         SELECTED="$SELECTED step1 step2 step6 step7" ;;
+    offline)     SELECTED="$SELECTED unit negctl tables gshell milestones fuzz" ;;
+    e2e)         SELECTED="$SELECTED $E2E_SUITES" ;;
     -*)          echo "未知选项: $1" >&2; usage >&2; exit 2 ;;
     *)
         if [ -z "$(suite_script "$1")" ]; then
@@ -131,14 +132,14 @@ for s in $ORDERED; do
 
     printf '\n%s================================================================%s\n' \
         "$C_BLD" "$C_RST"
-    printf '%s suite: %-8s %s%s\n' "$C_BLD" "$s" "$(suite_desc "$s")" "$C_RST"
+    printf '%s suite: %-15s %s%s\n' "$C_BLD" "$s" "$(suite_desc "$s")" "$C_RST"
     printf '%s================================================================%s\n' \
         "$C_BLD" "$C_RST"
 
     if suite_needs_kvm "$s" && [ "$HAVE_KVM" -eq 0 ]; then
         printf '%sSKIP%s /dev/kvm 不可读写，跳过（kvm_amd 没加载？当前用户不在 kvm 组？）\n' \
             "$C_YEL" "$C_RST"
-        results="$results\n  $(printf '%-8s' "$s") ${C_YEL}SKIP${C_RST}  no /dev/kvm"
+        results="$results\n  $(printf '%-15s' "$s") ${C_YEL}SKIP${C_RST}  no /dev/kvm"
         continue
     fi
 
@@ -148,9 +149,9 @@ for s in $ORDERED; do
     dur=$((SECONDS - start))
 
     if [ "$rc" -eq 0 ]; then
-        results="$results\n  $(printf '%-8s' "$s") ${C_GRN}PASS${C_RST}  ${dur}s"
+        results="$results\n  $(printf '%-15s' "$s") ${C_GRN}PASS${C_RST}  ${dur}s"
     else
-        results="$results\n  $(printf '%-8s' "$s") ${C_RED}FAIL${C_RST}  ${dur}s (rc=$rc)"
+        results="$results\n  $(printf '%-15s' "$s") ${C_RED}FAIL${C_RST}  ${dur}s (rc=$rc)"
         rc_all=1
     fi
 done

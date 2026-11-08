@@ -1,4 +1,4 @@
-/* src/boot/elf_loader.c — 解析 vmlinux ELF64                   [Step 2]
+/* src/boot/elf_loader.c — 解析 vmlinux ELF64                   [linux-boot]
  *
  * vmlinux 的程序头里同时有 p_vaddr（0xffffffff81000000 这类内核虚拟地址）
  * 和 p_paddr（0x1000000 这类物理地址）。我们还没有进 guest，只能按

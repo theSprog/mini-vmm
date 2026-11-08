@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# tests/step2.sh — Step 2 验收
+# tests/e2e/linux-boot.sh — 里程碑 linux-boot 的验收
 #
-#   Step 2.1  8250 UART：THR 输出、SCR 读写、MCR.LOOP 回环
-#   Step 2.2  vmlinux ELF 加载 + boot_params + MP/ACPI 表，内核打印横幅
-#   Step 2.3  initramfs，busybox shell 交互，poweroff 或 shell exit 退出 VMM
-#   Step 2.4  bzImage：64 位启动协议 + 解压器 + KASLR，同样进 shell 并关机
+#   8250 UART：THR 输出、SCR 读写、MCR.LOOP 回环
+#   vmlinux ELF 加载 + boot_params + MP/ACPI 表，内核打印横幅
+#   initramfs，busybox shell 交互，poweroff 或 shell exit 退出 VMM
+#   bzImage：64 位启动协议 + 解压器 + KASLR，同样进 shell 并关机
 #
 # 用法：
-#   VMLINUX=/path/to/vmlinux BZIMAGE=/path/to/bzImage ./tests/step2.sh   全部
-#   VMLINUX=/path/to/vmlinux ./tests/step2.sh -a     只跑自动用例
-#   ./tests/step2.sh -m                              只看人工指引
+#   VMLINUX=/path/to/vmlinux BZIMAGE=/path/to/bzImage ./tests/e2e/linux-boot.sh   全部
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/linux-boot.sh -a     只跑自动用例
+#   ./tests/e2e/linux-boot.sh -m                              只看人工指引
 #
 # 没设 VMLINUX 时 2.2/2.3 的用例 SKIP，没设 BZIMAGE 时 2.4 SKIP。
 # Linux 模式必须带 --initrd；initramfs 不存在时用 tools/build_initramfs.sh 现做。
@@ -26,7 +26,7 @@ MEM=512M
 # ------------------------------------------------------------------
 auto_tests() {
 
-head1 "Step 2.1 — 8250 UART"
+head1 "8250 UART"
 
 # payload 轮询 LSR.THRE 再写 THR，然后做 SCR 与 MCR.LOOP 自检，
 # 两项都过才往调试端口写 'S'（0x53），失败写 'x'（0x78）。
@@ -53,7 +53,7 @@ end_case
 
 if [ ! -f "$INITRD" ]; then
     "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "Step 2.2 / 2.3 / 2.4" "tools/build_initramfs.sh failed"
+        skip_case "vmlinux / initramfs / bzImage" "tools/build_initramfs.sh failed"
         return
     }
 fi
@@ -65,10 +65,10 @@ expect_has "is neither an ELF vmlinux nor a bzImage"
 end_case
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "Step 2.2 / 2.3" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "vmlinux / initramfs" "set VMLINUX=/path/to/vmlinux to enable"
 else
 
-head1 "Step 2.2 — vmlinux 直启"
+head1 "vmlinux 直启"
 
 # rdinit=/nonexistent：initramfs 照常提供，但内核在里面找不到 init，
 # 转去挂载 root=，没有 root= 就以 VFS panic 结束；panic=-1 触发 reboot，
@@ -99,7 +99,7 @@ expect_not "Unable to read current time from RTC"
 expect_not "SHUTDOWN"
 end_case
 
-head1 "Step 2.3 — initramfs + busybox shell"
+head1 "initramfs + busybox shell"
 
 CUR_NAME="initramfs: shell 交互 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
@@ -138,11 +138,11 @@ end_case
 fi  # VMLINUX
 
 if [ -z "$BZIMAGE" ] || [ ! -f "$BZIMAGE" ]; then
-    skip_case "Step 2.4" "set BZIMAGE=/path/to/bzImage to enable"
+    skip_case "bzImage" "set BZIMAGE=/path/to/bzImage to enable"
     return
 fi
 
-head1 "Step 2.4 — bzImage"
+head1 "bzImage"
 
 # 同一套 boot_params/E820/ACPI，只是入口换成解压器：VMM 原样拷 setup
 # header、装保护模式部分、从装载地址 + 0x200 进入，其余交给解压器

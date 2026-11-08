@@ -1,9 +1,9 @@
 /* tests/unit/mem_test.c — guest 内存模型与 GPA→HVA 边界契约  [P1b]
  *
- * 验的是 AGENT_GUIDE 第 4 节的头号 invariant：
+ * 验的是 AGENTS.md「长期 invariant」里的头号 invariant：
  *   “任何 Guest 提供的地址范围都必须经过带检查的 GPA→HVA helper，
  *    并验证 integer overflow / 是否完整落在合法 region / length 是否有效。”
- * Step 3 的 virtqueue 每一个 descriptor segment 都要过 gpa_to_hva()，
+ * virtqueue 的每一个 descriptor segment 都要过 gpa_to_hva()，
  * 这里先把它的语义钉死。
  *
  * oracle 不是“当前实现返回什么”，而是 include/memory.h 写明的契约，

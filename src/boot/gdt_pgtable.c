@@ -121,7 +121,7 @@ int boot_build_gdt(struct vmm_vm *vm, const struct boot_mem_layout *l)
     gdt[BOOT_GDT_ENTRY_NULL] = GDT_DESC_NULL;
     gdt[BOOT_GDT_ENTRY_CODE] = GDT_DESC_CODE64;
     gdt[BOOT_GDT_ENTRY_DATA] = GDT_DESC_DATA64;
-    gdt[BOOT_GDT_ENTRY_TSS]  = 0;   /* Step 2 再填 */
+    gdt[BOOT_GDT_ENTRY_TSS]  = 0;   /* Linux 模式由 boot_setup_linux64 另写一张表 */
 
     if (mem_write(vm, l->gdt_gpa, gdt, sizeof(gdt)) != VMM_OK)
         return VMM_ERR_INVAL;
@@ -310,7 +310,7 @@ static int setup_long_mode_common(struct vmm_vcpu *vcpu,
     sregs.gdt.base  = l->gdt_gpa;
     sregs.gdt.limit = gdt_limit;
 
-    /* 不装 IDT：Step 1.2 的 payload 不该产生任何异常。
+    /* 不装 IDT：长模式 payload 不该产生任何异常。
      * 万一产生了，limit=0 会导致 #GP -> #DF -> triple fault，
      * 表现为 KVM_EXIT_SHUTDOWN。这其实是个好事——出错立刻可见，
      * 而不是静默地跑飞。 */

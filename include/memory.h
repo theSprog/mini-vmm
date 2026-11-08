@@ -1,8 +1,8 @@
 /* include/memory.h — guest 物理内存管理与 GPA→HVA 转换
  *
- * 这是整个 VMM 里最容易埋雷的模块之一：Step 3 的 virtqueue 里所有
- * 描述符地址都是 guest 自己填的 GPA，如果转换函数不做长度校验，
- * 一个恶意/错乱的 guest 就能让 VMM 进程段错误。所以从 Step 1 开始
+ * 这是整个 VMM 里最容易埋雷的模块之一：DMA 描述符、virtqueue 里所有
+ * 地址都是 guest 自己填的 GPA，如果转换函数不做长度校验，
+ * 一个恶意/错乱的 guest 就能让 VMM 进程段错误。所以从一开始
  * 就把边界检查做进接口签名里（gpa_to_hva 强制要求传 len）。
  */
 #ifndef VMM_MEMORY_H
@@ -17,8 +17,8 @@ struct vmm_vm;
 #define VMM_MEM_MAX_SLOTS 8
 
 /* 一个 slot 对应一次 KVM_SET_USER_MEMORY_REGION。
- * Step 1 只有一个 slot（GPA 0 起的整块 RAM）；
- * Step 2 起会因为要给 MMIO 空间/ROM 挖洞而出现多个 slot。 */
+ * 目前只有一个 slot（GPA 0 起的整块 RAM）；guest-memory 里程碑给 MMIO
+ * 空间挖洞之后会出现多个 slot。 */
 struct vmm_mem_slot {
     uint32_t slot;      /* KVM slot 号，全 VM 唯一 */
     uint64_t gpa;       /* guest 物理起始地址 */
@@ -56,11 +56,11 @@ void *gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len);
 int  mem_read(struct vmm_vm *vm, uint64_t gpa, void *dst, size_t len);
 int  mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len);
 
-/* 把文件整个读进 GPA 处；out_len 可为 NULL。Step 1 用来载入 payload.bin */
+/* 把文件整个读进 GPA 处；out_len 可为 NULL。裸 payload 模式用来载入 payload.bin */
 int  mem_load_file(struct vmm_vm *vm, uint64_t gpa, const char *path,
                    size_t *out_len);
 
-/* 调试：hexdump 一段 guest 物理内存到 stderr。Step 1.2 验证 0x500000 用 */
+/* 调试：hexdump 一段 guest 物理内存到 stderr。验证长模式 payload 写入的 0x500000 用 */
 void mem_hexdump(struct vmm_vm *vm, uint64_t gpa, size_t len);
 
 #endif /* VMM_MEMORY_H */

@@ -255,7 +255,7 @@ int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
     }
 
     /* count > 1 出现在 ins/outs 串操作指令上。逐次调设备回调，
-     * 每次前进 size 字节。Step 2 的串口用 outsb 批量输出时会走到。 */
+     * 每次前进 size 字节。串口载荷用 outsb 批量输出时会走到。 */
     for (i = 0; i < count; i++) {
         uint8_t *p = data + (size_t)i * size;
         uint64_t off = port - dev->base;
@@ -395,7 +395,7 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
 
     case KVM_EXIT_SHUTDOWN:
         /* x86 上这基本等同于 triple fault。没装 IDT 时，任何异常
-         * 都会走到这里，是 Step 1.2 最常见的失败形式。 */
+         * 都会走到这里，是长模式 payload 最常见的失败形式。 */
         vmm_err("vCPU %d: SHUTDOWN (usually a triple fault)", vcpu->id);
         vcpu_dump_state(vcpu);
         return VMM_ERR_GUEST;

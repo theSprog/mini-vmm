@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# tests/step6.sh — Step 6 验收
+# tests/e2e/smp.sh — 里程碑 smp 的验收
 #
-#   Step 6.1  SMP：每 vCPU 一个线程、CPUID 拓扑、AP 经 INIT/SIPI 启动、
-#             任一 vCPU 触发的停机能让所有 vCPU 线程退出
+#   SMP：每 vCPU 一个线程、CPUID 拓扑、AP 经 INIT/SIPI 启动、
+#   任一 vCPU 触发的停机能让所有 vCPU 线程退出
 #
 # 用法：
-#   VMLINUX=/path/to/vmlinux ./tests/step6.sh        全部
-#   VMLINUX=/path/to/vmlinux ./tests/step6.sh -a     只跑自动用例
-#   ./tests/step6.sh -m                              只看人工指引
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/smp.sh        全部
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/smp.sh -a     只跑自动用例
+#   ./tests/e2e/smp.sh -m                              只看人工指引
 #
 # 可选环境变量：
 #   SMP_MANY=16   多 vCPU 用例的 vCPU 数（默认 16，上限 VMM_MAX_VCPUS）
@@ -33,7 +33,7 @@ MEM_MANY=1024M
 # ------------------------------------------------------------------
 auto_tests() {
 
-head1 "Step 6.1 — 参数校验"
+head1 "参数校验"
 
 run_case "--smp > 1 只能配合 --mode linux" \
     "$VMM" --mode long64 --smp 2 "$SERIAL64"
@@ -48,11 +48,11 @@ expect_has "--smp must be an integer in 1..32"
 end_case
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "Step 6.1 guest 用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "SMP guest 用例" "set VMLINUX=/path/to/vmlinux to enable"
     return
 fi
 
-head1 "Step 6.1 — SMP 启动"
+head1 "SMP 启动"
 
 # Linux 模式必须带 --initrd
 if [ ! -f "$INITRD" ]; then
@@ -113,7 +113,7 @@ expect_not "Kernel panic"
 expect_not "stopped with error"
 end_case
 
-head1 "Step 6.1 — 多 vCPU（$SMP_MANY）"
+head1 "多 vCPU（$SMP_MANY）"
 
 CUR_NAME="$SMP_MANY vCPU：全部上线 + LLC 域 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"

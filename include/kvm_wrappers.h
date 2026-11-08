@@ -36,7 +36,7 @@ int  kvm_get_sregs(int vcpu_fd, struct kvm_sregs *sregs);
 int  kvm_set_sregs(int vcpu_fd, const struct kvm_sregs *sregs);
 int  kvm_run(int vcpu_fd);                        /* 处理 EINTR 重试 */
 
-/* CPUID 透传：把 host 支持的 CPUID 叶子设给 vCPU。Step 1.2 之后需要，
+/* CPUID 透传：把 host 支持的 CPUID 叶子设给 vCPU。长模式起就需要，
  * 因为长模式要求 guest 能看到 CPUID.80000001h:EDX.LM。
  *
  * kvm_get_supported_cpuid() 返回的缓冲区在 entries[nent] 之后还留了
@@ -47,7 +47,7 @@ int  kvm_run(int vcpu_fd);                        /* 处理 EINTR 重试 */
 int  kvm_get_supported_cpuid(int kvm_fd, struct kvm_cpuid2 **out);
 int  kvm_set_cpuid2(int vcpu_fd, struct kvm_cpuid2 *cpuid);
 
-/* MSR 读写（Step 1.2 可用 sregs.efer 代替；snapshot 阶段必需） */
+/* MSR 读写（长模式 payload 可用 sregs.efer 代替；snapshot 必需） */
 int  kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value);
 int  kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value);
 

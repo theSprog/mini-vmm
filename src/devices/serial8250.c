@@ -1,4 +1,4 @@
-/* src/devices/serial8250.c — 16550A UART 模拟                    [Step 2]
+/* src/devices/serial8250.c — 16550A UART 模拟                    [linux-boot]
  *
  * 寄存器布局（offset 相对 base，DLAB = LCR bit7）：
  *   0  R: RBR  W: THR          DLAB=1: DLL
