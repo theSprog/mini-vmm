@@ -91,8 +91,6 @@ expect_not "Reading current time from RTC took around"
 # 判据见 lib.sh 的 expect_tsc_calibrated
 expect_tsc_calibrated
 
-# PCI 不存在是预期结果，不是故障
-expect_has "PCI: System does not support PCI"
 
 # 中断确实在走：串口和键盘都有计数，RTC 我们不产生中断
 expect_not "SERIRQ-0-END"

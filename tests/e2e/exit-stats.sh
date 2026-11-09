@@ -144,7 +144,8 @@ expect_rc 0
 expect_has "exit-stats: 2 vCPU(s)"
 expect_re '^  reason +total +vcpu0 +vcpu1$'
 expect_re '^  serial8250 +PIO +[1-9][0-9]* +[1-9][0-9]*$'
-# 还没有 PCI 总线，Linux 经 0xcf8/0xcfc 探测 PCI 配置空间全部落空
+# 每次启动都有落空的端口：8250 驱动探测没有模拟的 COM2-COM4（0x2f8/0x3e8/0x2e8），
+# i8237 DMA 初始化写页寄存器 0x87
 expect_re '^  unhandled +PIO +[1-9][0-9]* +[0-9]+$'
 io="$(stat_col IO 2)"
 mmio="$(stat_col MMIO 2)"

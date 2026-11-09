@@ -13,6 +13,8 @@
 #include "boot/acpi.h"
 #include "boot/mptable.h"
 #include "devices/i8042.h"
+#include "boot/aml.h"
+#include "pci/pci.h"
 
 #define ACPI_OEM_ID       "MINVMM"
 #define ACPI_OEM_TABLE_ID "MINIVMM "
@@ -142,22 +144,168 @@ _Static_assert(sizeof(struct madt_lapic_nmi) == 6, "madt_lapic_nmi size");
 
 #define MADT_PCAT_COMPAT     (1u << 0)   /* 同时存在 8259，Linux 会先屏蔽它 */
 
-/* DSDT 的全部 AML：Name (_S5, Package () { 5, 5, 0, 0 })
- *   08          NameOp
- *   5F 53 35 5F "_S5_"
- *   12          PackageOp
- *   08          PkgLength（含自身共 8 字节）
- *   04          NumElements
- *   0A 05       BytePrefix 5   -> PM1a_CNT.SLP_TYP
- *   0A 05       BytePrefix 5   -> PM1b_CNT.SLP_TYP
- *   00 00       Zero Zero      保留
- * Linux poweroff 时查 \_S5 拿 SLP_TYP，然后写 PM1a_CNT = SLP_TYP<<10 | SLP_EN。 */
-static const uint8_t dsdt_aml[] = {
-    0x08, '_', 'S', '5', '_', 0x12, 0x08, 0x04,
-    0x0a, 0x05, 0x0a, 0x05, 0x00, 0x00,
-};
-
 #define S5_SLP_TYP 5
+
+/* DSDT 的 AML 写在这块缓冲区里，生成后整段拷进 guest 内存 */
+#define DSDT_AML_MAX 8192
+
+/* 资源描述符（ACPI 6.4 第 6.4 节；ACPICA amlresrc.h 的 aml_resource_*）。
+ * 大型描述符的第一个字节是 0x80 | 类型，后面是 16 位的长度（不含这 3 字节）。 */
+#define RES_WORD_ADDRESS     0x88    /* Word Address Space Descriptor */
+#define RES_DWORD_ADDRESS    0x87    /* DWord Address Space Descriptor */
+#define RES_END_TAG          0x79    /* 小型描述符，类型 0xF，长度 1 */
+#define RES_WORD_LEN         13
+#define RES_DWORD_LEN        23
+
+/* Address Space Descriptor 的字段取值 */
+#define RES_TYPE_MEMORY      0
+#define RES_TYPE_IO          1
+#define RES_TYPE_BUS         2
+/* general flags：bit 3 _MAF、bit 2 _MIF（地址范围固定），bit 1 _DEC = 0
+ * 正向译码，bit 0 = 0 表示 ResourceProducer。host bridge 的窗口是它向下
+ * 游提供的地址空间，必须标成 producer：Linux 只给 producer 的范围打上
+ * IORESOURCE_WINDOW（drivers/acpi/resource.c acpi_decode_space）。 */
+#define RES_GFLAGS_WINDOW    0x0C
+/* type specific flags：IO 的 _RNG = 3（ISA 和非 ISA 范围都译码）；
+ * 内存的 _RW = 1（可读写）、_MEM = 0（不可缓存，MMIO 寄存器的属性） */
+#define RES_IO_ENTIRE_RANGE  0x03
+#define RES_MEM_RW_UNCACHED  0x01
+
+static void res_word(struct aml *r, uint8_t type, uint8_t tflags,
+                     uint16_t min, uint16_t max)
+{
+    aml_byte(r, RES_WORD_ADDRESS);
+    aml_word(r, RES_WORD_LEN);
+    aml_byte(r, type);
+    aml_byte(r, RES_GFLAGS_WINDOW);
+    aml_byte(r, tflags);
+    aml_word(r, 0);                         /* granularity */
+    aml_word(r, min);
+    aml_word(r, max);
+    aml_word(r, 0);                         /* translation offset */
+    aml_word(r, (uint16_t)(max - min + 1)); /* length */
+}
+
+static void res_dword(struct aml *r, uint8_t type, uint8_t tflags,
+                      uint32_t min, uint32_t max)
+{
+    aml_byte(r, RES_DWORD_ADDRESS);
+    aml_word(r, RES_DWORD_LEN);
+    aml_byte(r, type);
+    aml_byte(r, RES_GFLAGS_WINDOW);
+    aml_byte(r, tflags);
+    aml_dword(r, 0);
+    aml_dword(r, min);
+    aml_dword(r, max);
+    aml_dword(r, 0);
+    aml_dword(r, max - min + 1);
+}
+
+/* host bridge 的 _CRS：总线号 0-255，两段 IO 窗口（挖掉 conf1 端口），
+ * 一段 MMIO 窗口。Linux 用它建立根总线的资源窗口，并据此判断固件分配的
+ * BAR 是否合法（落在窗口外的 BAR 会被重新分配）。 */
+static void build_pci0_crs(struct aml *a)
+{
+    uint8_t buf[128];
+    struct aml r;
+
+    aml_init(&r, buf, sizeof(buf));
+    res_word(&r, RES_TYPE_BUS, 0, 0x00, 0xFF);
+    res_word(&r, RES_TYPE_IO, RES_IO_ENTIRE_RANGE,
+             0x0000, PCI_CONF1_ADDR_PORT - 1);
+    res_word(&r, RES_TYPE_IO, RES_IO_ENTIRE_RANGE,
+             PCI_CONF1_DATA_PORT + 4, PCI_IO_WINDOW_END - 1);
+    res_dword(&r, RES_TYPE_MEMORY, RES_MEM_RW_UNCACHED,
+              (uint32_t)PCI_MMIO_WINDOW_START,
+              (uint32_t)(PCI_MMIO_WINDOW_END - 1));
+    aml_byte(&r, RES_END_TAG);
+    aml_byte(&r, 0);                        /* 校验和为 0 表示不校验 */
+    if (r.overflow) {
+        a->overflow = true;
+        return;
+    }
+    aml_name_decl(a, "_CRS");
+    aml_buffer(a, r.buf, r.len);
+}
+
+/* _PRT：每个 slot 的 INTA..INTD 各一项 Package { 地址, pin, 源, 源下标 }。
+ * 地址 0xSSSSFFFF 表示“slot SSSS 的所有 function”；源为 0 表示直接接在
+ * GSI 上（不经过 PCI Interrupt Link 设备），源下标就是 GSI 号（ACPI 6.4
+ * 第 6.2.13 节）。直接接线的 GSI 按规范默认是电平触发、低有效，正是
+ * PCI INTx 的电气特性，不需要另外声明。
+ *
+ * 列出全部 32 个 slot 而不只是已插设备：_PRT 描述的是主板上的走线，
+ * 和插了什么无关，以后热插拔进来的设备也按这张表路由。 */
+static void build_pci0_prt(struct aml *a)
+{
+    size_t prt;
+    int slot, pin;
+
+    aml_name_decl(a, "_PRT");
+    prt = aml_package(a, PCI_MAX_SLOTS * PCI_INTX_LINES);
+    for (slot = 0; slot < PCI_MAX_SLOTS; slot++) {
+        for (pin = 1; pin <= PCI_INTX_LINES; pin++) {
+            size_t e = aml_package(a, 4);
+
+            aml_int(a, (uint32_t)slot << 16 | 0xFFFF);
+            aml_int(a, (uint64_t)(pin - 1));  /* _PRT 里 0 = INTA */
+            aml_int(a, 0);
+            aml_int(a, (uint64_t)pci_intx_gsi(slot, pin));
+            aml_close(a, e);
+        }
+    }
+    aml_close(a, prt);
+}
+
+/* DSDT：
+ *   Name (_S5, Package () { 5, 5, 0, 0 })
+ *   Scope (\_SB) {
+ *     Device (PCI0) {
+ *       Name (_HID, EisaId ("PNP0A03"))    PCI host bridge
+ *       Name (_UID, 0)
+ *       Name (_CRS, ResourceTemplate () { ... })
+ *       Name (_PRT, Package () { ... })
+ *     }
+ *   }
+ * Linux poweroff 时查 \_S5 拿 SLP_TYP，然后写 PM1a_CNT = SLP_TYP<<10 | SLP_EN。
+ * 找到 PNP0A03 后 Linux 的 acpi_pci_root 驱动接管 bus 0 的枚举，资源窗口
+ * 取自 _CRS，INTx 路由取自 _PRT。 */
+static int build_dsdt(uint8_t *out, size_t cap, size_t *len)
+{
+    static uint8_t buf[DSDT_AML_MAX];
+    struct aml a;
+    size_t pkg, sb, dev;
+
+    aml_init(&a, buf, sizeof(buf));
+
+    aml_name_decl(&a, "_S5_");
+    pkg = aml_package(&a, 4);
+    aml_int(&a, S5_SLP_TYP);                 /* PM1a_CNT.SLP_TYP */
+    aml_int(&a, S5_SLP_TYP);                 /* PM1b_CNT.SLP_TYP */
+    aml_int(&a, 0);                          /* 保留 */
+    aml_int(&a, 0);
+    aml_close(&a, pkg);
+
+    sb  = aml_scope(&a, "\\_SB_");
+    dev = aml_device(&a, "PCI0");
+    aml_name_decl(&a, "_HID");
+    aml_int(&a, aml_eisaid("PNP0A03"));
+    aml_name_decl(&a, "_UID");
+    aml_int(&a, 0);
+    build_pci0_crs(&a);
+    build_pci0_prt(&a);
+    aml_close(&a, dev);
+    aml_close(&a, sb);
+
+    if (a.overflow || a.len > cap) {
+        vmm_err("DSDT AML does not fit into %zu bytes", a.overflow ? sizeof(buf) : cap);
+        return VMM_ERR_NOMEM;
+    }
+    memcpy(out, a.buf, a.len);
+    *len = a.len;
+    return VMM_OK;
+}
+
 
 /* Generic Address Structure 的 Address Space ID 与 Access Size */
 #define GAS_SPACE_SYSTEM_IO 1
@@ -213,7 +361,8 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     uint64_t xsdt_ent[2];
     uint8_t *p;
     uint32_t len;
-    int i;
+    size_t aml_len;
+    int i, r;
 
     gs = gpa_to_hva(vm, ACPI_TABLES_GPA, ACPI_TABLES_MAX, (void **)&base);
     if (gs != GPA_OK) {
@@ -227,12 +376,15 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     xsdt_off = ALIGN16(off + sizeof(struct acpi_rsdp));
     fadt_off = ALIGN16(xsdt_off + sizeof(struct acpi_header) + 2 * 8);
     dsdt_off = ALIGN16(fadt_off + sizeof(struct acpi_fadt));
-    madt_off = ALIGN16(dsdt_off + sizeof(struct acpi_header) + sizeof(dsdt_aml));
 
     /* DSDT */
     h = (struct acpi_header *)(base + dsdt_off);
-    memcpy(h + 1, dsdt_aml, sizeof(dsdt_aml));
-    fill_header(h, "DSDT", sizeof(*h) + sizeof(dsdt_aml), 2);
+    r = build_dsdt((uint8_t *)(h + 1),
+                   ACPI_TABLES_MAX - dsdt_off - sizeof(*h), &aml_len);
+    if (r != VMM_OK)
+        return r;
+    fill_header(h, "DSDT", (uint32_t)(sizeof(*h) + aml_len), 2);
+    madt_off = ALIGN16(dsdt_off + sizeof(*h) + aml_len);
 
     /* FADT */
     fadt = (struct acpi_fadt *)(base + fadt_off);

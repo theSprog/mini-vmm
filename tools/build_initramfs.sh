@@ -7,6 +7,7 @@
 # 或者 BUSYBOX=/path/to/busybox 指定）。initramfs 里没有动态链接器，
 # 动态 busybox 放进去会报 "No such file or directory"（找不到 ld.so）。
 # 打包用 bsdtar（libarchive），原因见下方 /dev/console 一段。
+# tools/guest/ 下的 C 工具用 $CC（默认 cc）静态编译进 /sbin，需要静态 libc。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,6 +36,16 @@ for app in $("$STAGE/bin/busybox" --list-full); do
     [ "$app" = "bin/busybox" ] && continue
     mkdir -p "$STAGE/$(dirname "$app")"
     ln -sf /bin/busybox "$STAGE/$app"
+done
+
+# guest 侧的小工具（tools/guest/*.c），静态链接，理由同 busybox。
+# 先删再拷：busybox 若自带同名 applet，上面已经建了指向 /bin/busybox 的
+# 软链，直接 cp 会顺着软链把 busybox 本身覆盖掉。
+CC="${CC:-cc}"
+for src in "$ROOT"/tools/guest/*.c; do
+    tool="$(basename "$src" .c)"
+    rm -f "$STAGE/sbin/$tool"
+    "$CC" -static -O2 -Wall -Wextra -Werror -o "$STAGE/sbin/$tool" "$src"
 done
 
 # /init 是内核解开 initramfs 后执行的第一个用户态程序（PID 1），这里让它就是

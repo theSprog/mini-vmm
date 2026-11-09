@@ -33,6 +33,9 @@ SRCS := \
 	src/boot/zeropage.c \
 	src/boot/mptable.c \
 	src/boot/acpi.c \
+	src/boot/aml.c \
+	src/pci/pci.c \
+	src/devices/pci_test.c \
 	src/devices/rtc.c \
 	src/console.c \
 	src/io/event_loop.c \
@@ -133,7 +136,7 @@ clean:
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
-               event-loop exit-stats
+               event-loop exit-stats pci-bus
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -163,7 +166,9 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/io_bus_test \
              $(BUILD)/tests/serial8250_test \
              $(BUILD)/tests/event_loop_test \
-             $(BUILD)/tests/kvm_stats_test
+             $(BUILD)/tests/kvm_stats_test \
+             $(BUILD)/tests/pci_bus_test \
+             $(BUILD)/tests/aml_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
 # 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
@@ -186,13 +191,13 @@ FUZZ_CFLAGS_NOALIGN := $(FUZZ_CFLAGS) -fno-sanitize=alignment
 
 $(BUILD)/tests/boot_tables_test: tests/unit/boot_tables_test.c \
                                  src/boot/mptable.c src/boot/acpi.c \
-                                 src/boot/zeropage.c src/mem.c
+                                 src/boot/zeropage.c src/boot/aml.c src/mem.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/boot_tables_test_noalign: tests/unit/boot_tables_test.c \
                                          src/boot/mptable.c src/boot/acpi.c \
-                                         src/boot/zeropage.c src/mem.c
+                                         src/boot/zeropage.c src/boot/aml.c src/mem.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST_NOALIGN) -o $@ $(filter %.c,$^)
 
@@ -215,6 +220,15 @@ $(BUILD)/tests/event_loop_test: tests/unit/event_loop_test.c \
                                 src/io/event_loop.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
+
+$(BUILD)/tests/pci_bus_test: tests/unit/pci_bus_test.c src/pci/pci.c \
+                             src/devices/pci_test.c src/vm.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
+
+$(BUILD)/tests/aml_test: tests/unit/aml_test.c src/boot/aml.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/kvm_stats_test: tests/unit/kvm_stats_test.c src/kvm_stats.c
 	@mkdir -p $(dir $@)

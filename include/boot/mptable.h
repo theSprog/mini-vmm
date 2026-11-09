@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 struct vmm_vm;
+struct pci_bus;
 
 /* 放在低端内存最后 1KiB（EBDA 区）。Linux 的 smp_scan_config 会扫
  * [639K, 640K) 这一段找 "_MP_"，而 e820 已经把它报成保留，不会被当 RAM 用。 */
@@ -23,6 +24,7 @@ struct vmm_vm;
 #define MP_LAPIC_BASE      0xfee00000U
 #define MP_IOAPIC_BASE     0xfec00000U
 
-int mptable_setup(struct vmm_vm *vm, int nr_cpus);
+/* pci 为 NULL 时不生成 PCI 总线的中断项 */
+int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci);
 
 #endif /* BOOT_MPTABLE_H */

@@ -17,6 +17,8 @@
 #include "boot/mptable.h"
 #include "boot/acpi.h"
 #include "devices/rtc.h"
+#include "devices/pci_test.h"
+#include "pci/pci.h"
 #include "console.h"
 #include "smp.h"
 #include "io/event_loop.h"
@@ -124,6 +126,8 @@ void vmm_usage(const char *prog)
 "  --exit-stats FILE      When the guest stops, write VM exit counts to FILE\n"
 "                           ('-' = stderr): user-space exits per reason and\n"
 "                           per device, plus KVM's own counters\n"
+"  --pci-test             linux: add the pci-test device to the PCI bus\n"
+"                           (two BARs over a magic/scratch register file)\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -270,6 +274,8 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];
+        } else if (!strcmp(a, "--pci-test")) {
+            cfg->pci_test = true;
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)
@@ -329,6 +335,12 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
      * 所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时跑起来 */
     if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_vcpus > 1) {
         vmm_err("--smp > 1 requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    /* PCI 总线只在 Linux 模式下创建：描述它的 DSDT 和 MP table 只有
+     * 这个模式才生成，裸 payload 拿不到总线的地址窗口和中断路由 */
+    if (cfg->mode != VMM_BOOT_LINUX && cfg->pci_test) {
+        vmm_err("--pci-test requires --mode linux");
         return VMM_ERR_INVAL;
     }
     if (cfg->mode == VMM_BOOT_LINUX) {
@@ -391,6 +403,8 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
                       const struct vmm_config *cfg, struct serial8250 *com1,
                       struct event_loop *loop)
 {
+    static struct pci_bus pci;
+    static struct pci_test pci_test;
     struct boot_mem_layout layout;
     struct kernel_image kimg;
     struct zp_config zc;
@@ -410,6 +424,16 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     if (r != VMM_OK)
         return r;
 
+    /* PCI 设备要在生成 MP table 之前注册完：MP table 按已插设备列中断项 */
+    r = pci_bus_init(&pci, vm);
+    if (r != VMM_OK)
+        return r;
+    if (cfg->pci_test) {
+        r = pci_test_attach(&pci_test, &pci);
+        if (r != VMM_OK)
+            return r;
+    }
+
     /* vmlinux 还是 bzImage 由文件头决定，见 boot/kernel_loader.h */
     r = kernel_load(vm, cfg->payload_path, &kimg);
     if (r != VMM_OK)
@@ -424,7 +448,7 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     }
 
     /* 中断拓扑同时用两种格式描述，guest 内核开了哪个就用哪个 */
-    r = mptable_setup(vm, vm->nr_vcpus);
+    r = mptable_setup(vm, vm->nr_vcpus, &pci);
     if (r != VMM_OK)
         return r;
     r = acpi_setup(vm, vm->nr_vcpus, &rsdp);

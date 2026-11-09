@@ -4,10 +4,20 @@
  *   mpf_intel      16 字节，"_MP_"，physptr 指向紧随其后的 mpc_table
  *   mpc_table      44 字节表头，"PCMP"
  *   processor × N  每个 vCPU 一项，20 字节
- *   bus            ISA 总线，8 字节
+ *   bus × 2        PCI 总线（id 0）、ISA 总线（id 1），各 8 字节
  *   ioapic         8 字节
  *   intsrc × 16    ISA IRQ i -> IOAPIC pin i，每项 8 字节
+ *   intsrc × k     每个带 INTx 的 PCI 设备一项，接线同 DSDT 的 _PRT
  *   lintsrc × 2    LINT0 = ExtINT（8259 级联），LINT1 = NMI
+ *
+ * PCI 总线的 MP bus id 必须等于它的 PCI 总线号：Linux 查 PCI 中断时拿
+ * dev->bus->number 直接去比 intsrc 的 srcbus（io_apic.c
+ * IO_APIC_get_PCI_irq_vector）。所以 bus 0 留给 PCI，ISA 排在后面，
+ * 和 SeaBIOS 生成的表一样。
+ *
+ * PCI 中断项只列已插的设备，不像 _PRT 那样列满 32 个 slot：MP table 的
+ * 1KiB 空间放下 32 个 CPU 之后只剩 156 字节（19 项），而 MP table 本来也只在
+ * 没有 ACPI（acpi=off）时使用，那种情况下没有热插拔。
  *
  * ISA IRQ i 直接接 IOAPIC pin i，是因为 KVM 内核态 irqchip 的默认 GSI
  * 路由就是这样（包括 PIT 的 GSI 0 -> pin 0）。和 qemu 那种
@@ -18,6 +28,7 @@
 #include "vmm.h"
 #include "memory.h"
 #include "boot/mptable.h"
+#include "pci/pci.h"
 
 #define MPC_SPEC          4      /* MP spec 1.4 */
 #define APIC_VERSION      0x14
@@ -37,6 +48,9 @@
 #define MP_IRQTYPE_EXTINT 3
 
 #define MP_IOAPIC_USABLE  1
+
+#define MP_BUS_ID_PCI     0
+#define MP_BUS_ID_ISA     1
 
 struct mpf_intel {
     char     signature[4];
@@ -117,7 +131,7 @@ static uint8_t mp_checksum(const void *p, size_t len)
     return (uint8_t)(-sum);
 }
 
-int mptable_setup(struct vmm_vm *vm, int nr_cpus)
+int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
 {
     enum gpa_status gs;
     uint8_t *base, *p;
@@ -126,15 +140,19 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus)
     uint8_t ioapic_id = (uint8_t)nr_cpus;   /* 紧跟在 LAPIC id 之后 */
     uint16_t nr_entries = 0;
     size_t size;
-    int i;
+    int i, nr_pci_irqs = 0;
+
+    for (i = 0; pci && i < PCI_MAX_SLOTS; i++)
+        if (pci->devs[i] && pci->devs[i]->intx_pin)
+            nr_pci_irqs++;
 
     size = sizeof(*mpf) + sizeof(*mpc)
          + (size_t)nr_cpus * sizeof(struct mpc_cpu)
-         + sizeof(struct mpc_bus) + sizeof(struct mpc_ioapic)
-         + 18 * sizeof(struct mpc_intsrc);
+         + 2 * sizeof(struct mpc_bus) + sizeof(struct mpc_ioapic)
+         + (size_t)(18 + nr_pci_irqs) * sizeof(struct mpc_intsrc);
     if (nr_cpus < 1 || nr_cpus > 254 || size > MPTABLE_MAX_SIZE) {
-        vmm_err("mptable: %d CPUs do not fit into %d bytes",
-                nr_cpus, MPTABLE_MAX_SIZE);
+        vmm_err("mptable: %d CPUs and %d PCI interrupts do not fit into %d bytes",
+                nr_cpus, nr_pci_irqs, MPTABLE_MAX_SIZE);
         return VMM_ERR_INVAL;
     }
 
@@ -168,10 +186,15 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus)
         struct mpc_bus *b = (struct mpc_bus *)p;
 
         b->type  = MP_BUS;
-        b->busid = 0;
+        b->busid = MP_BUS_ID_PCI;
+        memcpy(b->bustype, "PCI   ", 6);
+        p += sizeof(*b);
+        b = (struct mpc_bus *)p;
+        b->type  = MP_BUS;
+        b->busid = MP_BUS_ID_ISA;
         memcpy(b->bustype, "ISA   ", 6);
         p += sizeof(*b);
-        nr_entries++;
+        nr_entries += 2;
     }
 
     {
@@ -191,10 +214,30 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus)
 
         s->type      = MP_INTSRC;
         s->irqtype   = MP_IRQTYPE_INT;
-        s->srcbus    = 0;
+        s->srcbus    = MP_BUS_ID_ISA;
         s->srcbusirq = (uint8_t)i;
         s->dstapic   = ioapic_id;
         s->dstirq    = (uint8_t)i;
+        p += sizeof(*s);
+        nr_entries++;
+    }
+
+    /* PCI 中断：srcbusirq 的 bit 6:2 是 slot，bit 1:0 是 pin（0 = INTA），
+     * 见 MP spec 1.4 附录 D.3。irqflag 0 表示“按总线默认”，PCI 总线默认
+     * 就是电平触发、低有效。 */
+    for (i = 0; pci && i < PCI_MAX_SLOTS; i++) {
+        const struct pci_device *d = pci->devs[i];
+        struct mpc_intsrc *s;
+
+        if (!d || !d->intx_pin)
+            continue;
+        s = (struct mpc_intsrc *)p;
+        s->type      = MP_INTSRC;
+        s->irqtype   = MP_IRQTYPE_INT;
+        s->srcbus    = MP_BUS_ID_PCI;
+        s->srcbusirq = (uint8_t)(i << 2 | (d->intx_pin - 1));
+        s->dstapic   = ioapic_id;
+        s->dstirq    = (uint8_t)pci_intx_gsi(i, d->intx_pin);
         p += sizeof(*s);
         nr_entries++;
     }

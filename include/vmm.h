@@ -118,6 +118,31 @@ int  io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
 
 int  vmm_register_pio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
 int  vmm_register_mmio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
+
+/* 地址由 guest 编程的区域（PCI BAR）。
+ *
+ * 和上面的静态注册不同，这类区域的位置在 guest 运行中会变：guest 写 BAR
+ * 或开关 command 寄存器的 decode 位，区域就搬家或消失。所以分两步：
+ * vmm_io_reserve 先占一个表项，dev->base/len 被忽略，表项以 len = 0 登记
+ * （查不到、也不参与冲突检查），*slot 返回表项下标；之后 vmm_io_move
+ * 改它的基址和长度，len = 0 表示停止响应。
+ *
+ * 表项占位而不是增删，是因为 exit 统计按表项下标记账（pio_stats 与
+ * pio_devs 同下标），删掉再插入会让计数挪到别的设备名下。
+ *
+ * vmm_io_move 不做冲突检查：guest 可以把 BAR 编到任何位置，真实硬件上
+ * 地址重叠的结果是未定义的，VMM 能做的只是给出确定的行为——查找按注册
+ * 顺序取第一个命中的表项，先注册的静态设备优先。重叠时打一条 warn。
+ *
+ * 调用时机：guest 启动前（单线程），或者在持有 vm->io_lock 的分发路径里
+ * （配置空间写由 exit 分发进来，本来就持锁）。查找也只在持锁时发生，
+ * 所以表项改动对 vCPU 线程是原子可见的。 */
+enum vmm_io_space { VMM_IO_PIO, VMM_IO_MMIO };
+
+int  vmm_io_reserve(struct vmm_vm *vm, enum vmm_io_space space,
+                    const struct vmm_io_dev *dev, int *slot);
+void vmm_io_move(struct vmm_vm *vm, enum vmm_io_space space, int slot,
+                 uint64_t base, uint64_t len);
 const struct vmm_io_dev *vmm_lookup_pio(struct vmm_vm *vm, uint64_t port);
 const struct vmm_io_dev *vmm_lookup_mmio(struct vmm_vm *vm, uint64_t addr);
 
@@ -153,6 +178,9 @@ struct vmm_config {
 
     /* VM 停下后把 exit 统计写到这里（--exit-stats），"-" 表示 stderr */
     const char *exit_stats_path;
+
+    /* 在 PCI 总线上挂验证用的 pci-test 设备（--pci-test），见 devices/pci_test.h */
+    bool        pci_test;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -210,8 +238,7 @@ struct vmm_vm {
     int               nr_mmio_devs;
 
     /* 与 pio_devs/mmio_devs 同下标的 exit 计数，以及落在未注册地址上的
-     * exit。和设备表分开放，设备表注册完就只读，查找可以不加锁；
-     * 计数在分发路径上持 io_lock 更新。 */
+     * exit。计数在分发路径上持 io_lock 更新。 */
     struct vmm_io_stats pio_stats[VMM_MAX_PIO_DEVS];
     struct vmm_io_stats mmio_stats[VMM_MAX_MMIO_DEVS];
     struct vmm_io_stats pio_unhandled;
@@ -219,7 +246,9 @@ struct vmm_vm {
 
     /* 多个 vCPU 线程会同时陷出到用户态访问设备。设备模型本身不做
      * 并发保护，统一由 exit 分发路径持有这把大锁串行化（和 QEMU 的
-     * BQL 同一个思路）。设备表在 guest 启动前注册完毕，之后只读。
+     * BQL 同一个思路）。设备表在 guest 启动前注册完毕，之后表项个数
+     * 不再变；PCI BAR 表项的基址和长度会随 guest 编程改变，改动和查找
+     * 都在这把锁下进行（见 vmm_io_move）。
      * I/O 线程的回调也遵守“先 io_lock、后设备锁”，见 io/event_loop.h。 */
     pthread_mutex_t   io_lock;
 

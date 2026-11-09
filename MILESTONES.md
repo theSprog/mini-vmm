@@ -23,7 +23,7 @@
 | 0 | kvm-basics ✓ |
 | 1 | linux-boot ✓ |
 | 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
-| 3 | pci-bus |
+| 3 | pci-bus ✓ |
 | 4 | emu-net · emu-blk |
 | 5 | pci-msi |
 | 6 | arch-distro |
@@ -118,10 +118,10 @@
 
 依赖: guest-memory · 参考: PCI Local Bus Spec 3.0、`linux/pci_regs.h`、ACPI spec（PNP0A03、`_CRS`、`_PRT`）
 
-- [ ] 通过 0xCF8/0xCFC 访问配置空间，guest `lspci` 看到 host bridge 和 VMM 注册的设备
-- [ ] BAR 大小探测（写全 1 读回）符合规范，guest 分配的 BAR 地址落在 MMIO hole 里，访问能路由到对应设备
-- [ ] DSDT 描述 host bridge 的地址窗口，guest 不需要重新分配资源
-- [ ] INTx 经 IOAPIC 送达，`_PRT` 和 MP table 的 PCI 中断路由一致，guest `/proc/interrupts` 计数随设备中断增加
+- [x] 通过 0xCF8/0xCFC 访问配置空间，guest `lspci` 看到 host bridge 和 VMM 注册的设备
+- [x] BAR 大小探测（写全 1 读回）符合规范，VMM 按固件职责预分配的 BAR 地址落在 MMIO hole 里，访问能路由到对应设备，guest 改写 BAR 或关闭 decode 后路由跟着变
+- [x] DSDT 描述 host bridge 的地址窗口，guest 不需要重新分配资源
+- [x] `_PRT` 和 MP table 的 PCI 中断路由一致：ACPI 和 `acpi=off` 两种启动下 guest 给同一个设备分到同一个 IOAPIC GSI
 
 ### emu-net — e1000 网卡
 
@@ -131,7 +131,7 @@
 
 - [ ] guest e1000 驱动完成探测：从 EEPROM 读出 VMM 配置的 MAC，链路状态为 up
 - [ ] TX 和 RX 描述符环经 DMA 读写 guest 内存，每个描述符的地址和长度都经 guest-memory 接口检查
-- [ ] 中断原因寄存器（ICR/IMS/IMC）语义正确，guest 中断计数和收发包数对得上
+- [ ] 中断原因寄存器（ICR/IMS/IMC）语义正确，INTx 经 IOAPIC 送达，guest `/proc/interrupts` 计数和收发包数对得上
 - [ ] 网络后端是 TAP，后端接口和设备模型分离，后面的网卡设备直接复用
 - [ ] guest 与 host 能互相 ping 通并完成 TCP 传输
 

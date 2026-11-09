@@ -62,6 +62,23 @@ for t in "$dump"/*.dat; do
     end_case
 done
 
+# DSDT 的 AML 是 src/boot/aml.c 生成的，iasl -d 能反汇编只说明语法上
+# 能解析。再用 iasl 把反汇编结果编译回去，和原始字节比较：两边一致，说明
+# 每个 PkgLength、整数前缀、资源描述符都和 ACPICA 的编码完全相同。
+# -oa 关掉 iasl 的优化（否则它会把根作用域里的 \_SB 省成 _SB，少 1 个字节）；
+# 表头 36 字节不比，里面有 iasl 自己的 compiler ID 和校验和。
+if [ -e "$dump/DSDT.dsl" ]; then
+    run_case "DSDT AML 经 iasl 反汇编再编译后逐字节一致" \
+        bash -c '"$0" -oa -p "$1/DSDT-re" "$1/DSDT.dsl" >/dev/null &&
+                 cmp <(tail -c +37 "$1/DSDT.dat") <(tail -c +37 "$1/DSDT-re.aml") &&
+                 echo "AML body identical"' "$IASL" "$dump"
+    expect_rc 0
+    expect_has "AML body identical"
+    end_case
+else
+    skip_case "DSDT round trip" "没有 DSDT.dsl"
+fi
+
 rm -rf "$dump"
 
 }

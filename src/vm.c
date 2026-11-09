@@ -28,6 +28,8 @@ static int io_register(struct vmm_io_dev *tbl, int *n, int max,
         return VMM_ERR_NOMEM;
     }
     for (i = 0; i < *n; i++) {
+        if (tbl[i].len == 0)            /* 暂不响应的 BAR 表项，见 vmm_io_reserve */
+            continue;
         if (dev->base < tbl[i].base + tbl[i].len &&
             tbl[i].base < dev->base + dev->len) {
             vmm_err("%s address conflict: %s [0x%llx,+0x%llx) overlaps %s",
@@ -65,6 +67,63 @@ int vmm_register_mmio(struct vmm_vm *vm, const struct vmm_io_dev *dev)
 {
     return io_register(vm->mmio_devs, &vm->nr_mmio_devs,
                        VMM_MAX_MMIO_DEVS, dev, "MMIO");
+}
+
+static void io_table(struct vmm_vm *vm, enum vmm_io_space space,
+                     struct vmm_io_dev **tbl, int **n, int *max)
+{
+    if (space == VMM_IO_PIO) {
+        *tbl = vm->pio_devs;
+        *n   = &vm->nr_pio_devs;
+        *max = VMM_MAX_PIO_DEVS;
+    } else {
+        *tbl = vm->mmio_devs;
+        *n   = &vm->nr_mmio_devs;
+        *max = VMM_MAX_MMIO_DEVS;
+    }
+}
+
+int vmm_io_reserve(struct vmm_vm *vm, enum vmm_io_space space,
+                   const struct vmm_io_dev *dev, int *slot)
+{
+    struct vmm_io_dev *tbl, d = *dev;
+    int *n, max, r;
+
+    io_table(vm, space, &tbl, &n, &max);
+    d.base = 0;
+    d.len  = 0;
+    r = io_register(tbl, n, max, &d, space == VMM_IO_PIO ? "PIO" : "MMIO");
+    if (r == VMM_OK)
+        *slot = *n - 1;
+    return r;
+}
+
+void vmm_io_move(struct vmm_vm *vm, enum vmm_io_space space, int slot,
+                 uint64_t base, uint64_t len)
+{
+    const char *kind = space == VMM_IO_PIO ? "PIO" : "MMIO";
+    struct vmm_io_dev *tbl, *e;
+    int *n, max, i;
+
+    io_table(vm, space, &tbl, &n, &max);
+    e = &tbl[slot];
+    e->base = len ? base : 0;
+    e->len  = len;
+    if (!len) {
+        vmm_dbg("%s %s: no longer decoded", kind, e->name);
+        return;
+    }
+    vmm_dbg("%s %s: decoded at [0x%llx, 0x%llx)", kind, e->name,
+            (unsigned long long)base, (unsigned long long)(base + len));
+    for (i = 0; i < *n; i++) {
+        if (i == slot || !tbl[i].len)
+            continue;
+        if (base < tbl[i].base + tbl[i].len && tbl[i].base < base + len)
+            vmm_warn("%s %s at [0x%llx, 0x%llx) overlaps %s; %s wins",
+                     kind, e->name, (unsigned long long)base,
+                     (unsigned long long)(base + len), tbl[i].name,
+                     i < slot ? tbl[i].name : e->name);
+    }
 }
 
 const struct vmm_io_dev *vmm_lookup_pio(struct vmm_vm *vm, uint64_t port)

@@ -14,8 +14,9 @@
 - `--exit-stats FILE` 在 VM 停下后按 exit 类型、按设备报告 exit 次数，并列出 KVM 自己的计数器
 - 三种退出方式：`poweroff -f`（ACPI S5）、panic 后重启（i8042 reset）、`Ctrl-A x`
 - guest RAM 可以超过 3 GiB：低段 `[0, 3 GiB)` 加 4 GiB 以上的高段，中间 1 GiB 留给 MMIO
+- PCI 总线：0xCF8/0xCFC 配置访问、host bridge、BAR 预分配与按 COMMAND/BAR 改写实时路由，DSDT 里的 PCI0 给出地址窗口和 `_PRT`，MP table 带同样的 INTx 路由；`--pci-test` 挂一个演示用的测试设备
 
-限制：还没有 PCI 和块设备、网络设备。
+限制：还没有块设备、网络设备；PCI 只有总线 0，没有 MSI/MSI-X，也没有 PCIe 扩展配置空间。
 
 ## 构建与运行
 

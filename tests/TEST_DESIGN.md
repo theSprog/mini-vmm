@@ -168,11 +168,14 @@
 | E5 | `elf_loader.c` 的截断检查被 64 位回绕绕过，导致映射区之前的越界读 | **FAIL → 已修复** — 修复前 290271 runs 内触发；修复后 7074730 runs / 301s 零发现 | 修复前 `build/fuzz/logs/elf_noalign.log`；修复后 `elf_noalign_postfix.log` |
 | E6 | `elf_loader.c` 以 `Elf64_Phdr*` 解引用文件里任意偏移，未对齐即未定义行为 | **FAIL → 已修复** — 修复前 9313 runs / 30s 内触发；修复后 6909083 runs / 301s 零发现 | 修复前 `elf_noalign.log`；修复后 `elf_strict_postfix.log` |
 | E7 | 固件表生成过程无未定义行为 | **FAIL → 已修复** — `acpi.c:275` 未对齐 `uint64_t` 存储；修复后严格版退出码 0 | `build/tests/boot_tables_test` |
-| E8 | 生成的 ACPI 表结构本身合法 | **PASS** — iasl 反汇编 APIC/DSDT/FACP/XSDT，无 Incorrect/Invalid/Error/Warning | `make test tables`，5/5 |
+| E8 | 生成的 ACPI 表结构本身合法，DSDT 的 AML 与 ACPICA 的理解一致 | **PASS** — iasl 反汇编 APIC/DSDT/FACP/XSDT，无 Incorrect/Invalid/Error/Warning；DSDT 反汇编后再编译，AML 逐字节相同 | `make test tables`，6/6 |
 | E9 | E5/E6 的最小复现输入在修复后被干净拒绝（RED→GREEN） | **PASS** — 两个样本 × 两个 target，全部退出码 0 无 sanitizer 报告；已沉淀为 `tests/fuzz/regress/*.bin`，每次 `make test unit` 重放 | `make test unit` → regress 段 |
 | E10 | 单元测试有能力报警（negative control） | **PASS** — 17 个接口层 mutant 全部被抓住，且都是因断言失败而红 | `make test negctl`，17/17 |
 | E11 | negctl 反过来查出了 `mem_test` 自身的覆盖漏洞 | **已修复** — 长度表缺“低 32 位小、高 32 位非零”一类，`len-truncated-32` 最初逃逸；补齐取值后 15/15 | `mem_test.c` 的 `g_lens` |
 | E13 | `KVM_GET_STATS_FD` 文件按 header 的 offset 解析，块乱序、块间留空、desc 不对齐都能读对，七种损坏文件都被拒绝且无越界 | **PASS** — 52 checks / 5 cases / 0 failed；按位置猜 desc 块、按位置猜数据块、强转不对齐指针、不限数据块长度四种错误实现各自变红 | `make test unit` → `kvm_stats_test` |
+| E14 | PCI conf1 与 BAR：只认 dword 对齐的 0xCF8 写、保留位非零当 master abort、BAR 只读位按大小屏蔽、IO BAR 高 16 位为 0、COMMAND 关 decode 后撤销路由、改写 BAR 后路由跟着走 | **PASS** — 128 checks / 11 cases / 0 failed；BAR 全可写、忽略 COMMAND、保留位别名、字节写地址口、32 位 IO BAR、窗口终点越界六种错误实现各自变红 | `make test unit` → `pci_bus_test` |
+| E15 | MP table 的 PCI 中断项与 DSDT `_PRT` 一致；AML PkgLength 在 1/2/3/4 字节编码的切换点上正确 | **PASS** — `boot_tables_test` 890 checks、`aml_test` 48 checks / 4 cases；MP 总线号错、GSI 偏一、INTx pin 偏一，以及 PkgLength 边界差一、不含自身长度、高位移位错共六种错误实现各自变红 | `make test unit` |
+| E16 | Linux guest 用上 PCI 总线：type 1 配置访问、`_CRS` 窗口原样接收不重新分配、BAR 读写路由、ACPI 与 `acpi=off` 都分到 GSI 17 | **PASS** — `pci-bus` 7/7；HEAD 二进制 7/7 变红；`_CRS` 窗口缩小、忽略 COMMAND、MP GSI 偏一三种错误实现分别只让对应用例变红 | `make test pci-bus` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令

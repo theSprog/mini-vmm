@@ -24,6 +24,7 @@
 #include "boot/acpi.h"
 #include "boot/mptable.h"
 #include "boot/zeropage.h"
+#include "pci/pci.h"
 
 /* ------------------------------------------------------------------ */
 /* 桩：用平坦缓冲区代替 guest 内存，其余接口什么也不做                  */
@@ -102,7 +103,32 @@ struct platform {
     int      ioapic_id;
     int      nr_cpus;
     int      apic_ids[256];
+    /* PCI INTx：MP table 的 PCI 中断项；DSDT 的 AML 留给一致性检查去搜 */
+    int      nr_pci_irqs;
+    struct { uint8_t slot, pin, gsi; } pci_irqs[PCI_MAX_SLOTS];
+    const uint8_t *dsdt_aml;
+    uint32_t dsdt_aml_len;
 };
+
+/* 假的 PCI 总线：MP table 只看 devs[] 和每个设备的 intx_pin。
+ * slot 0 没有 INTx（host bridge），slot 1 用 INTA，slot 5 用 INTB，
+ * 覆盖 pin 不是 A、slot 不连续的情况。 */
+static struct pci_device g_pci_devs[3];
+static struct pci_bus g_pci;
+
+static void fake_pci_setup(void)
+{
+    static const struct { int slot, pin; } layout[] = { {0, 0}, {1, 1}, {5, 2} };
+    unsigned i;
+
+    memset(&g_pci, 0, sizeof(g_pci));
+    for (i = 0; i < sizeof(layout) / sizeof(layout[0]); i++) {
+        g_pci_devs[i].slot     = layout[i].slot;
+        g_pci_devs[i].intx_pin = (uint8_t)layout[i].pin;
+        g_pci.devs[layout[i].slot] = &g_pci_devs[i];
+    }
+}
+#define FAKE_PCI_IRQS 2
 
 /* ------------------------------------------------------------------ */
 /* MP 表                                                              */
@@ -115,6 +141,7 @@ static void check_mptable(int nr_cpus, struct platform *pf)
     uint32_t physptr;
     uint16_t len, count, n = 0;
     int nr_bus = 0, nr_intsrc = 0, nr_lint = 0, bsp = -1;
+    int isa_bus = -1, pci_bus = -1;
 
     g_ctx = "mptable";
     memset(pf, 0, sizeof(*pf));
@@ -160,7 +187,12 @@ static void check_mptable(int nr_cpus, struct platform *pf)
             p += 20;
             break;
         case 1:                         /* bus */
-            CHECK(!memcmp(p + 2, "ISA   ", 6), "bus type is not ISA");
+            if (!memcmp(p + 2, "ISA   ", 6))
+                isa_bus = p[1];
+            else if (!memcmp(p + 2, "PCI   ", 6))
+                pci_bus = p[1];
+            else
+                CHECK(0, "bus %u has type %.6s", p[1], (const char *)p + 2);
             nr_bus++;
             p += 8;
             break;
@@ -171,11 +203,24 @@ static void check_mptable(int nr_cpus, struct platform *pf)
             p += 8;
             break;
         case 3:                         /* I/O interrupt */
-            CHECK(p[1] == 0 && p[4] == 0, "intsrc %d: type/bus", nr_intsrc);
-            /* 恒等映射：ISA IRQ i -> IOAPIC pin i，和 KVM 默认 GSI 路由一致 */
-            CHECK(p[5] == p[7], "intsrc: ISA IRQ %u -> pin %u (KVM routes GSI "
-                  "identically)", p[5], p[7]);
+            /* bus 项都排在 intsrc 前面（规范要求的顺序），这里已知 bus id */
+            CHECK(p[1] == 0, "intsrc %d: irqtype %u", nr_intsrc, p[1]);
             CHECK(p[6] == pf->ioapic_id, "intsrc: dst ioapic %u", p[6]);
+            if (p[4] == isa_bus) {
+                /* 恒等映射：ISA IRQ i -> IOAPIC pin i，和 KVM 默认 GSI 路由一致 */
+                CHECK(p[5] == p[7], "intsrc: ISA IRQ %u -> pin %u (KVM routes "
+                      "GSI identically)", p[5], p[7]);
+            } else if (p[4] == pci_bus && pf->nr_pci_irqs < PCI_MAX_SLOTS) {
+                /* srcbusirq：bit 6:2 slot，bit 1:0 pin（0 = INTA） */
+                pf->pci_irqs[pf->nr_pci_irqs].slot = (p[5] >> 2) & 0x1f;
+                pf->pci_irqs[pf->nr_pci_irqs].pin  = p[5] & 3;
+                pf->pci_irqs[pf->nr_pci_irqs].gsi  = p[7];
+                pf->nr_pci_irqs++;
+                /* ISA 占 IOAPIC 0-15 脚，PCI 不能和它们共线 */
+                CHECK(p[7] >= 16 && p[7] < 24, "PCI intsrc -> IOAPIC pin %u", p[7]);
+            } else {
+                CHECK(0, "intsrc %d: unknown source bus %u", nr_intsrc, p[4]);
+            }
             nr_intsrc++;
             p += 8;
             break;
@@ -196,8 +241,14 @@ static void check_mptable(int nr_cpus, struct platform *pf)
     CHECK(n == count, "entry_count = %u, parsed %u", count, n);
     CHECK(pf->nr_cpus == nr_cpus, "%d processors, want %d", pf->nr_cpus, nr_cpus);
     CHECK(bsp == 0, "BP flag on APIC ID %d, want 0", bsp);
-    CHECK(nr_bus == 1 && nr_intsrc == 16 && nr_lint == 2,
+    CHECK(nr_bus == 2 && nr_intsrc == 16 + FAKE_PCI_IRQS && nr_lint == 2,
           "bus %d intsrc %d lint %d", nr_bus, nr_intsrc, nr_lint);
+    /* Linux 拿 PCI 总线号直接当 MP bus id 去查（IO_APIC_get_PCI_irq_vector） */
+    CHECK(pci_bus == 0, "PCI bus has MP bus id %d, must equal PCI bus number 0",
+          pci_bus);
+    CHECK(isa_bus >= 0 && isa_bus != pci_bus, "ISA bus id %d", isa_bus);
+    CHECK(pf->nr_pci_irqs == FAKE_PCI_IRQS, "%d PCI intsrc entries, want %d "
+          "(one per device with INTx)", pf->nr_pci_irqs, FAKE_PCI_IRQS);
 }
 
 /* ------------------------------------------------------------------ */
@@ -326,6 +377,8 @@ static void check_acpi(uint64_t rsdp_gpa, int nr_cpus, struct platform *pf)
         uint32_t aml_len = rd32(dsdt + 4) - 36;
         const uint8_t *s5 = memmem(aml, aml_len, "\x08_S5_\x12", 6);
 
+        pf->dsdt_aml     = aml;
+        pf->dsdt_aml_len = aml_len;
         CHECK(s5 != NULL, "DSDT has no Name(_S5, Package(...))");
         if (s5) {
             /* [0]=08 NameOp [1..4]="_S5_" [5]=12 PackageOp [6]=PkgLength
@@ -389,6 +442,75 @@ static void check_acpi(uint64_t rsdp_gpa, int nr_cpus, struct platform *pf)
 /* 两张表之间、表与 KVM 之间                                           */
 /* ------------------------------------------------------------------ */
 
+/* AML 整数常量的编码（ACPI 6.4 第 20.2.3 节），这里只需要 0..255 */
+static size_t enc_small_int(uint8_t *out, unsigned v)
+{
+    if (v <= 1) {
+        out[0] = (uint8_t)v;            /* ZeroOp / OneOp */
+        return 1;
+    }
+    out[0] = 0x0a;                      /* BytePrefix */
+    out[1] = (uint8_t)v;
+    return 2;
+}
+
+/* MP table 和 DSDT 描述的 PCI 中断接线必须一致：guest 开不开 ACPI，同一个
+ * 设备都应该拿到同一个 GSI。对 MP table 里的每一项，在 DSDT 里找
+ *   Package (4) { 0xSSSSFFFF, pin, Zero, gsi }
+ * 的编码。另外 host bridge 必须以 PNP0A03 出现，_PRT 要列满 32 × 4 项。 */
+static void check_pci_routing(const struct platform *mp,
+                              const struct platform *acpi)
+{
+    static const uint8_t hid[] = { 0x08, '_', 'H', 'I', 'D', 0x0c,
+                                   0x41, 0xd0, 0x0a, 0x03 };  /* EisaId("PNP0A03") */
+    const uint8_t *prt;
+    int i;
+
+    g_ctx = "pci routing";
+    if (!acpi->dsdt_aml) {
+        CHECK(0, "no DSDT to compare against");
+        return;
+    }
+    CHECK(memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, hid, sizeof(hid)) != NULL,
+          "DSDT has no Name(_HID, EisaId(\"PNP0A03\"))");
+
+    /* 08 "_PRT" 12 <PkgLength 2 字节> <NumElements> */
+    prt = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, "\x08_PRT\x12", 6);
+    CHECK(prt != NULL, "DSDT has no Name(_PRT, Package(...))");
+    if (prt)
+        CHECK((prt[6] >> 6) == 1 && prt[8] == PCI_MAX_SLOTS * 4,
+              "_PRT has %u entries, want %d (every slot, INTA..INTD)",
+              prt[8], PCI_MAX_SLOTS * 4);
+
+    for (i = 0; i < mp->nr_pci_irqs; i++) {
+        uint8_t pkg[16];
+        size_t n = 0;
+        uint32_t addr = (uint32_t)mp->pci_irqs[i].slot << 16 | 0xFFFF;
+
+        pkg[n++] = 0x12;                /* PackageOp */
+        n++;                            /* PkgLength，最后填 */
+        pkg[n++] = 4;                   /* NumElements */
+        /* slot 0 的地址 0x0000FFFF 用 WordPrefix 就放得下 */
+        if (addr <= 0xFFFF) {
+            pkg[n++] = 0x0b;            /* WordPrefix */
+            memcpy(pkg + n, &addr, 2);
+            n += 2;
+        } else {
+            pkg[n++] = 0x0c;            /* DWordPrefix */
+            memcpy(pkg + n, &addr, 4);
+            n += 4;
+        }
+        n += enc_small_int(pkg + n, mp->pci_irqs[i].pin);
+        pkg[n++] = 0x00;                /* Source = Zero：直接接在 GSI 上 */
+        n += enc_small_int(pkg + n, mp->pci_irqs[i].gsi);
+        pkg[1] = (uint8_t)(n - 1);
+        CHECK(memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, pkg, n) != NULL,
+              "MP table routes slot %u INT%c to GSI %u, but _PRT has no such "
+              "entry", mp->pci_irqs[i].slot, 'A' + mp->pci_irqs[i].pin,
+              mp->pci_irqs[i].gsi);
+    }
+}
+
 static void check_consistency(const struct platform *mp,
                               const struct platform *acpi, int nr_cpus)
 {
@@ -412,6 +534,7 @@ static void check_consistency(const struct platform *mp,
         CHECK(acpi->ioapic_id != acpi->apic_ids[i],
               "IOAPIC ID %d collides with a LAPIC ID", acpi->ioapic_id);
     }
+    check_pci_routing(mp, acpi);
 }
 
 /* ------------------------------------------------------------------ */
@@ -528,7 +651,7 @@ static int build_all(struct vmm_vm *vm, int nr_cpus, const char *cmdline,
 
     memset(g_ram, 0, RAM_SIZE);
     memset(&zc, 0, sizeof(zc));
-    if (mptable_setup(vm, nr_cpus) != VMM_OK)
+    if (mptable_setup(vm, nr_cpus, &g_pci) != VMM_OK)
         return -1;
     if (acpi_setup(vm, nr_cpus, rsdp) != VMM_OK)
         return -1;
@@ -690,6 +813,7 @@ int main(int argc, char **argv)
     }
 
     vm.vm_fd = -1;
+    fake_pci_setup();
     if (mem_init(&vm, RAM_SIZE) != VMM_OK) {
         fprintf(stderr, "mem_init failed\n");
         return 2;
