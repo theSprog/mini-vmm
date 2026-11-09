@@ -63,6 +63,7 @@ need_build() {
 #   expect_rc 0
 #   expect_has "某段文本"
 #   expect_not "不该出现的文本"
+#   expect_re '^  IO +3 +3$'
 #   expect_any "候选 1" "候选 2"
 #   end_case
 
@@ -97,6 +98,15 @@ expect_has() {
 expect_not() {
     if printf '%s' "$CUR_OUT" | grep -qF -- "$1"; then
         printf '   %sFAIL%s 输出里不该出现: %s\n' "$C_RED" "$C_RST" "$1"
+        CUR_BAD=1
+    fi
+}
+
+# 输出里有一行匹配扩展正则。对齐成表格的输出（列宽随数字变化）用它，
+# 免得把空格个数写死在断言里。
+expect_re() {
+    if ! printf '%s' "$CUR_OUT" | grep -qE -- "$1"; then
+        printf '   %sFAIL%s 没有一行匹配: %s\n' "$C_RED" "$C_RST" "$1"
         CUR_BAD=1
     fi
 }

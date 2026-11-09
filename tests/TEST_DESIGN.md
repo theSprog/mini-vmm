@@ -162,7 +162,7 @@
 | 证据编号 | 确认的行为 | 实际结果 | 证据位置 |
 |---|---|---|---|
 | E1 | `gpa_to_hva` 与独立 128 位模型在边界网格、整数回绕、跨 slot、20 万轮随机输入上逐点一致 | **PASS** — 201692 checks / 10 cases / 0 failed；seed `0x2545f4914f6cdd1d` | `make test unit` → `mem_test` |
-| E2 | IO 总线的注册重叠检测、表满、查找边界、offset 计算、串操作步进、`VMM_ERR_EXIT` 中止、未注册端口读回 0xFF | **PASS** — 1139 checks / 10 cases / 0 failed | `make test unit` → `io_bus_test` |
+| E2 | IO 总线的注册重叠检测、表满、查找边界、offset 计算、串操作步进、`VMM_ERR_EXIT` 中止、未注册端口读回 0xFF，以及 exit 统计按 exit_reason、按设备、按方向计数（串操作一次 exit 只计一次） | **PASS** — 1161 checks / 11 cases / 0 failed | `make test unit` → `io_bus_test` |
 | E3 | 跨越设备末端的访问当前不做校验：`off=7, size=4` 照常交给回调（`dev->len=8`） | **CHARACTERIZED** — 记录现状，语义未定，见 O1 | `io_bus_test` 最后一个用例 |
 | E4 | `bzimage_load()` 面对任意畸形文件无内存错误、无未定义行为 | **PASS** — 2346815 runs / 301s，0 发现 | `build/fuzz/logs/bz_strict.log` |
 | E5 | `elf_loader.c` 的截断检查被 64 位回绕绕过，导致映射区之前的越界读 | **FAIL → 已修复** — 修复前 290271 runs 内触发；修复后 7074730 runs / 301s 零发现 | 修复前 `build/fuzz/logs/elf_noalign.log`；修复后 `elf_noalign_postfix.log` |
@@ -172,12 +172,13 @@
 | E9 | E5/E6 的最小复现输入在修复后被干净拒绝（RED→GREEN） | **PASS** — 两个样本 × 两个 target，全部退出码 0 无 sanitizer 报告；已沉淀为 `tests/fuzz/regress/*.bin`，每次 `make test unit` 重放 | `make test unit` → regress 段 |
 | E10 | 单元测试有能力报警（negative control） | **PASS** — 17 个接口层 mutant 全部被抓住，且都是因断言失败而红 | `make test negctl`，17/17 |
 | E11 | negctl 反过来查出了 `mem_test` 自身的覆盖漏洞 | **已修复** — 长度表缺“低 32 位小、高 32 位非零”一类，`len-truncated-32` 最初逃逸；补齐取值后 15/15 | `mem_test.c` 的 `g_lens` |
+| E13 | `KVM_GET_STATS_FD` 文件按 header 的 offset 解析，块乱序、块间留空、desc 不对齐都能读对，七种损坏文件都被拒绝且无越界 | **PASS** — 52 checks / 5 cases / 0 failed；按位置猜 desc 块、按位置猜数据块、强转不对齐指针、不限数据块长度四种错误实现各自变红 | `make test unit` → `kvm_stats_test` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令
 
 ```sh
-make test unit                     # E1 E2 E3 E7
+make test unit                     # E1 E2 E3 E7 E13
 make test tables                   # E8
 FUZZ_TIME=300 make test fuzz       # E4 E5 E6
 ./build/fuzz/elf_loader_fuzz         build/fuzz/artifacts/elf-crash-50a488df453d94bf401917e701686c4e8ae6bed5

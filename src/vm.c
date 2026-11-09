@@ -101,6 +101,12 @@ const char *kvm_exit_reason_str(uint32_t r)
     case KVM_EXIT_INTERNAL_ERROR: return "INTERNAL_ERROR";
     case KVM_EXIT_SYSTEM_EVENT:   return "SYSTEM_EVENT";
     case KVM_EXIT_IOAPIC_EOI:     return "IOAPIC_EOI";
+    case KVM_EXIT_HYPERV:         return "HYPERV";
+    case KVM_EXIT_X86_RDMSR:      return "X86_RDMSR";
+    case KVM_EXIT_X86_WRMSR:      return "X86_WRMSR";
+    case KVM_EXIT_DIRTY_RING_FULL:return "DIRTY_RING_FULL";
+    case KVM_EXIT_AP_RESET_HOLD:  return "AP_RESET_HOLD";
+    case KVM_EXIT_X86_BUS_LOCK:   return "X86_BUS_LOCK";
     default:                      return "?";
     }
 }
@@ -147,10 +153,20 @@ void vcpu_dump_state(struct vmm_vcpu *vcpu)
             (unsigned long long)s.gdt.base, s.gdt.limit,
             (unsigned long long)s.idt.base, s.idt.limit);
     fprintf(stderr, "  exits=%llu (io=%llu mmio=%llu hlt=%llu)\n",
-            (unsigned long long)vcpu->n_exits,
-            (unsigned long long)vcpu->n_exit_io,
-            (unsigned long long)vcpu->n_exit_mmio,
-            (unsigned long long)vcpu->n_exit_hlt);
+            (unsigned long long)vcpu_exit_total(vcpu),
+            (unsigned long long)vcpu->exits[KVM_EXIT_IO],
+            (unsigned long long)vcpu->exits[KVM_EXIT_MMIO],
+            (unsigned long long)vcpu->exits[KVM_EXIT_HLT]);
+}
+
+uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu)
+{
+    uint64_t sum = 0;
+    int i;
+
+    for (i = 0; i < VMM_EXIT_REASON_SLOTS; i++)
+        sum += vcpu->exits[i];
+    return sum;
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,6 +249,15 @@ static uint64_t pio_trace_rip(struct vmm_vcpu *vcpu)
     return regs.rip;
 }
 
+/* 调用方持有 io_lock，见 struct vmm_io_stats */
+static void io_stats_count(struct vmm_io_stats *st, bool is_write)
+{
+    if (is_write)
+        st->writes++;
+    else
+        st->reads++;
+}
+
 int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
                         uint32_t size, uint32_t count, uint8_t *data)
 {
@@ -241,6 +266,8 @@ int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
     uint32_t i;
 
     dev = vmm_lookup_pio(vm, port);
+    io_stats_count(dev ? &vm->pio_stats[dev - vm->pio_devs]
+                       : &vm->pio_unhandled, is_write);
 
     if (!dev) {
         /* 未注册端口：写丢弃，读返回全 1（真机上空闲总线的行为）。
@@ -281,6 +308,8 @@ int io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
     uint64_t off;
 
     dev = vmm_lookup_mmio(vcpu->vm, addr);
+    io_stats_count(dev ? &vcpu->vm->mmio_stats[dev - vcpu->vm->mmio_devs]
+                       : &vcpu->vm->mmio_unhandled, is_write);
     if (!dev) {
         if (!is_write)
             memset(data, 0xFF, len);
@@ -361,13 +390,13 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
 {
     struct kvm_run *run = vcpu->run;
 
-    vcpu->n_exits++;
+    vcpu->exits[run->exit_reason < VMM_EXIT_REASON_SLOTS - 1
+                ? run->exit_reason : VMM_EXIT_REASON_SLOTS - 1]++;
 
     switch (run->exit_reason) {
     case KVM_EXIT_IO: {
         int r;
 
-        vcpu->n_exit_io++;
         pthread_mutex_lock(&vcpu->vm->io_lock);
         r = handle_io(vcpu);
         pthread_mutex_unlock(&vcpu->vm->io_lock);
@@ -377,7 +406,6 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
     case KVM_EXIT_MMIO: {
         int r;
 
-        vcpu->n_exit_mmio++;
         pthread_mutex_lock(&vcpu->vm->io_lock);
         r = handle_mmio(vcpu);
         pthread_mutex_unlock(&vcpu->vm->io_lock);
@@ -385,7 +413,6 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
     }
 
     case KVM_EXIT_HLT:
-        vcpu->n_exit_hlt++;
         vmm_info("vCPU %d: HLT, stopping", vcpu->id);
         return VMM_ERR_EXIT;
 

@@ -20,6 +20,8 @@
 #include "console.h"
 #include "smp.h"
 #include "io/event_loop.h"
+#include "exit_stats.h"
+#include <time.h>
 #include <unistd.h>
 
 /* 长模式 payload 的默认载入地址。
@@ -119,6 +121,9 @@ void vmm_usage(const char *prog)
 "  --trace-pio FILE       Log every PIO access that exits to user space,\n"
 "                           one line per access; rip= is appended for ports\n"
 "                           that have no device behind them\n"
+"  --exit-stats FILE      When the guest stops, write VM exit counts to FILE\n"
+"                           ('-' = stderr): user-space exits per reason and\n"
+"                           per device, plus KVM's own counters\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -135,9 +140,11 @@ void vmm_usage(const char *prog)
 "  %s --mode linux --mem 512M --initrd initramfs.cpio.gz vmlinux\n"
 "  %s --mode linux --mem 512M --initrd initramfs.cpio.gz bzImage\n"
 "  # SMP\n"
-"  %s --mode linux --smp 4 --mem 512M --initrd initramfs.cpio.gz vmlinux\n",
+"  %s --mode linux --smp 4 --mem 512M --initrd initramfs.cpio.gz vmlinux\n"
+"  # which device caused the VM exits\n"
+"  %s --mode long64 --exit-stats - build/serial64.bin\n",
             prog, (unsigned long long)PAYLOAD_LONG_GPA, VMM_MAX_VCPUS,
-            prog, prog, prog, prog, prog, prog);
+            prog, prog, prog, prog, prog, prog, prog);
 }
 
 static int parse_size(const char *s, uint64_t *out)
@@ -260,6 +267,9 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         } else if (!strcmp(a, "--trace-pio")) {
             NEED_ARG();
             cfg->trace_pio_path = argv[i];
+        } else if (!strcmp(a, "--exit-stats")) {
+            NEED_ARG();
+            cfg->exit_stats_path = argv[i];
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)
@@ -467,6 +477,8 @@ int main(int argc, char **argv)
     struct vmm_io_dev dev;
     static struct serial8250 com1;
     static struct event_loop loop;
+    FILE *stats_out = NULL;
+    struct timespec t0, t1;
     size_t payload_len = 0;
     int r;
 
@@ -479,9 +491,21 @@ int main(int argc, char **argv)
         return 1;
     vmm_log_level = cfg.log_level;
 
+    /* 统计文件在启动前就打开：路径写错要在 guest 跑之前报出来，
+     * 而不是跑完一整次之后才发现结果没处写 */
+    if (cfg.exit_stats_path) {
+        stats_out = strcmp(cfg.exit_stats_path, "-")
+                  ? fopen(cfg.exit_stats_path, "w") : stderr;
+        if (!stats_out) {
+            vmm_err("--exit-stats %s: %s", cfg.exit_stats_path,
+                    strerror(errno));
+            return 1;
+        }
+    }
+
     r = vm_create(&vm, &cfg);
     if (r != VMM_OK)
-        return 1;
+        goto close_stats;
 
     /* 后端 fd 在 guest 启动前注册（console_start 等），evl_start 放在
      * vm_run 之前，这样注册阶段处理器表只有主线程在写 */
@@ -572,7 +596,9 @@ run:
     if (r != VMM_OK)
         goto out;
     vmm_info("--- entering guest ---");
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     r = vm_run(&vm);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
     /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
     evl_stop(&loop);
     if (cfg.mode == VMM_BOOT_LINUX)
@@ -587,6 +613,12 @@ run:
             vcpu_dump_state(&vm.vcpus[i]);
     }
 
+    /* 出错停下的那一次同样要输出：exit 落在哪里正是排错线索 */
+    if (stats_out)
+        exit_stats_report(stats_out, &vm,
+                          (double)(t1.tv_sec - t0.tv_sec) +
+                          (double)(t1.tv_nsec - t0.tv_nsec) / 1e9);
+
     if (cfg.dump_on_exit) {
         fprintf(stderr, "guest memory at GPA 0x%llx, %zu bytes:\n",
                 (unsigned long long)cfg.dump_gpa, cfg.dump_len);
@@ -596,5 +628,10 @@ run:
 out:
     evl_destroy(&loop);
     vm_destroy(&vm);
+close_stats:
+    if (stats_out && stats_out != stderr && fclose(stats_out) != 0) {
+        vmm_err("--exit-stats %s: %s", cfg.exit_stats_path, strerror(errno));
+        return 1;
+    }
     return (r == VMM_OK) ? vm.exit_code : 1;
 }

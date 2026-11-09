@@ -41,14 +41,14 @@ suite_script() {
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop) echo "e2e/$1.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop) return 0 ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -67,11 +67,12 @@ suite_desc() {
     legacy-devices) echo "传统设备探测、PIO trace 结构、退出路径" ;;
     guest-memory)   echo "3GiB 以上 RAM：memslot 拆分、E820、MMIO hole" ;;
     event-loop)     echo "epoll I/O 线程：线程布局、串口输入、stdin EOF 与不可 poll" ;;
+    exit-stats)     echo "按 exit_reason、按设备的 exit 计数，KVM 二进制统计" ;;
     esac
 }
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
-E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop"
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats"
 ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
 DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
 

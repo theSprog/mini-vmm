@@ -198,6 +198,13 @@ int kvm_get_mp_state(int vcpu_fd, uint32_t *state)
     return VMM_OK;
 }
 
+int kvm_get_stats_fd(int fd)
+{
+    int r = KVM_IOCTL(fd, KVM_GET_STATS_FD, 0);
+
+    return r < 0 ? VMM_ERR_SYS : r;
+}
+
 const char *kvm_mp_state_str(uint32_t state)
 {
     switch (state) {

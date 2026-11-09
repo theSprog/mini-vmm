@@ -36,6 +36,8 @@ SRCS := \
 	src/devices/rtc.c \
 	src/console.c \
 	src/io/event_loop.c \
+	src/kvm_stats.c \
+	src/exit_stats.c \
 	src/smp.c
 
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
@@ -131,7 +133,7 @@ clean:
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
-               event-loop
+               event-loop exit-stats
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -160,7 +162,8 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/mem_test \
              $(BUILD)/tests/io_bus_test \
              $(BUILD)/tests/serial8250_test \
-             $(BUILD)/tests/event_loop_test
+             $(BUILD)/tests/event_loop_test \
+             $(BUILD)/tests/kvm_stats_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
 # 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
@@ -212,6 +215,10 @@ $(BUILD)/tests/event_loop_test: tests/unit/event_loop_test.c \
                                 src/io/event_loop.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
+
+$(BUILD)/tests/kvm_stats_test: tests/unit/kvm_stats_test.c src/kvm_stats.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/elf_loader_fuzz: tests/fuzz/elf_loader_fuzz.c \
                                src/boot/elf_loader.c

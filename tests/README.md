@@ -33,7 +33,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -43,7 +43,8 @@ tests/
 │   ├── io_bus_mutants.c    故意写错的 dispatch，共 8 份
 │   ├── boot_tables_test.c  MP/ACPI/boot_params 字段检查
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
-│   └── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
+│   ├── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
+│   └── kvm_stats_test.c    KVM_GET_STATS_FD 文件解析：乱序布局、不对齐、损坏文件
 └── fuzz/           libFuzzer target
     ├── fuzz_common.h   公共桩：guest RAM、memfd 输入
     ├── elf_loader_fuzz.c
@@ -68,8 +69,9 @@ tests/
 | `legacy-devices` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
 | `guest-memory` | 是 | 布局用例否，guest 用例是 | VMM 的 memslot/E820 日志 + guest 的 dmesg、`/proc/zoneinfo` |
 | `event-loop` | 是 | 是 | host 的 `/proc/<pid>/task/*/{comm,wchan}` + guest shell 回显 + VMM 日志 |
+| `exit-stats` | 是 | payload 用例否，Linux 用例是 | 从 payload 源码逐条数出的 exit 次数 + KVM 的 `io_exits`/`exits` + 开关统计时 stdout 逐字节相同 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
 没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
 不存在时会先调 `tools/build_initramfs.sh`。
 

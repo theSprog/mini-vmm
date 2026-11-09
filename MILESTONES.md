@@ -22,7 +22,7 @@
 |---|---|
 | 0 | kvm-basics ✓ |
 | 1 | linux-boot ✓ |
-| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats · gdbstub |
+| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
 | 3 | pci-bus |
 | 4 | emu-net · emu-blk |
 | 5 | pci-msi |
@@ -99,8 +99,8 @@
 
 依赖: linux-boot
 
-- [ ] VMM 按设备、按 exit 类型（PIO / MMIO / HLT 等）统计次数，退出时输出，也可以写到指定文件
-- [ ] 统计本身对 guest 无副作用，打开和关闭统计时 guest 行为一致
+- [x] VMM 按设备、按 exit 类型（PIO / MMIO / HLT 等）统计次数，退出时输出，也可以写到指定文件
+- [x] 统计本身对 guest 无副作用，打开和关闭统计时 guest 行为一致
 
 后面全模拟设备、VirtIO、vhost 之间的性能对比都靠这个手段。
 

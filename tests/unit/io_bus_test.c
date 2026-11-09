@@ -557,6 +557,72 @@ static void case_mmio(void)
                   "未注册 MMIO 读的第 %d 字节必须是 0xFF", i);
 }
 
+/* --exit-stats 的计数（include/vmm.h 的 struct vmm_io_stats 和
+ * vcpu->exits[]）。走 vcpu_handle_exit()，也就是真实 exit 路径的入口，
+ * 判据由下面摆出的 exit 序列直接数出来：
+ *   - 一次 exit 记一次，outsb count=4 也只记一次；
+ *   - 计到命中的那个设备上，按方向分；未注册地址按 PIO/MMIO 单列；
+ *   - exit_reason 超出计数表的值记进最后一格，不越界。 */
+static void case_stats(void)
+{
+    struct vmm_io_dev d;
+    struct kvm_run *run = (struct kvm_run *)g_page;
+    uint8_t *data;
+
+    T_CASE("exit 统计：按 exit_reason、按设备、按方向");
+    vm_reset();
+    d = mkdev("a", 0x3f8, 8, &g_dev_a);
+    vmm_register_pio(&g_vm, &d);
+    d = mkdev("b", 0x60, 1, &g_dev_b);
+    vmm_register_pio(&g_vm, &d);
+    d = mkdev("m", 0xd0000000ULL, 0x200, &g_dev_a);
+    vmm_register_mmio(&g_vm, &d);
+
+    data = io_setup(0x3f8, 1, 1, 4);            /* outsb x4 -> a */
+    memcpy(data, "ABCD", 4);
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "string OUT");
+    io_setup(0x3fd, 0, 1, 1);                   /* IN <- a */
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "IN a");
+    io_setup(0x60, 1, 1, 1);                    /* OUT -> b */
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "OUT b");
+    io_setup(0x87, 0, 1, 1);                    /* IN <- 未注册 */
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "IN unhandled");
+
+    memset(g_page, 0, RUN_PAGES * 4096);
+    run->exit_reason    = KVM_EXIT_MMIO;
+    run->mmio.phys_addr = 0xd0000004ULL;
+    run->mmio.len       = 4;
+    run->mmio.is_write  = 1;
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "MMIO write m");
+    run->mmio.phys_addr = 0xe0000000ULL;
+    run->mmio.is_write  = 0;
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), VMM_OK, "MMIO read unhandled");
+
+    run->exit_reason = KVM_EXIT_HLT;
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), (uint64_t)(int64_t)VMM_ERR_EXIT,
+              "HLT stops the vCPU");
+    run->exit_reason = 1000;                    /* 计数表之外 */
+    CHECK_U64(vcpu_handle_exit(&g_vcpu), (uint64_t)(int64_t)VMM_ERR_GUEST,
+              "unknown reason is a guest error");
+
+    CHECK_U64(g_vm.pio_stats[0].writes, 1, "a: outsb x4 is one exit");
+    CHECK_U64(g_vm.pio_stats[0].reads, 1, "a: one IN");
+    CHECK_U64(g_vm.pio_stats[1].writes, 1, "b: one OUT");
+    CHECK_U64(g_vm.pio_stats[1].reads, 0, "b: no IN");
+    CHECK_U64(g_vm.pio_unhandled.reads, 1, "unhandled PIO read");
+    CHECK_U64(g_vm.pio_unhandled.writes, 0, "no unhandled PIO write");
+    CHECK_U64(g_vm.mmio_stats[0].writes, 1, "m: one MMIO write");
+    CHECK_U64(g_vm.mmio_stats[0].reads, 0, "m: no MMIO read");
+    CHECK_U64(g_vm.mmio_unhandled.reads, 1, "unhandled MMIO read");
+
+    CHECK_U64(g_vcpu.exits[KVM_EXIT_IO], 4, "4 IO exits");
+    CHECK_U64(g_vcpu.exits[KVM_EXIT_MMIO], 2, "2 MMIO exits");
+    CHECK_U64(g_vcpu.exits[KVM_EXIT_HLT], 1, "1 HLT exit");
+    CHECK_U64(g_vcpu.exits[VMM_EXIT_REASON_SLOTS - 1], 1,
+              "out-of-range reason lands in the last slot");
+    CHECK_U64(vcpu_exit_total(&g_vcpu), 8, "total");
+}
+
 /* ------------------------------------------------------------------ */
 /* CHARACTERIZATION：尚未决定的语义，只记录当前行为                     */
 /* ------------------------------------------------------------------ */
@@ -650,6 +716,7 @@ int main(int argc, char **argv)
     case_dispatch_string();
     case_callback_return();
     case_mmio();
+    case_stats();
     case_characterize_overrun();
 
     free(g_page);

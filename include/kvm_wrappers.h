@@ -58,4 +58,9 @@ int  kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value);
 int  kvm_get_mp_state(int vcpu_fd, uint32_t *state);
 const char *kvm_mp_state_str(uint32_t state);
 
+/* KVM_GET_STATS_FD：vm_fd 或 vcpu_fd 上都能调，返回只读的统计 fd，
+ * 格式见 kvm_stats.h。对 vcpu_fd 调用同样要拿 vcpu->mutex，所以要么在
+ * vCPU 自己的线程里调，要么等 vCPU 线程停下之后再调。 */
+int  kvm_get_stats_fd(int fd);
+
 #endif /* KVM_WRAPPERS_H */

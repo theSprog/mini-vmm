@@ -24,6 +24,10 @@
 #define VMM_MAX_PIO_DEVS     16
 #define VMM_MAX_MMIO_DEVS    32
 
+/* 按 exit_reason 计数的格数。<linux/kvm.h> 里 KVM_EXIT_* 目前不到 50 个，
+ * 留出余量；超出的值都记进最后一格，不会越界。 */
+#define VMM_EXIT_REASON_SLOTS 64
+
 /* 默认 guest RAM：128 MiB。
  * 注意：长模式 payload 要往 GPA 0x500000 (5 MiB) 写数据，2 MiB 内存是不够的，
  * 所以 --mem 是命令行可调的，只有实模式 payload 才用 2M。 */
@@ -88,6 +92,15 @@ struct vmm_io_dev {
                  const void *data);
 };
 
+/* 一个设备（或一类未注册地址）引起的用户态 exit 次数，按方向分开。
+ * 一次 KVM_EXIT_IO / KVM_EXIT_MMIO 记一次：ins/outs 一次 exit 里带的
+ * 多次访问只算一次，因为这里要回答的是“exit 的开销花在了哪个设备上”，
+ * 而开销按 exit 计，不按访问计。由 vm->io_lock 保护。 */
+struct vmm_io_stats {
+    uint64_t reads;
+    uint64_t writes;
+};
+
 /* IO 总线分发。handle_io()/handle_mmio() 只是它们在 KVM_EXIT 路径上的
  * 薄封装——从 kvm_run 里取出字段，然后调这里。
  *
@@ -137,6 +150,9 @@ struct vmm_config {
     /* 把每一次陷出到用户态的 PIO 访问写进这个文件（--trace-pio）。
      * 用来回答“驱动到底按什么顺序读写了哪些寄存器”，见 learning-note 卷七。 */
     const char *trace_pio_path;
+
+    /* VM 停下后把 exit 统计写到这里（--exit-stats），"-" 表示 stderr */
+    const char *exit_stats_path;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -159,12 +175,15 @@ struct vmm_vcpu {
     volatile bool   should_stop;
     int             result;     /* vcpu_run_loop 的返回值 */
 
-    /* 统计，方便排错和后面写博客画图 */
-    uint64_t        n_exits;
-    uint64_t        n_exit_io;
-    uint64_t        n_exit_mmio;
-    uint64_t        n_exit_hlt;
+    /* 回到用户态的 exit 按 kvm_run->exit_reason 计数，下标就是
+     * KVM_EXIT_* 的值，最后一格收容超出范围的值。只有本 vCPU 线程写，
+     * VM 停下、线程 join 之后才读（--exit-stats），所以不需要锁。
+     * KVM_RUN 被信号打断（EINTR）不算：那时 exit_reason 无效，见
+     * vcpu_run_loop()。 */
+    uint64_t        exits[VMM_EXIT_REASON_SLOTS];
 };
+
+uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu);
 
 /* ------------------------------------------------------------------ */
 /* VM                                                                  */
@@ -189,6 +208,14 @@ struct vmm_vm {
     int               nr_pio_devs;
     struct vmm_io_dev mmio_devs[VMM_MAX_MMIO_DEVS];
     int               nr_mmio_devs;
+
+    /* 与 pio_devs/mmio_devs 同下标的 exit 计数，以及落在未注册地址上的
+     * exit。和设备表分开放，设备表注册完就只读，查找可以不加锁；
+     * 计数在分发路径上持 io_lock 更新。 */
+    struct vmm_io_stats pio_stats[VMM_MAX_PIO_DEVS];
+    struct vmm_io_stats mmio_stats[VMM_MAX_MMIO_DEVS];
+    struct vmm_io_stats pio_unhandled;
+    struct vmm_io_stats mmio_unhandled;
 
     /* 多个 vCPU 线程会同时陷出到用户态访问设备。设备模型本身不做
      * 并发保护，统一由 exit 分发路径持有这把大锁串行化（和 QEMU 的
