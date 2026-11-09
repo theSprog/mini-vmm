@@ -38,7 +38,7 @@ struct serial8250 {
     uint8_t dll;
     uint8_t dlm;
 
-    /* 接收 FIFO：由 host 输入线程写入，guest 读 RBR 取出 */
+    /* 接收 FIFO：由 I/O 线程（src/console.c 的回调）写入，guest 读 RBR 取出 */
     uint8_t  rx_buf[SERIAL_RX_BUF];
     uint32_t rx_head;
     uint32_t rx_tail;
@@ -54,7 +54,7 @@ struct serial8250 {
     void *irq_opaque;
     int   irq;
 
-    pthread_mutex_t lock;      /* vCPU 线程与 stdin 线程共用 */
+    pthread_mutex_t lock;      /* vCPU 线程与 I/O 线程共用，加锁顺序见 io/event_loop.h */
 };
 
 int  serial8250_init(struct serial8250 *s, int out_fd);

@@ -10,6 +10,7 @@
 - Linux 以 vmlinux（ELF）或 bzImage 直启，经 initramfs 进入 BusyBox shell
 - 中断驱动的 16550A 串口控制台，CMOS RTC、i8042、ACPI PM，驱动探测零超时
 - `--smp N` 多核（上限 32），CPUID 拓扑按 vCPU 改写
+- 后端 fd 由一个 epoll I/O 线程负责，vCPU 线程只跑 `KVM_RUN`；串口输入经它进入 guest
 - 三种退出方式：`poweroff -f`（ACPI S5）、panic 后重启（i8042 reset）、`Ctrl-A x`
 - guest RAM 可以超过 3 GiB：低段 `[0, 3 GiB)` 加 4 GiB 以上的高段，中间 1 GiB 留给 MMIO
 

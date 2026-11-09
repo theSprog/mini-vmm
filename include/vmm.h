@@ -192,7 +192,8 @@ struct vmm_vm {
 
     /* 多个 vCPU 线程会同时陷出到用户态访问设备。设备模型本身不做
      * 并发保护，统一由 exit 分发路径持有这把大锁串行化（和 QEMU 的
-     * BQL 同一个思路）。设备表在 guest 启动前注册完毕，之后只读。 */
+     * BQL 同一个思路）。设备表在 guest 启动前注册完毕，之后只读。
+     * I/O 线程的回调也遵守“先 io_lock、后设备锁”，见 io/event_loop.h。 */
     pthread_mutex_t   io_lock;
 
     struct vmm_config cfg;

@@ -19,6 +19,7 @@
 #include "devices/rtc.h"
 #include "console.h"
 #include "smp.h"
+#include "io/event_loop.h"
 #include <unistd.h>
 
 /* 长模式 payload 的默认载入地址。
@@ -377,7 +378,8 @@ static int check_payload_overlap(const struct boot_mem_layout *l,
 /* Linux 直启：vmlinux + boot_params + initrd，然后按 64 位启动协议
  * 摆好 vCPU。串口中断接到内核态 PIC/IOAPIC 的 GSI 4。 */
 static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
-                      const struct vmm_config *cfg, struct serial8250 *com1)
+                      const struct vmm_config *cfg, struct serial8250 *com1,
+                      struct event_loop *loop)
 {
     struct boot_mem_layout layout;
     struct kernel_image kimg;
@@ -453,7 +455,7 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     if (r != VMM_OK)
         return r;
 
-    return console_start(vm, com1);
+    return console_start(vm, com1, loop);
 }
 
 int main(int argc, char **argv)
@@ -464,6 +466,7 @@ int main(int argc, char **argv)
     struct vmm_vcpu *vcpu;
     struct vmm_io_dev dev;
     static struct serial8250 com1;
+    static struct event_loop loop;
     size_t payload_len = 0;
     int r;
 
@@ -479,6 +482,12 @@ int main(int argc, char **argv)
     r = vm_create(&vm, &cfg);
     if (r != VMM_OK)
         return 1;
+
+    /* 后端 fd 在 guest 启动前注册（console_start 等），evl_start 放在
+     * vm_run 之前，这样注册阶段处理器表只有主线程在写 */
+    r = evl_init(&loop);
+    if (r != VMM_OK)
+        goto out;
 
     vcpu = &vm.vcpus[0];
 
@@ -510,7 +519,7 @@ int main(int argc, char **argv)
         goto out;
 
     if (cfg.mode == VMM_BOOT_LINUX) {
-        r = boot_linux(&vm, vcpu, &cfg, &com1);
+        r = boot_linux(&vm, vcpu, &cfg, &com1, &loop);
         if (r != VMM_OK)
             goto out;
         goto run;
@@ -559,8 +568,13 @@ int main(int argc, char **argv)
     }
 
 run:
+    r = evl_start(&loop);
+    if (r != VMM_OK)
+        goto out;
     vmm_info("--- entering guest ---");
     r = vm_run(&vm);
+    /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
+    evl_stop(&loop);
     if (cfg.mode == VMM_BOOT_LINUX)
         console_stop();
     vmm_info("--- left guest (%s) ---", r == VMM_OK ? "ok" : "error");
@@ -580,6 +594,7 @@ run:
     }
 
 out:
+    evl_destroy(&loop);
     vm_destroy(&vm);
     return (r == VMM_OK) ? vm.exit_code : 1;
 }

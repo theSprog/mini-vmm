@@ -33,7 +33,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -41,7 +41,9 @@ tests/
 │   ├── mem_mutants.c       故意写错的 gpa_to_hva，共 9 份
 │   ├── io_bus_test.c       PIO/MMIO 注册、查找、分发
 │   ├── io_bus_mutants.c    故意写错的 dispatch，共 8 份
-│   └── boot_tables_test.c  MP/ACPI/boot_params 字段检查
+│   ├── boot_tables_test.c  MP/ACPI/boot_params 字段检查
+│   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
+│   └── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
 └── fuzz/           libFuzzer target
     ├── fuzz_common.h   公共桩：guest RAM、memfd 输入
     ├── elf_loader_fuzz.c
@@ -65,12 +67,13 @@ tests/
 | `smp` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑 |
 | `legacy-devices` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
 | `guest-memory` | 是 | 布局用例否，guest 用例是 | VMM 的 memslot/E820 日志 + guest 的 dmesg、`/proc/zoneinfo` |
+| `event-loop` | 是 | 是 | host 的 `/proc/<pid>/task/*/{comm,wchan}` + guest shell 回显 + VMM 日志 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
 没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
 不存在时会先调 `tools/build_initramfs.sh`。
 
-要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。
+要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。
 
 `fuzz` 不在默认集合里：它按墙钟时间计费（默认每 target 300 秒），而 `make test`
 应该是随手就能跑的。要跑就显式写出来。可用 `FUZZ_TIME=` 调整预算。

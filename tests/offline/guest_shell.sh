@@ -53,6 +53,25 @@ expect_has "guest requested poweroff via ACPI S5"
 expect_not "[guest_shell]"
 end_case
 
+# --host 不往 guest 发字节，不能消耗提示符：后面的 MARK-B 还得发得出去。
+# VMM_PID 指向的进程命令行里要有 fake_guest.py，证明给的是 VMM 的 pid
+# 而不是中间某个 shell 的
+run_case "--host runs on the host at a prompt, in order, with VMM_PID" \
+    python3 "$GS" --timeout 20 --cmd 'echo MARK-A' \
+        --host 'tr "\0" " " < /proc/$VMM_PID/cmdline; echo' \
+        --cmd 'echo MARK-B' --stop 'poweroff -f' -- python3 "$FAKE" --boot 1
+expect_rc 0
+expect_line "MARK-A"
+expect_line "MARK-B"
+expect_has "fake_guest.py --boot 1"
+expect_line "[host] rc=0"
+order="$(printf '%s\n' "$CUR_OUT" | grep -xE 'MARK-A|MARK-B|\[host\] rc=0' | tr '\n' ' ')"
+if [ "$order" != "MARK-A [host] rc=0 MARK-B " ]; then
+    printf '   %sFAIL%s step order is "%s"\n' "$C_RED" "$C_RST" "$order"
+    CUR_BAD=1
+fi
+end_case
+
 run_case "VMM exit code is passed through" \
     python3 "$GS" --timeout 20 --stop 'exit' -- python3 "$FAKE" --rc 3
 expect_rc 3

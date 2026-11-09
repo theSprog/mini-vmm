@@ -55,6 +55,7 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 | boot_params、E820、MP/ACPI 表 | `src/boot/` | `learning-note/05` |
 | SMP、CPUID 拓扑、停机协调 | `src/smp.c`、`src/vm.c` | `learning-note/06` |
 | 16550A、RTC、i8042、ACPI PM、未注册端口 | `src/devices/`、`src/boot/acpi.c`、`src/vm.c` | `learning-note/07` |
+| I/O 线程、后端 fd、加锁顺序 | `src/io/event_loop.c`、`src/console.c` | `learning-note/08` |
 
 ## 已知的小缺口
 

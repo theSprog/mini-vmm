@@ -22,7 +22,7 @@
 |---|---|
 | 0 | kvm-basics ✓ |
 | 1 | linux-boot ✓ |
-| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop · exit-stats · gdbstub |
+| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats · gdbstub |
 | 3 | pci-bus |
 | 4 | emu-net · emu-blk |
 | 5 | pci-msi |
@@ -91,9 +91,9 @@
 
 依赖: linux-boot · 参考: `epoll(7)`、`eventfd(2)`
 
-- [ ] 一个基于 `epoll` 的 I/O 线程负责后端 fd（TAP、磁盘、socket），vCPU 线程不再阻塞在后端 I/O 上
-- [ ] 后端完成事件能安全地更新设备状态并注入中断，加锁顺序写进代码注释，和 `io_lock`、串口锁的已有顺序不冲突
-- [ ] 串口输入改由事件循环驱动后，现有 e2e 全部通过
+- [x] 一个基于 `epoll` 的 I/O 线程负责后端 fd（TAP、磁盘、socket），vCPU 线程不再阻塞在后端 I/O 上
+- [x] 后端完成事件能安全地更新设备状态并注入中断，加锁顺序写进代码注释，和 `io_lock`、串口锁的已有顺序不冲突
+- [x] 串口输入改由事件循环驱动后，现有 e2e 全部通过
 
 ### exit-stats — 按设备统计 VM exit
 
