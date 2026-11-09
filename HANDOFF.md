@@ -57,6 +57,7 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 | 16550A、RTC、i8042、ACPI PM、未注册端口 | `src/devices/`、`src/boot/acpi.c`、`src/vm.c` | `learning-note/07` |
 | I/O 线程、后端 fd、加锁顺序 | `src/io/event_loop.c`、`src/console.c` | `blog/15` |
 | exit 统计、KVM 二进制统计 | `src/exit_stats.c`、`src/kvm_stats.c`、`src/vm.c` 分发路径 | `blog/16` |
+| PCI 总线、BAR 路由、PCI0 的 `_CRS`/`_PRT`、AML 编码 | `src/pci/`、`src/boot/aml.c`、`src/boot/acpi.c`、`src/boot/mptable.c` | `blog/17`、`blog/18` |
 
 ## 已知的小缺口
 

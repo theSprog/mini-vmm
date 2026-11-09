@@ -223,7 +223,7 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
     }
 
     /* PCI 中断：srcbusirq 的 bit 6:2 是 slot，bit 1:0 是 pin（0 = INTA），
-     * 见 MP spec 1.4 附录 D.3。irqflag 0 表示“按总线默认”，PCI 总线默认
+     * Linux 按同样的位取用（io_apic.c IO_APIC_get_PCI_irq_vector）。irqflag 0 表示“按总线默认”，PCI 总线默认
      * 就是电平触发、低有效。 */
     for (i = 0; pci && i < PCI_MAX_SLOTS; i++) {
         const struct pci_device *d = pci->devs[i];
