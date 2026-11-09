@@ -22,10 +22,13 @@
 ```sh
 make                                   # 产物 build/vmm 和测试 payload
 tools/build_initramfs.sh               # 生成 build/initramfs.cpio.gz，需要静态 busybox
+tools/build_guest_kernel.sh --src ~/linux-6.6   # guest 内核，产物在 guest-kernel/
 
 ./build/vmm --mode linux --mem 512M --smp 4 \
-    --initrd build/initramfs.cpio.gz /path/to/vmlinux
+    --initrd build/initramfs.cpio.gz guest-kernel/vmlinux
 ```
+
+guest 内核的配置是 `x86_64_defconfig` 加 `tools/guest-kernel.config`，片段里每一项的理由写在它的注释里。源码树需要是 Linux 6.6.x，且不能有树内构建产物。
 
 默认内核命令行是 `console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1`，每一项的作用见 `src/main.c` 的 `DEFAULT_LINUX_CMDLINE`。完整选项见 `./build/vmm -h`。
 
@@ -39,7 +42,7 @@ make test linux-boot                   # 只跑一个 suite
 make test-list                         # 列出所有 suite
 ```
 
-e2e suite 以里程碑 ID 命名，需要 `/dev/kvm`；需要 guest 内核的用例读 `VMLINUX=`（bzImage 用例另读 `BZIMAGE=`），没设时 SKIP。测试的组织方式和判据见 [`tests/README.md`](tests/README.md)。
+e2e suite 以里程碑 ID 命名，需要 `/dev/kvm`；需要 guest 内核的用例读 `VMLINUX=`（bzImage 用例另读 `BZIMAGE=`），没设时取 `guest-kernel/` 里的产物，那里也没有时 SKIP。测试的组织方式和判据见 [`tests/README.md`](tests/README.md)。
 
 ## 观测：`--trace-pio`
 

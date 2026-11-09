@@ -12,7 +12,8 @@
 #   ./tests/run.sh --manual linux-boot  只打印某个 suite 的人工验收指引
 #
 # 环境变量：
-#   VMLINUX=  BZIMAGE=   guest 内核，缺省时相关用例自行 SKIP
+#   VMLINUX=  BZIMAGE=   guest 内核，缺省取 guest-kernel/ 下 tools/build_guest_kernel.sh 的产物，
+#                        那里也没有时相关用例自行 SKIP
 #   FUZZ_TIME=300        fuzz suite 每个 target 的秒数
 #
 # 退出码：0 全过，1 有 suite 失败，2 用法错误。

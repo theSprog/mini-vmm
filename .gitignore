@@ -9,3 +9,4 @@
 /compile_commands.json
 /**/*.bin
 /vmlinux
+/guest-kernel

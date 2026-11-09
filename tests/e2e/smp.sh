@@ -48,7 +48,7 @@ expect_has "--smp must be an integer in 1..32"
 end_case
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "SMP guest 用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "SMP guest 用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
 

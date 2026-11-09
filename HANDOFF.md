@@ -9,10 +9,10 @@
 项目在两台机器上开发和验证过，同一份代码两边都要能通过 `make test`。
 
 - **海光物理机**：Hygon C86 3280，vendor string `HygonGenuine`，微架构派生自 Zen1，走 `kvm_amd`，所以 `src/arch/amd/` 同时服务 AMD 和海光。Ubuntu 22.04，host 内核 5.15，经 ssh 使用。
-  - host 内核源码在 `~/china_os/linux-5.15`，guest 内核源码和预编译产物在 `~/china_os/linux-6.6`（vmlinux 在树根，bzImage 在 `arch/x86/boot/bzImage`）。查 KVM 行为看 5.15，查 guest 行为看 6.6。
+  - host 内核源码在 `~/china_os/linux-5.15`，guest 内核源码在 `~/china_os/linux-6.6`。查 KVM 行为看 5.15，查 guest 行为看 6.6。那棵 6.6 树里有树内构建的预编译产物（vmlinux 在树根），kbuild 拒绝对这样的源码树做 `O=` 构建，所以它不能直接作为 `tools/build_guest_kernel.sh --src`：另解压一份干净的 6.6 源码，或者在那棵树里 `make mrproper`（会删掉预编译产物）。
   - 两棵树都有 `compile_commands.json` 和 clangd background index，index 由 `~/.local/bin/clangd`（clangd 22）建立。非交互 ssh 的 PATH 里是 `/usr/bin/clangd`（clangd 14），版本对不上，必须显式用 22 版。符号查询用 `~/.local/bin/clangd_query.py`，带环境变量 `CLANGD=~/.local/bin/clangd`；clangd 打开第一个文件之前不加载 index，所以先对任意 `.c` 跑一次 `outline` 再用 `symbol`。`rg` 在 `~/.local/bin/`，同样不在 ssh 的 PATH 里。
   - 远端命令超时时被中断的只是连接，远端的循环和子进程可能还在跑，事后检查有没有残留的 `vmm` 或 clangd 进程。
-- **WSL2**：Arch Linux，嵌套虚拟化提供 `/dev/kvm`。guest 内核 vmlinux 放在仓库根目录（已被 `.gitignore` 忽略），由 `tools/build_guest_kernel.sh` 生成。`/dev/kvm` 是否存在取决于 Windows 侧的嵌套虚拟化状态，消失时先查 Windows 更新是否改动了 Hyper-V 的嵌套特性。
+- **WSL2**：Arch Linux，嵌套虚拟化提供 `/dev/kvm`。guest 内核由 `tools/build_guest_kernel.sh --src ~/linux-6.6` 构建到仓库的 `guest-kernel/`（已被 `.gitignore` 忽略），测试自动使用那里的 vmlinux 和 bzImage。`~/linux-6.6` 的源码树本身不放产物，它的另一个构建目录 `~/linux-6.6-build` 是给 clangd 建索引用的 allmodconfig，驱动多为 `=m` 且强制模块签名，不适合直接当测试 guest。`/dev/kvm` 是否存在取决于 Windows 侧的嵌套虚拟化状态，消失时先查 Windows 更新是否改动了 Hyper-V 的嵌套特性。
 
 **跑测试之前先 `make`。** `make test` 只构建测试二进制，不保证 `build/vmm` 是最新的，直接跑会用到旧二进制。
 

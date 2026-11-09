@@ -71,9 +71,7 @@ tests/
 | `event-loop` | 是 | 是 | host 的 `/proc/<pid>/task/*/{comm,wchan}` + guest shell 回显 + VMM 日志 |
 | `exit-stats` | 是 | payload 用例否，Linux 用例是 | 从 payload 源码逐条数出的 exit 次数 + KVM 的 `io_exits`/`exits` + 开关统计时 stdout 逐字节相同 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
-没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
-不存在时会先调 `tools/build_initramfs.sh`。
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`。
 
 要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。
 

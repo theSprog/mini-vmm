@@ -65,7 +65,7 @@ expect_has "is neither an ELF vmlinux nor a bzImage"
 end_case
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "vmlinux / initramfs" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "vmlinux / initramfs" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
 else
 
 head1 "vmlinux 直启"
@@ -138,7 +138,7 @@ end_case
 fi  # VMLINUX
 
 if [ -z "$BZIMAGE" ] || [ ! -f "$BZIMAGE" ]; then
-    skip_case "bzImage" "set BZIMAGE=/path/to/bzImage to enable"
+    skip_case "bzImage" "run tools/build_guest_kernel.sh or set BZIMAGE=/path/to/bzImage"
     return
 fi
 

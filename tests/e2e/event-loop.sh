@@ -26,7 +26,7 @@ LIST_THREADS='for t in /proc/$VMM_PID/task/*; do echo "thread $(cat $t/comm) $(c
 auto_tests() {
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "event-loop guest 用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "event-loop guest 用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
 if [ ! -f "$INITRD" ]; then

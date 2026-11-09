@@ -109,7 +109,7 @@ expect_not "entering guest"
 end_case
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "guest 内核用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "guest 内核用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
 

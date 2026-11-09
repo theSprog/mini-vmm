@@ -16,6 +16,16 @@ VMM="$ROOT/build/vmm"
 # 启动 VMM 并在 guest shell 里按提示符逐条执行命令，用法见脚本头注释
 GUEST_SHELL="$ROOT/tests/guest_shell.py"
 
+# guest 内核：没设 VMLINUX / BZIMAGE 时用 tools/build_guest_kernel.sh 默认构建
+# 目录里的产物；文件不存在时保持为空，需要 guest 内核的用例照常 SKIP
+GUEST_KERNEL_DIR="$ROOT/guest-kernel"
+if [ -z "${VMLINUX:-}" ] && [ -f "$GUEST_KERNEL_DIR/vmlinux" ]; then
+    VMLINUX="$GUEST_KERNEL_DIR/vmlinux"
+fi
+if [ -z "${BZIMAGE:-}" ] && [ -f "$GUEST_KERNEL_DIR/arch/x86/boot/bzImage" ]; then
+    BZIMAGE="$GUEST_KERNEL_DIR/arch/x86/boot/bzImage"
+fi
+
 if [ -t 1 ]; then
     C_RED=$'\e[31m'; C_GRN=$'\e[32m'; C_YEL=$'\e[33m'
     C_CYA=$'\e[36m'; C_BLD=$'\e[1m';  C_RST=$'\e[0m'

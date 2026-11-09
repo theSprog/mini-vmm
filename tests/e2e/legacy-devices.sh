@@ -31,7 +31,7 @@ trap cleanup EXIT
 auto_tests() {
 
 if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
-    skip_case "legacy-devices 全部用例" "set VMLINUX=/path/to/vmlinux to enable"
+    skip_case "legacy-devices 全部用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
 if [ ! -f "$INITRD" ]; then
