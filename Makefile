@@ -53,6 +53,11 @@ $(BUILD)/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 
+# -MMD 生成的依赖文件必须 include 进来，改了头文件才会重编用到它的 .o。
+# 漏掉的话，改结构体布局后只有改过的 .c 按新布局编译，其余 .o 还按旧
+# 偏移访问同一个结构体，链接照样成功，运行时读到错位的字段。
+-include $(DEPS)
+
 # ---- payload ----
 # 16 位载荷用 --32 汇编（.code16 需要 32 位目标），链接到 0x0。
 $(BUILD)/payload16.elf: tools/payload/real_mode_stub.S
@@ -177,47 +182,52 @@ $(BUILD)/tests/boot_tables_test: tests/unit/boot_tables_test.c \
                                  src/boot/mptable.c src/boot/acpi.c \
                                  src/boot/zeropage.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_TEST) -o $@ $^
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/boot_tables_test_noalign: tests/unit/boot_tables_test.c \
                                          src/boot/mptable.c src/boot/acpi.c \
                                          src/boot/zeropage.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_TEST_NOALIGN) -o $@ $^
+	$(CC) $(CFLAGS_TEST_NOALIGN) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/mem_test: tests/unit/mem_test.c tests/unit/mem_mutants.c \
                          src/mem.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_TEST) -o $@ $^
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/io_bus_test: tests/unit/io_bus_test.c \
                             tests/unit/io_bus_mutants.c src/vm.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_TEST) -o $@ $^ -lpthread
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
 $(BUILD)/tests/serial8250_test: tests/unit/serial8250_test.c \
                                 src/devices/serial8250.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_TEST) -o $@ $^ -lpthread
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
 $(BUILD)/fuzz/elf_loader_fuzz: tests/fuzz/elf_loader_fuzz.c \
                                src/boot/elf_loader.c
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $^
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/bzimage_fuzz: tests/fuzz/bzimage_fuzz.c src/boot/bzimage.c
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $^
+	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/elf_loader_fuzz_noalign: tests/fuzz/elf_loader_fuzz.c \
                                        src/boot/elf_loader.c
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $^
+	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/bzimage_fuzz_noalign: tests/fuzz/bzimage_fuzz.c \
                                     src/boot/bzimage.c
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $^
+	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $(filter %.c,$^)
+
+# 测试和 fuzz target 直接编 src/ 下的 .c，不经过 .o 和依赖文件，所以
+# 把全部头文件列为前提：头文件一改就重编，免得测试拿旧布局跑。
+HDRS := $(wildcard include/*.h include/*/*.h tests/unit/*.h tests/fuzz/*.h)
+$(UNIT_BINS) $(FUZZ_BINS): $(HDRS)
 
 # 没有 clang 就不构建 fuzz target，fuzz suite 会自己 SKIP 并说明原因。
 HAVE_FUZZ_CC := $(shell command -v $(FUZZ_CC) 2>/dev/null)
