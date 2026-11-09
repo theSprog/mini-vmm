@@ -34,6 +34,7 @@ static void e820_add(struct boot_params *bp, uint64_t addr, uint64_t size,
 static int load_initrd(struct vmm_vm *vm, struct boot_params *bp,
                        const struct zp_config *zc)
 {
+    const struct vmm_mem_slot *low;
     struct stat st;
     uint64_t top, gpa, limit;
     size_t len;
@@ -44,7 +45,13 @@ static int load_initrd(struct vmm_vm *vm, struct boot_params *bp,
         return VMM_ERR_SYS;
     }
 
-    top = vm->mem.ram_size;
+    /* initrd_addr_max 是 32 位字段，所以 initrd 总在 hole 以下的低段 RAM 里 */
+    low = mem_find_slot(vm, 0);
+    if (!low) {
+        vmm_err("no RAM at GPA 0");
+        return VMM_ERR_INVAL;
+    }
+    top = low->gpa + low->size;
     limit = zc->initrd_addr_max ? zc->initrd_addr_max : ZP_INITRD_ADDR_MAX;
     if (top > limit + 1)
         top = limit + 1;
@@ -76,25 +83,23 @@ static int load_initrd(struct vmm_vm *vm, struct boot_params *bp,
 
 int zeropage_setup(struct vmm_vm *vm, const struct zp_config *zc)
 {
+    const struct vmm_mem_slot *s;
     struct boot_params *bp;
+    enum gpa_status gs;
     size_t cl_len;
-    uint64_t ram = vm->mem.ram_size;
 
-    if (ram <= ZP_HIGH_MEM_START) {
-        vmm_err("Linux needs more than 1MiB of RAM");
+    s = mem_find_slot(vm, 0);
+    if (!s || !s->ram || s->size <= ZP_HIGH_MEM_START) {
+        vmm_err("Linux needs more than 1MiB of RAM starting at GPA 0");
         return VMM_ERR_INVAL;
     }
-    /* 目前只有一个从 0 开始的 RAM slot，超过 3GiB 会压到 32 位 MMIO
-     * 空洞（LAPIC 0xfee00000 / IOAPIC 0xfec00000），需要拆 slot，
-     * 留到后面有 PCI 的阶段再做。 */
-    if (ram > 0xC0000000ULL) {
-        vmm_err("guest RAM above 3GiB is not supported yet (no MMIO hole)");
-        return VMM_ERR_UNSUPPORTED;
-    }
 
-    bp = gpa_to_hva(vm, ZP_BOOT_PARAMS_GPA, sizeof(*bp));
-    if (!bp)
+    gs = gpa_to_hva(vm, ZP_BOOT_PARAMS_GPA, sizeof(*bp), (void **)&bp);
+    if (gs != GPA_OK) {
+        vmm_err("boot_params at GPA 0x%llx: %s",
+                (unsigned long long)ZP_BOOT_PARAMS_GPA, gpa_status_str(gs));
         return VMM_ERR_INVAL;
+    }
     memset(bp, 0, sizeof(*bp));
 
     if (zc->kernel_hdr) {
@@ -153,13 +158,22 @@ int zeropage_setup(struct vmm_vm *vm, const struct zp_config *zc)
     vmm_info("cmdline @ GPA 0x%llx: \"%s\"",
              (unsigned long long)ZP_CMDLINE_GPA, zc->cmdline);
 
-    /* E820：没有 BIOS，内存图完全由我们说了算。
+    /* E820：没有 BIOS，内存图完全由我们说了算，逐个 RAM slot 生成，
+     * 这样 E820 和 memslot 不可能各说各的。
      * 低 640K 报 RAM，是因为内核会在 1MiB 以下找地方放 trampoline
-     * （SMP 唤醒 AP 用），完全不给低端内存的话会 panic。 */
-    e820_add(bp, 0, ZP_EBDA_START, E820_TYPE_RAM);
-    e820_add(bp, ZP_EBDA_START, ZP_HIGH_MEM_START - ZP_EBDA_START,
-             E820_TYPE_RESERVED);
-    e820_add(bp, ZP_HIGH_MEM_START, ram - ZP_HIGH_MEM_START, E820_TYPE_RAM);
+     * （SMP 唤醒 AP 用），完全不给低端内存的话会 panic。
+     * slot 之间的 hole 不写条目，原因见 memory.h 的布局说明。 */
+    for (; s; s = mem_next_ram_slot(vm, s->gpa + s->size)) {
+        if (s->gpa == 0) {
+            e820_add(bp, 0, ZP_EBDA_START, E820_TYPE_RAM);
+            e820_add(bp, ZP_EBDA_START, ZP_HIGH_MEM_START - ZP_EBDA_START,
+                     E820_TYPE_RESERVED);
+            e820_add(bp, ZP_HIGH_MEM_START, s->size - ZP_HIGH_MEM_START,
+                     E820_TYPE_RAM);
+        } else {
+            e820_add(bp, s->gpa, s->size, E820_TYPE_RAM);
+        }
+    }
 
     if (zc->initrd_path)
         return load_initrd(vm, bp, zc);

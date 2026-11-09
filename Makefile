@@ -129,7 +129,7 @@ clean:
 # 断言逻辑一行都不放在 Makefile 里。
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
-               kvm-basics linux-boot smp legacy-devices
+               kvm-basics linux-boot smp legacy-devices guest-memory
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -180,13 +180,13 @@ FUZZ_CFLAGS_NOALIGN := $(FUZZ_CFLAGS) -fno-sanitize=alignment
 
 $(BUILD)/tests/boot_tables_test: tests/unit/boot_tables_test.c \
                                  src/boot/mptable.c src/boot/acpi.c \
-                                 src/boot/zeropage.c
+                                 src/boot/zeropage.c src/mem.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/boot_tables_test_noalign: tests/unit/boot_tables_test.c \
                                          src/boot/mptable.c src/boot/acpi.c \
-                                         src/boot/zeropage.c
+                                         src/boot/zeropage.c src/mem.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST_NOALIGN) -o $@ $(filter %.c,$^)
 

@@ -22,7 +22,7 @@
 |---|---|
 | 0 | kvm-basics ✓ |
 | 1 | linux-boot ✓ |
-| 2 | legacy-devices ✓ · smp ✓ · guest-memory · event-loop · exit-stats · gdbstub |
+| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop · exit-stats · gdbstub |
 | 3 | pci-bus |
 | 4 | emu-net · emu-blk |
 | 5 | pci-msi |
@@ -82,10 +82,10 @@
 
 依赖: linux-boot · 参考: `linux/kvm.h`（`KVM_SET_USER_MEMORY_REGION`）、`asm/bootparam.h`（E820）
 
-- [ ] guest RAM 可以超过 3 GiB：4 GiB 以下留出 MMIO hole，超出部分放到 4 GiB 以上，分成多个 memslot，E820 与 memslot 一致
-- [ ] 所有 guest 地址访问都经过一个带长度的 GPA → HVA 接口，检查整数溢出、跨 slot、越界，返回错误而不是指针
-- [ ] 单元测试覆盖跨 slot 边界、溢出、零长度，并且每类错误都有一个故意写错的 mutant 能让测试变红
-- [ ] 原来直接调用 GPA → HVA 的地方全部换成新接口
+- [x] guest RAM 可以超过 3 GiB：4 GiB 以下留出 MMIO hole，超出部分放到 4 GiB 以上，分成多个 memslot，E820 与 memslot 一致
+- [x] 所有 guest 地址访问都经过一个带长度的 GPA → HVA 接口，检查整数溢出、跨 slot、越界，返回错误而不是指针
+- [x] 单元测试覆盖跨 slot 边界、溢出、零长度，并且每类错误都有一个故意写错的 mutant 能让测试变红
+- [x] 原来直接调用 GPA → HVA 的地方全部换成新接口
 
 ### event-loop — 独立于 vCPU 的事件循环
 

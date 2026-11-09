@@ -47,6 +47,7 @@ int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
     const uint8_t *file;
     struct stat st;
     uint64_t load, need, pm_off, pm_len, hdr_end;
+    enum gpa_status gs;
     uint8_t *dst;
     int fd, r = VMM_ERR_INVAL;
 
@@ -131,11 +132,11 @@ int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
     /* init_size 是解压、重定位期间从装载地址起需要的线性内存，
      * 比文件大得多（6.6 约 28MiB，文件约 7.6MiB），必须整段是 RAM */
     need = hdr.init_size > pm_len ? hdr.init_size : pm_len;
-    dst = gpa_to_hva(vm, load, need);
-    if (!dst) {
-        vmm_err("%s: needs RAM [0x%llx, 0x%llx) (init_size), increase --mem",
-                path, (unsigned long long)load,
-                (unsigned long long)(load + need));
+    gs = gpa_to_hva(vm, load, need, (void **)&dst);
+    if (gs != GPA_OK) {
+        vmm_err("%s: needs RAM [0x%llx, 0x%llx) (init_size): %s, "
+                "increase --mem", path, (unsigned long long)load,
+                (unsigned long long)(load + need), gpa_status_str(gs));
         goto out;
     }
     memcpy(dst, file + pm_off, pm_len);

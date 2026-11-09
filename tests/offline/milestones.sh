@@ -65,7 +65,8 @@ end_case
 f="$(mutate deplayer 's.replace("### guest-memory — 多 slot 内存布局与带检查的访问 API\n\n依赖: linux-boot", "### guest-memory — 多 slot 内存布局与带检查的访问 API\n\n依赖: linux-boot, legacy-devices", 1)')" || exit 1
 run_case "a new dependency shifts downstream layers" python3 "$TOOL" "$f"
 expect_rc 1
-expect_has "+| 3 | guest-memory |"
+# 只匹配到 ID 为止：行尾是否带完成标记取决于 guest-memory 的勾选状态
+expect_has "+| 3 | guest-memory"
 end_case
 
 run_case "--write regenerates the table, then the copy checks clean" \

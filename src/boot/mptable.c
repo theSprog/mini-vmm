@@ -119,6 +119,7 @@ static uint8_t mp_checksum(const void *p, size_t len)
 
 int mptable_setup(struct vmm_vm *vm, int nr_cpus)
 {
+    enum gpa_status gs;
     uint8_t *base, *p;
     struct mpf_intel *mpf;
     struct mpc_table *mpc;
@@ -137,9 +138,12 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus)
         return VMM_ERR_INVAL;
     }
 
-    base = gpa_to_hva(vm, MPTABLE_GPA, MPTABLE_MAX_SIZE);
-    if (!base)
+    gs = gpa_to_hva(vm, MPTABLE_GPA, MPTABLE_MAX_SIZE, (void **)&base);
+    if (gs != GPA_OK) {
+        vmm_err("MP table at GPA 0x%llx: %s",
+                (unsigned long long)MPTABLE_GPA, gpa_status_str(gs));
         return VMM_ERR_INVAL;
+    }
     memset(base, 0, MPTABLE_MAX_SIZE);
 
     mpf = (struct mpf_intel *)base;

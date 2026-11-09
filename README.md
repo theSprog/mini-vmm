@@ -11,8 +11,9 @@
 - 中断驱动的 16550A 串口控制台，CMOS RTC、i8042、ACPI PM，驱动探测零超时
 - `--smp N` 多核（上限 32），CPUID 拓扑按 vCPU 改写
 - 三种退出方式：`poweroff -f`（ACPI S5）、panic 后重启（i8042 reset）、`Ctrl-A x`
+- guest RAM 可以超过 3 GiB：低段 `[0, 3 GiB)` 加 4 GiB 以上的高段，中间 1 GiB 留给 MMIO
 
-限制：guest RAM 不超过 3 GiB（还没有 MMIO hole，见 guest-memory 里程碑）；还没有 PCI 和块设备、网络设备。
+限制：还没有 PCI 和块设备、网络设备。
 
 ## 构建与运行
 

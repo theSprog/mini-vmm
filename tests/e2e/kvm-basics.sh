@@ -100,8 +100,8 @@ head1 "错误路径"
 run_case "内存不足时给出可操作的提示" \
     "$VMM" --mode long64 --mem 1M "$P64"
 expect_rc 1
-expect_has "exceeds guest RAM"
-expect_has "--mem"
+expect_has "start is not in any memslot"
+expect_has "try a larger --mem"
 end_case
 
 # 0x2000 正是 PML4 的位置，页表会把 payload 覆盖掉

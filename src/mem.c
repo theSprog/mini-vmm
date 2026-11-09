@@ -65,6 +65,7 @@ int mem_add_region(struct vmm_vm *vm, uint64_t gpa, uint64_t size,
     s->hva        = hva;
     s->flags      = flags;
     s->mmap_owned = mmap_owned;
+    s->ram        = false;
     s->used       = true;
 
     if (kvm_set_user_memory_region(vm->vm_fd, s->slot, flags,
@@ -82,17 +83,32 @@ int mem_add_region(struct vmm_vm *vm, uint64_t gpa, uint64_t size,
     return VMM_OK;
 }
 
+/* 注册一段 RAM slot。失败时由调用方 mem_destroy() 回收已注册的部分。 */
+static int add_ram(struct vmm_vm *vm, uint64_t gpa, uint64_t size, void *hva)
+{
+    int r = mem_add_region(vm, gpa, size, hva, 0, true);
+
+    if (r == VMM_OK)
+        mem_find_slot(vm, gpa)->ram = true;
+    return r;
+}
+
 int mem_init(struct vmm_vm *vm, uint64_t ram_size)
 {
-    void *p;
+    uint64_t low, high;
+    uint8_t *p;
     int r;
 
     ram_size = ALIGN_UP(ram_size, PAGE_SIZE);
+    low  = ram_size < VMM_MEM_HOLE_START ? ram_size : VMM_MEM_HOLE_START;
+    high = ram_size - low;
 
     /* MAP_NORESERVE：guest 大部分页在启动后很久都不会被碰到，
      * 不预留 swap 让 128MiB 甚至几 GiB 的 VM 启动瞬间完成。
      * 真正的物理页在 guest 第一次访问触发 EPT/NPT violation 时，
-     * 由 host 的缺页路径按需分配。 */
+     * 由 host 的缺页路径按需分配。
+     * 低段和高段共用一次 mmap：HVA 偏移 low 处正好是 GPA 4GiB，
+     * 两个起点都是 1GiB 对齐，透明大页在两段上都能用。 */
     p = mmap(NULL, ram_size, PROT_READ | PROT_WRITE,
              MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (p == MAP_FAILED) {
@@ -107,10 +123,20 @@ int mem_init(struct vmm_vm *vm, uint64_t ram_size)
         vmm_dbg("madvise(MADV_HUGEPAGE) failed: %s (harmless)",
                 strerror(errno));
 
-    r = mem_add_region(vm, 0, ram_size, p, 0, true);
+    /* 每个 slot 只 munmap 自己那一段，所以注册成功的部分交给
+     * mem_destroy()，还没注册的部分在这里释放。 */
+    r = add_ram(vm, 0, low, p);
     if (r != VMM_OK) {
         munmap(p, ram_size);
         return r;
+    }
+    if (high) {
+        r = add_ram(vm, VMM_MEM_HIGH_START, high, p + low);
+        if (r != VMM_OK) {
+            munmap(p + low, high);
+            mem_destroy(vm);
+            return r;
+        }
     }
 
     vm->mem.ram_size = ram_size;
@@ -150,34 +176,68 @@ struct vmm_mem_slot *mem_find_slot(struct vmm_vm *vm, uint64_t gpa)
     return NULL;
 }
 
-void *gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len)
+const struct vmm_mem_slot *mem_next_ram_slot(struct vmm_vm *vm, uint64_t gpa)
+{
+    const struct vmm_mem_slot *best = NULL;
+    uint32_t i;
+
+    for (i = 0; i < VMM_MEM_MAX_SLOTS; i++) {
+        const struct vmm_mem_slot *s = &vm->mem.slots[i];
+
+        if (s->used && s->ram && s->gpa >= gpa && (!best || s->gpa < best->gpa))
+            best = s;
+    }
+    return best;
+}
+
+const char *gpa_status_str(enum gpa_status st)
+{
+    switch (st) {
+    case GPA_OK:               return "ok";
+    case GPA_ERR_ZERO_LEN:     return "zero length";
+    case GPA_ERR_WRAP:         return "gpa + len wraps past 2^64";
+    case GPA_ERR_UNMAPPED:     return "start is not in any memslot";
+    case GPA_ERR_CROSSES_SLOT: return "range crosses into the next memslot";
+    case GPA_ERR_PAST_END:     return "range runs past the end of its memslot";
+    }
+    return "unknown";
+}
+
+enum gpa_status gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len,
+                           void **hva)
 {
     struct vmm_mem_slot *s;
+    uint64_t slot_end;
 
     if (len == 0)
-        return NULL;
+        return GPA_ERR_ZERO_LEN;
     /* 溢出检查必须在范围检查之前：guest 完全可以填一个
      * gpa = 0xffffffffffffff00 的描述符，让 gpa+len 回绕到小数值，
      * 从而绕过下面的上界比较。 */
     if (gpa + len < gpa)
-        return NULL;
+        return GPA_ERR_WRAP;
 
     s = mem_find_slot(vm, gpa);
     if (!s)
-        return NULL;
-    if (gpa + len > s->gpa + s->size)
-        return NULL;   /* 跨 slot 或越界，一律拒绝 */
+        return GPA_ERR_UNMAPPED;
+    slot_end = s->gpa + s->size;
+    if (gpa + len > slot_end)
+        return mem_find_slot(vm, slot_end) ? GPA_ERR_CROSSES_SLOT
+                                           : GPA_ERR_PAST_END;
 
-    return (uint8_t *)s->hva + (gpa - s->gpa);
+    *hva = (uint8_t *)s->hva + (gpa - s->gpa);
+    return GPA_OK;
 }
 
 int mem_read(struct vmm_vm *vm, uint64_t gpa, void *dst, size_t len)
 {
-    void *src = gpa_to_hva(vm, gpa, len);
+    enum gpa_status st;
+    void *src;
 
-    if (!src) {
-        vmm_err("mem_read: GPA [0x%llx,+0x%zx) out of bounds",
-                (unsigned long long)gpa, len);
+    st = gpa_to_hva(vm, gpa, len, &src);
+    if (st != GPA_OK) {
+        vmm_err("mem_read: GPA [0x%llx,+0x%zx): %s",
+                (unsigned long long)gpa, len, gpa_status_str(st));
         return VMM_ERR_GUEST;
     }
     memcpy(dst, src, len);
@@ -186,11 +246,13 @@ int mem_read(struct vmm_vm *vm, uint64_t gpa, void *dst, size_t len)
 
 int mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len)
 {
-    void *dst = gpa_to_hva(vm, gpa, len);
+    enum gpa_status st;
+    void *dst;
 
-    if (!dst) {
-        vmm_err("mem_write: GPA [0x%llx,+0x%zx) out of bounds",
-                (unsigned long long)gpa, len);
+    st = gpa_to_hva(vm, gpa, len, &dst);
+    if (st != GPA_OK) {
+        vmm_err("mem_write: GPA [0x%llx,+0x%zx): %s",
+                (unsigned long long)gpa, len, gpa_status_str(st));
         return VMM_ERR_GUEST;
     }
     memcpy(dst, src, len);
@@ -201,6 +263,7 @@ int mem_load_file(struct vmm_vm *vm, uint64_t gpa, const char *path,
                   size_t *out_len)
 {
     struct stat st;
+    enum gpa_status gs;
     uint8_t *dst;
     ssize_t n;
     size_t done = 0;
@@ -222,11 +285,11 @@ int mem_load_file(struct vmm_vm *vm, uint64_t gpa, const char *path,
         return VMM_ERR_INVAL;
     }
 
-    dst = gpa_to_hva(vm, gpa, (uint64_t)st.st_size);
-    if (!dst) {
-        vmm_err("failed to load %s: GPA 0x%llx + %lld bytes exceeds "
-                "guest RAM (try a larger --mem)",
-                path, (unsigned long long)gpa, (long long)st.st_size);
+    gs = gpa_to_hva(vm, gpa, (uint64_t)st.st_size, (void **)&dst);
+    if (gs != GPA_OK) {
+        vmm_err("failed to load %s: GPA 0x%llx + %lld bytes: %s "
+                "(try a larger --mem)", path, (unsigned long long)gpa,
+                (long long)st.st_size, gpa_status_str(gs));
         close(fd);
         return VMM_ERR_INVAL;
     }
@@ -257,12 +320,14 @@ int mem_load_file(struct vmm_vm *vm, uint64_t gpa, const char *path,
 
 void mem_hexdump(struct vmm_vm *vm, uint64_t gpa, size_t len)
 {
-    const uint8_t *p = gpa_to_hva(vm, gpa, len);
+    enum gpa_status st;
+    uint8_t *p;
     size_t i, j;
 
-    if (!p) {
-        fprintf(stderr, "hexdump: GPA 0x%llx is not accessible\n",
-                (unsigned long long)gpa);
+    st = gpa_to_hva(vm, gpa, len, (void **)&p);
+    if (st != GPA_OK) {
+        fprintf(stderr, "hexdump: GPA [0x%llx,+0x%zx): %s\n",
+                (unsigned long long)gpa, len, gpa_status_str(st));
         return;
     }
 

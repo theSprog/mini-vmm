@@ -28,7 +28,8 @@
 #include "vmm.h"
 #include "memory.h"
 
-typedef void *(*gpa_to_hva_fn)(struct vmm_vm *vm, uint64_t gpa, uint64_t len);
+typedef enum gpa_status (*gpa_to_hva_fn)(struct vmm_vm *vm, uint64_t gpa,
+                                         uint64_t len, void **hva);
 
 typedef int (*pio_dispatch_fn)(struct vmm_vcpu *vcpu, uint16_t port,
                                bool is_write, uint32_t size, uint32_t count,

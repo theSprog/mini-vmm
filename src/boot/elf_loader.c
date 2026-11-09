@@ -96,6 +96,7 @@ int elf_load_vmlinux(struct vmm_vm *vm, const char *path,
 
     for (i = 0; i < eh->e_phnum; i++) {
         Elf64_Phdr p;
+        enum gpa_status gs;
         uint8_t *dst;
 
         memcpy(&p, ph_tab + (size_t)i * sizeof(p), sizeof(p));
@@ -111,12 +112,13 @@ int elf_load_vmlinux(struct vmm_vm *vm, const char *path,
             goto out;
         }
 
-        dst = gpa_to_hva(vm, p.p_paddr, p.p_memsz);
-        if (!dst) {
-            vmm_err("%s: PT_LOAD #%d [0x%llx, 0x%llx) exceeds guest RAM "
+        gs = gpa_to_hva(vm, p.p_paddr, p.p_memsz, (void **)&dst);
+        if (gs != GPA_OK) {
+            vmm_err("%s: PT_LOAD #%d [0x%llx, 0x%llx): %s "
                     "(try a larger --mem)", path, i,
                     (unsigned long long)p.p_paddr,
-                    (unsigned long long)(p.p_paddr + p.p_memsz));
+                    (unsigned long long)(p.p_paddr + p.p_memsz),
+                    gpa_status_str(gs));
             r = VMM_ERR_INVAL;
             goto out;
         }

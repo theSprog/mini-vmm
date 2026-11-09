@@ -203,6 +203,7 @@ static void fill_header(struct acpi_header *h, const char *sig,
 
 int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 {
+    enum gpa_status gs;
     uint8_t *base;
     uint64_t off, xsdt_off, fadt_off, dsdt_off, madt_off;
     struct acpi_rsdp *rsdp;
@@ -214,9 +215,12 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     uint32_t len;
     int i;
 
-    base = gpa_to_hva(vm, ACPI_TABLES_GPA, ACPI_TABLES_MAX);
-    if (!base)
+    gs = gpa_to_hva(vm, ACPI_TABLES_GPA, ACPI_TABLES_MAX, (void **)&base);
+    if (gs != GPA_OK) {
+        vmm_err("ACPI tables at GPA 0x%llx: %s",
+                (unsigned long long)ACPI_TABLES_GPA, gpa_status_str(gs));
         return VMM_ERR_INVAL;
+    }
     memset(base, 0, ACPI_TABLES_MAX);
 
     off      = 0;

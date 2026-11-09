@@ -59,6 +59,21 @@ static void seg_from_desc(struct kvm_segment *s, uint64_t d, uint16_t sel)
     s->unusable = 0;
 }
 
+/* 一张 4KiB 页表的 HVA；不可访问时记下原因并返回 NULL */
+static uint64_t *table_at(struct vmm_vm *vm, uint64_t gpa, const char *what)
+{
+    enum gpa_status st;
+    void *p;
+
+    st = gpa_to_hva(vm, gpa, 0x1000, &p);
+    if (st != GPA_OK) {
+        vmm_err("%s @ GPA 0x%llx: %s", what, (unsigned long long)gpa,
+                gpa_status_str(st));
+        return NULL;
+    }
+    return p;
+}
+
 void boot_layout_default(struct boot_mem_layout *l)
 {
     memset(l, 0, sizeof(*l));
@@ -73,7 +88,9 @@ void boot_layout_default(struct boot_mem_layout *l)
 
 int boot_layout_validate(struct vmm_vm *vm, const struct boot_mem_layout *l)
 {
+    enum gpa_status st;
     uint64_t need_top;
+    void *p;
 
     if (l->map_size & ((2ULL << 20) - 1)) {
         vmm_err("map_size 0x%llx is not 2MiB aligned",
@@ -93,11 +110,11 @@ int boot_layout_validate(struct vmm_vm *vm, const struct boot_mem_layout *l)
         need_top = l->pd_gpa + 0x1000;
     }
 
-    if (!gpa_to_hva(vm, l->gdt_gpa, need_top - l->gdt_gpa)) {
-        vmm_err("page table / GDT area [0x%llx, 0x%llx) exceeds "
-                "guest RAM, increase --mem",
-                (unsigned long long)l->gdt_gpa,
-                (unsigned long long)need_top);
+    st = gpa_to_hva(vm, l->gdt_gpa, need_top - l->gdt_gpa, &p);
+    if (st != GPA_OK) {
+        vmm_err("page table / GDT area [0x%llx, 0x%llx): %s, "
+                "increase --mem", (unsigned long long)l->gdt_gpa,
+                (unsigned long long)need_top, gpa_status_str(st));
         return VMM_ERR_INVAL;
     }
 
@@ -146,9 +163,9 @@ int boot_build_page_table(struct vmm_vm *vm, const struct boot_mem_layout *l)
     uint64_t *pml4, *pdpt, *pd;
     uint64_t nr_1g, nr_2m, i;
 
-    pml4 = gpa_to_hva(vm, l->pml4_gpa, 0x1000);
-    pdpt = gpa_to_hva(vm, l->pdpt_gpa, 0x1000);
-    pd   = gpa_to_hva(vm, l->pd_gpa,   0x1000);
+    pml4 = table_at(vm, l->pml4_gpa, "PML4");
+    pdpt = table_at(vm, l->pdpt_gpa, "PDPT");
+    pd   = table_at(vm, l->pd_gpa,   "PD");
     if (!pml4 || !pdpt || !pd)
         return VMM_ERR_INVAL;
 
@@ -193,15 +210,11 @@ int boot_build_page_table(struct vmm_vm *vm, const struct boot_mem_layout *l)
          * 生产环境没人这么干，这里保留是为了把四级走通看清楚。 */
         for (i = 0; i < nr_2m; i++) {
             uint64_t pt_gpa = l->pt_gpa + i * 0x1000;
-            uint64_t *pt = gpa_to_hva(vm, pt_gpa, 0x1000);
+            uint64_t *pt = table_at(vm, pt_gpa, "PT");
             uint64_t j;
 
-            if (!pt) {
-                vmm_err("PT #%llu @ 0x%llx exceeds guest RAM",
-                        (unsigned long long)i,
-                        (unsigned long long)pt_gpa);
+            if (!pt)
                 return VMM_ERR_INVAL;
-            }
             for (j = 0; j < 512; j++)
                 pt[j] = (((i << 21) | (j << 12)) & PTE_ADDR_MASK)
                         | PTE_P | PTE_RW;
@@ -396,12 +409,9 @@ void boot_dump_page_walk(struct vmm_vm *vm, const struct boot_mem_layout *l,
     for (lvl = 0; lvl < 4; lvl++) {
         uint64_t idx = (gva >> shift[lvl]) & 0x1FF;
 
-        tbl = gpa_to_hva(vm, next, 0x1000);
-        if (!tbl) {
-            fprintf(stderr, "  %s: table @ 0x%llx is not accessible\n",
-                    names[lvl], (unsigned long long)next);
+        tbl = table_at(vm, next, names[lvl]);
+        if (!tbl)
             return;
-        }
         e = tbl[idx];
         fprintf(stderr, "  %-5s [%3llu] @ 0x%llx = 0x%016llx  %s%s%s\n",
                 names[lvl], (unsigned long long)idx,

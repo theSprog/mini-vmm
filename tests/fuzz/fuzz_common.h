@@ -45,23 +45,32 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
 /* 和 src/mem.c 的 gpa_to_hva() 同语义（含溢出检查），但只有一个
  * 从 0 起的 slot。故意不复用 mem.c：这里要测的是加载器怎么用这个
  * 接口，桩本身必须简单到一眼能看出它是对的。 */
-void *gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len)
+enum gpa_status gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len,
+                           void **hva)
 {
     (void)vm;
     if (len == 0)
-        return NULL;
-    if (gpa + len < gpa)                /* 回绕 */
-        return NULL;
-    if (gpa >= FUZZ_RAM_SIZE || gpa + len > FUZZ_RAM_SIZE)
-        return NULL;
-    return fuzz_ram + gpa;
+        return GPA_ERR_ZERO_LEN;
+    if (gpa + len < gpa)
+        return GPA_ERR_WRAP;
+    if (gpa >= FUZZ_RAM_SIZE)
+        return GPA_ERR_UNMAPPED;
+    if (gpa + len > FUZZ_RAM_SIZE)
+        return GPA_ERR_PAST_END;
+    *hva = fuzz_ram + gpa;
+    return GPA_OK;
+}
+
+const char *gpa_status_str(enum gpa_status st)
+{
+    return st == GPA_OK ? "ok" : "rejected";
 }
 
 int mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len)
 {
-    void *p = gpa_to_hva(vm, gpa, len);
+    void *p;
 
-    if (!p)
+    if (gpa_to_hva(vm, gpa, len, &p) != GPA_OK)
         return VMM_ERR_GUEST;
     memcpy(p, src, len);
     return VMM_OK;

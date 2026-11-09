@@ -33,12 +33,12 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
 │   ├── mem_test.c          内存 slot 与 GPA→HVA 边界契约
-│   ├── mem_mutants.c       故意写错的 gpa_to_hva，共 7 份
+│   ├── mem_mutants.c       故意写错的 gpa_to_hva，共 9 份
 │   ├── io_bus_test.c       PIO/MMIO 注册、查找、分发
 │   ├── io_bus_mutants.c    故意写错的 dispatch，共 8 份
 │   └── boot_tables_test.c  MP/ACPI/boot_params 字段检查
@@ -64,8 +64,9 @@ tests/
 | `linux-boot` | 是 | 是 | guest Linux 的启动日志 |
 | `smp` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑 |
 | `legacy-devices` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
+| `guest-memory` | 是 | 布局用例否，guest 用例是 | VMM 的 memslot/E820 日志 + guest 的 dmesg、`/proc/zoneinfo` |
 
-`linux-boot` / `smp` / `legacy-devices` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` 需要 `VMLINUX=/path/to/vmlinux`（`linux-boot` 的 bzImage 用例另需 `BZIMAGE=`），
 没设时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz`
 不存在时会先调 `tools/build_initramfs.sh`。
 

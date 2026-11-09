@@ -48,29 +48,12 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
     va_end(ap);
 }
 
-void *gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len)
+/* 内存走真实的 src/mem.c，这样 E820 和 memslot 的一致性检查查的是真实布局；
+ * 只把注册 memslot 的 ioctl 桩掉。 */
+int kvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
+                               uint64_t gpa, uint64_t size, uint64_t hva)
 {
-    (void)vm;
-    if (gpa > RAM_SIZE || len > RAM_SIZE - gpa)
-        return NULL;
-    return g_ram + gpa;
-}
-
-int mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len)
-{
-    void *p = gpa_to_hva(vm, gpa, len);
-
-    if (!p)
-        return VMM_ERR_INVAL;
-    memcpy(p, src, len);
-    return VMM_OK;
-}
-
-int mem_load_file(struct vmm_vm *vm, uint64_t gpa, const char *path,
-                  size_t *len)
-{
-    (void)vm; (void)gpa; (void)path;
-    *len = 0;
+    (void)vm_fd; (void)slot; (void)flags; (void)gpa; (void)size; (void)hva;
     return VMM_OK;
 }
 
@@ -448,10 +431,56 @@ static int in_ram(const struct boot_params *bp, uint64_t a, uint64_t len)
     return 0;
 }
 
-static void check_boot_params(uint64_t rsdp_gpa, const char *cmdline)
+/* E820 与 memslot 一致：
+ *   每个 E820 RAM 条目完整落在一个 RAM slot 里（否则内核会把没有 slot 的
+ *   地址当 RAM 用，访问变成 KVM_EXIT_MMIO）；
+ *   每个 RAM slot 从头到尾被 E820 条目连续覆盖（否则那段 RAM 内核看不见）；
+ *   hole 里没有任何条目（否则 e820_search_gap() 找不到给 PCI 的空间）。 */
+static void check_e820_matches_slots(struct vmm_vm *vm,
+                                     const struct boot_params *bp)
+{
+    const struct vmm_mem_slot *s;
+    int i;
+
+    for (i = 0; i < bp->e820_entries; i++) {
+        const struct boot_e820_entry *e = &bp->e820_table[i];
+        const struct vmm_mem_slot *in;
+        void *hva;
+
+        CHECK(e->addr + e->size <= VMM_MEM_HOLE_START ||
+              e->addr >= VMM_MEM_HIGH_START,
+              "e820[%d] [0x%llx, 0x%llx) intrudes into the MMIO hole", i,
+              (unsigned long long)e->addr,
+              (unsigned long long)(e->addr + e->size));
+        if (e->type != 1)
+            continue;
+        in = mem_find_slot(vm, e->addr);
+        CHECK(gpa_to_hva(vm, e->addr, e->size, &hva) == GPA_OK && in && in->ram,
+              "e820[%d] RAM [0x%llx, 0x%llx) is not inside one RAM memslot", i,
+              (unsigned long long)e->addr,
+              (unsigned long long)(e->addr + e->size));
+    }
+    for (s = mem_next_ram_slot(vm, 0); s; s = mem_next_ram_slot(vm, s->gpa + s->size)) {
+        uint64_t cur = s->gpa;
+
+        for (i = 0; i < bp->e820_entries; i++) {
+            const struct boot_e820_entry *e = &bp->e820_table[i];
+
+            if (e->addr == cur && cur + e->size <= s->gpa + s->size)
+                cur += e->size;
+        }
+        CHECK(cur == s->gpa + s->size,
+              "memslot %u [0x%llx, 0x%llx) is covered by e820 only up to 0x%llx",
+              s->slot, (unsigned long long)s->gpa,
+              (unsigned long long)(s->gpa + s->size), (unsigned long long)cur);
+    }
+}
+
+static void check_boot_params(struct vmm_vm *vm, uint64_t rsdp_gpa,
+                              const char *cmdline)
 {
     const struct boot_params *bp = (const void *)(g_ram + ZP_BOOT_PARAMS_GPA);
-    uint64_t prev_end = 0, ram_end = 0;
+    uint64_t prev_end = 0;
     int i, low_ram = 0;
 
     g_ctx = "boot_params";
@@ -480,16 +509,11 @@ static void check_boot_params(uint64_t rsdp_gpa, const char *cmdline)
         CHECK(e->size != 0, "e820[%d] has size 0", i);
         CHECK(e->addr >= prev_end, "e820[%d] overlaps or is unsorted", i);
         prev_end = e->addr + e->size;
-        if (e->type == 1) {
-            if (e->addr < 0x100000)
-                low_ram = 1;
-            if (prev_end > ram_end)
-                ram_end = prev_end;
-        }
+        if (e->type == 1 && e->addr < 0x100000)
+            low_ram = 1;
     }
     CHECK(low_ram, "no RAM below 1MiB: real-mode trampoline cannot be placed");
-    CHECK(ram_end <= RAM_SIZE, "e820 RAM ends at 0x%llx beyond the memslot",
-          (unsigned long long)ram_end);
+    check_e820_matches_slots(vm, bp);
     CHECK(!in_ram(bp, MPTABLE_GPA, MPTABLE_MAX_SIZE), "MP table is in e820 RAM");
     CHECK(!in_ram(bp, ACPI_TABLES_GPA, ACPI_TABLES_MAX), "ACPI tables are in e820 RAM");
     CHECK(in_ram(bp, ZP_BOOT_PARAMS_GPA, sizeof(*bp)), "boot_params not in RAM");
@@ -567,6 +591,53 @@ static void check_bzimage_header(struct vmm_vm *vm)
           "a cmdline longer than the kernel's cmdline_size must be rejected");
 }
 
+/* RAM 超过 hole 起点时：低段 + 高段两个 memslot，E820 逐个对应，
+ * hole 里没有条目，initrd 上限之类的低段逻辑不受高段影响 */
+static void check_split_layout(void)
+{
+    static const uint64_t sizes[] = {
+        VMM_MEM_HOLE_START,                 /* 正好填满低段：只有一个 slot */
+        VMM_MEM_HOLE_START + 0x1000,        /* 高段只有一页 */
+        6ULL << 30,
+    };
+    static struct vmm_vm vm;
+    struct zp_config zc;
+    unsigned i;
+
+    for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+        const struct boot_params *bp;
+        const struct vmm_mem_slot *hi;
+        uint64_t high = sizes[i] - VMM_MEM_HOLE_START;
+
+        g_ctx = "split layout";
+        printf("ram = 0x%llx\n", (unsigned long long)sizes[i]);
+        memset(&vm, 0, sizeof(vm));
+        vm.vm_fd = -1;
+        if (mem_init(&vm, sizes[i]) != VMM_OK) {
+            CHECK(0, "mem_init(0x%llx) failed", (unsigned long long)sizes[i]);
+            continue;
+        }
+        CHECK(vm.mem.ram_size == sizes[i], "ram_size 0x%llx",
+              (unsigned long long)vm.mem.ram_size);
+        CHECK(vm.mem.nr_slots == (high ? 2u : 1u), "%u memslots", vm.mem.nr_slots);
+        hi = mem_find_slot(&vm, VMM_MEM_HIGH_START);
+        if (high)
+            CHECK(hi && hi->ram && hi->size == high,
+                  "high RAM slot at 4GiB should hold the remaining 0x%llx bytes",
+                  (unsigned long long)high);
+        else
+            CHECK(!hi, "no high RAM slot expected");
+
+        memset(&zc, 0, sizeof(zc));
+        zc.cmdline    = "console=ttyS0";
+        zc.kernel_end = 0x2a30000;
+        CHECK(zeropage_setup(&vm, &zc) == VMM_OK, "zeropage_setup");
+        bp = (const void *)((uint8_t *)vm.mem.slots[0].hva + ZP_BOOT_PARAMS_GPA);
+        check_e820_matches_slots(&vm, bp);
+        mem_destroy(&vm);
+    }
+}
+
 static void dump_tables(const char *dir, uint64_t rsdp_gpa)
 {
     const uint8_t *rsdp = g_ram + rsdp_gpa;
@@ -618,12 +689,12 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    g_ram = calloc(1, RAM_SIZE);
-    if (!g_ram) {
-        perror("calloc");
+    vm.vm_fd = -1;
+    if (mem_init(&vm, RAM_SIZE) != VMM_OK) {
+        fprintf(stderr, "mem_init failed\n");
         return 2;
     }
-    vm.mem.ram_size = RAM_SIZE;
+    g_ram = vm.mem.slots[0].hva;
 
     for (i = 0; i < sizeof(cpu_counts) / sizeof(cpu_counts[0]); i++) {
         int n = cpu_counts[i];
@@ -634,7 +705,7 @@ int main(int argc, char **argv)
         check_mptable(n, &mp);
         check_acpi(rsdp, n, &acpi);
         check_consistency(&mp, &acpi, n);
-        check_boot_params(rsdp, cmdline);
+        check_boot_params(&vm, rsdp, cmdline);
         if (dump_dir && n == 4)
             dump_tables(dump_dir, rsdp);
     }
@@ -653,7 +724,9 @@ int main(int argc, char **argv)
     CHECK(build_all(&vm, 1, longline, &rsdp) != 0,
           "a %d-byte cmdline must be rejected", ZP_CMDLINE_MAX);
 
+    check_split_layout();
+
     printf("%d checks passed, %d failed\n", g_pass, g_fail);
-    free(g_ram);
+    mem_destroy(&vm);
     return g_fail ? 1 : 0;
 }
