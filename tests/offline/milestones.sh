@@ -20,7 +20,7 @@ trap 'rm -rf "$WORK"' EXIT
 # 表达式里 s 是全文，要求替换确实发生，免得原文改动后对照用例悄悄失效。
 mutate() {
     local out="$WORK/$1.md"
-    python3 -I - "$SRC" "$out" "$2" <<'EOF'
+    python3 -I - "$SRC" "$out" "$2" <<'EOF' || return 1
 import sys
 src, out, expr = sys.argv[1:4]
 s = open(src, encoding="utf-8").read()
@@ -55,7 +55,8 @@ expect_rc 1
 expect_has "dependency 'nvme' is defined later"
 end_case
 
-f="$(mutate stale 's.replace("| 3 | pci-bus |", "| 3 | pci-bus · emu-net |", 1)')" || exit 1
+# 只改层级号，不碰里程碑名：名字后面的 ✓ 会随勾选变化，按名字匹配的替换会悄悄失效
+f="$(mutate stale 's.replace("\n| 3 | ", "\n| 4 | ", 1)')" || exit 1
 run_case "stale layer table" python3 "$TOOL" "$f"
 expect_rc 1
 expect_has "layer table"
