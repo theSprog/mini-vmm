@@ -173,7 +173,7 @@
 | E10 | 单元测试有能力报警（negative control） | **PASS** — 17 个接口层 mutant 全部被抓住，且都是因断言失败而红 | `make test negctl`，17/17 |
 | E11 | negctl 反过来查出了 `mem_test` 自身的覆盖漏洞 | **已修复** — 长度表缺“低 32 位小、高 32 位非零”一类，`len-truncated-32` 最初逃逸；补齐取值后 15/15 | `mem_test.c` 的 `g_lens` |
 | E13 | `KVM_GET_STATS_FD` 文件按 header 的 offset 解析，块乱序、块间留空、desc 不对齐都能读对，七种损坏文件都被拒绝且无越界 | **PASS** — 52 checks / 5 cases / 0 failed；按位置猜 desc 块、按位置猜数据块、强转不对齐指针、不限数据块长度四种错误实现各自变红 | `make test unit` → `kvm_stats_test` |
-| E14 | PCI conf1 与 BAR：只认 dword 对齐的 0xCF8 写、保留位非零当 master abort、BAR 只读位按大小屏蔽、IO BAR 高 16 位为 0、COMMAND 关 decode 后撤销路由、改写 BAR 后路由跟着走 | **PASS** — 128 checks / 11 cases / 0 failed；BAR 全可写、忽略 COMMAND、保留位别名、字节写地址口、32 位 IO BAR、窗口终点越界六种错误实现各自变红 | `make test unit` → `pci_bus_test` |
+| E14 | PCI conf1 与 BAR：只认 dword 对齐的 0xCF8 写、保留位非零当 master abort、BAR 只读位按大小屏蔽、IO BAR 高 16 位为 0、COMMAND 关 decode 后撤销路由、改写 BAR 后路由跟着走；INTx：KVM_IRQ_LINE 序列只在线电平变化时出现、共线设备取或、Interrupt Disable 屏蔽输出但 status.INT 照旧；Bus Master 默认关、关闭时 DMA 被拒且不碰内存 | **PASS** — 181 checks / 15 cases / 0 failed；BAR 全可写、忽略 COMMAND、保留位别名、字节写地址口、32 位 IO BAR、窗口终点越界六种错误实现各自变红；INTx 不取或、忽略 Interrupt Disable、写 COMMAND 不重算线电平、不维护 status.INT、DMA 不查 Bus Master、复位时打开 Bus Master 六种错误实现各自变红 | `make test unit` → `pci_bus_test` |
 | E15 | MP table 的 PCI 中断项与 DSDT `_PRT` 一致；AML PkgLength 在 1/2/3/4 字节编码的切换点上正确 | **PASS** — `boot_tables_test` 890 checks、`aml_test` 48 checks / 4 cases；MP 总线号错、GSI 偏一、INTx pin 偏一，以及 PkgLength 边界差一、不含自身长度、高位移位错共六种错误实现各自变红 | `make test unit` |
 | E16 | Linux guest 用上 PCI 总线：type 1 配置访问、`_CRS` 窗口原样接收不重新分配、BAR 读写路由、ACPI 与 `acpi=off` 都分到 GSI 17 | **PASS** — `pci-bus` 7/7；HEAD 二进制 7/7 变红；`_CRS` 窗口缩小、忽略 COMMAND、MP GSI 偏一三种错误实现分别只让对应用例变红 | `make test pci-bus` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
@@ -181,7 +181,7 @@
 ### 复现命令
 
 ```sh
-make test unit                     # E1 E2 E3 E7 E13
+make test unit                     # E1 E2 E3 E7 E13 E14
 make test tables                   # E8
 FUZZ_TIME=300 make test fuzz       # E4 E5 E6
 ./build/fuzz/elf_loader_fuzz         build/fuzz/artifacts/elf-crash-50a488df453d94bf401917e701686c4e8ae6bed5

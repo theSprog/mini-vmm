@@ -7,6 +7,8 @@
 #include <linux/pci_regs.h>
 
 #include "vmm.h"
+#include "memory.h"
+#include "devices/irqchip.h"
 #include "pci/pci.h"
 
 /* CONFIG_ADDRESS 的字段（PCI 3.0 第 3.2.2.3.2 节；Linux drivers/pci/pci.h
@@ -115,6 +117,89 @@ static void bars_update(struct pci_device *d)
 }
 
 /* ------------------------------------------------------------------ */
+/* INTx                                                                */
+/* ------------------------------------------------------------------ */
+
+/* 设备实际驱动到 INTx 线上的电平（PCI 3.0 第 6.2.2 节 Interrupt Disable、
+ * 第 6.2.3 节 Interrupt Status） */
+static bool intx_output(const struct pci_device *d)
+{
+    return d->intx_pin && d->intx_level &&
+           !(cfg_get(d, PCI_COMMAND, 2) & PCI_COMMAND_INTX_DISABLE);
+}
+
+/* 重新计算 d 所在那根线的电平，变了才通知 KVM */
+static void intx_line_update(struct pci_bus *bus, const struct pci_device *d)
+{
+    int gsi = pci_intx_gsi(d->slot, d->intx_pin);
+    int line = gsi - PCI_INTX_GSI_BASE;
+    bool level = false;
+    int s;
+
+    for (s = 0; s < PCI_MAX_SLOTS && !level; s++) {
+        const struct pci_device *o = bus->devs[s];
+
+        if (o && o->intx_pin && pci_intx_gsi(s, o->intx_pin) == gsi)
+            level = intx_output(o);
+    }
+    if (level == bus->intx_line[line])
+        return;
+    bus->intx_line[line] = level;
+    irqchip_set_irq(bus->vm, gsi, level);
+}
+
+void pci_set_irq(struct pci_device *d, bool level)
+{
+    uint16_t st;
+
+    if (!d->intx_pin) {
+        vmm_err("pci 00:%02x.0 %s: pci_set_irq on a device without INTx",
+                d->slot, d->name);
+        return;
+    }
+    if (level == d->intx_level)
+        return;
+    d->intx_level = level;
+    st = (uint16_t)cfg_get(d, PCI_STATUS, 2);
+    st = level ? st | PCI_STATUS_INTERRUPT : st & ~PCI_STATUS_INTERRUPT;
+    cfg_set16(d, PCI_STATUS, st);
+    intx_line_update(d->bus, d);
+}
+
+/* ------------------------------------------------------------------ */
+/* DMA                                                                 */
+/* ------------------------------------------------------------------ */
+
+static bool dma_allowed(struct pci_device *d, uint64_t gpa, size_t len,
+                        const char *dir)
+{
+    if (cfg_get(d, PCI_COMMAND, 2) & PCI_COMMAND_MASTER)
+        return true;
+    if (!d->dma_blocked_logged) {
+        d->dma_blocked_logged = true;
+        vmm_warn("pci 00:%02x.0 %s: DMA %s gpa 0x%llx len %zu with bus "
+                 "master disabled, dropped (logged once)", d->slot, d->name,
+                 dir, (unsigned long long)gpa, len);
+    }
+    return false;
+}
+
+int pci_dma_read(struct pci_device *d, uint64_t gpa, void *dst, size_t len)
+{
+    if (!dma_allowed(d, gpa, len, "read"))
+        return VMM_ERR_GUEST;
+    return mem_read(d->bus->vm, gpa, dst, len);
+}
+
+int pci_dma_write(struct pci_device *d, uint64_t gpa, const void *src,
+                  size_t len)
+{
+    if (!dma_allowed(d, gpa, len, "write"))
+        return VMM_ERR_GUEST;
+    return mem_write(d->bus->vm, gpa, src, len);
+}
+
+/* ------------------------------------------------------------------ */
 /* 配置空间                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -160,11 +245,14 @@ void pci_cfg_write(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
         d->cfg[reg + i] = (uint8_t)((d->cfg[reg + i] & ~m) | (b & m));
     }
 
-    /* command 或任一 BAR 被写到，decode 可能变了 */
+    /* command 或任一 BAR 被写到，decode 可能变了；command 还可能改了
+     * INTx Disable，设备输出到线上的电平跟着变 */
     end = reg + size;
     if ((reg < PCI_COMMAND + 2 && end > PCI_COMMAND) ||
         (reg < PCI_BASE_ADDRESS_5 + 4 && end > PCI_BASE_ADDRESS_0))
         bars_update(d);
+    if (d->intx_pin && reg < PCI_COMMAND + 2 && end > PCI_COMMAND)
+        intx_line_update(bus, d);
 }
 
 /* ------------------------------------------------------------------ */
@@ -372,10 +460,15 @@ static int dev_setup(struct pci_bus *bus, struct pci_device *d)
 
     /* command 里只有设备真正具备的功能位可写，其余只读为 0
      * （规范第 6.2.2 节）。没有 DMA 能力的设备 bus master 位也只读。 */
+    if (d->bus_master)
+        cmd_mask |= PCI_COMMAND_MASTER;
     wmask_set16(d, PCI_COMMAND, cmd_mask);
+    d->intx_level         = false;
+    d->dma_blocked_logged = false;
 
     /* 固件分配完 BAR 后打开 decode：Linux 沿用固件的分配，前提是 BAR
-     * 已经在响应。 */
+     * 已经在响应。Bus Master 保持关闭，由驱动 pci_set_master 打开：
+     * 驱动接管之前设备不该能写 guest 内存。 */
     cfg_set16(d, PCI_COMMAND, cmd_mask & (PCI_COMMAND_IO | PCI_COMMAND_MEMORY));
     bars_update(d);
     return VMM_OK;

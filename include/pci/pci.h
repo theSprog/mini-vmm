@@ -19,8 +19,25 @@
  * 直启 Linux 时没有固件，VMM 替它做这一步，guest 看到的就是“固件已经
  * 分配好”的状态。
  *
- * 并发：配置空间和 BAR 状态只在 vm->io_lock 下访问。conf1 端口的访问本来
- * 就经 exit 分发进来、持着这把锁；注册发生在 guest 启动之前。
+ * INTx 是电平信号。设备用 pci_set_irq 报告自己“有没有待处理的中断”，
+ * 核心据此维护三样东西：
+ *   - status 的 Interrupt Status 位：如实反映设备的电平，不受屏蔽影响；
+ *   - 设备实际驱动到线上的电平：电平为 1 且 command 的 INTx Disable 为 0；
+ *   - 每根 INTx 线的电平：线上所有设备输出的“或”（INTx# 是开漏、低有效，
+ *     任何一个设备拉低整根线就有效），只在变化时调 KVM_IRQ_LINE。
+ * 线电平必须按“或”算，而不是让每个设备直接拉 GSI：同一根线上的两个设备，
+ * 一个撤销中断时会把另一个仍在请求的中断一起拉低，后者的中断就丢了。
+ * 撤销同样要真的拉低：IOAPIC 的 PCI 引脚是电平触发，线一直高着，guest 每次
+ * EOI 后 IOAPIC 都会再投递一次，表现为中断风暴。
+ *
+ * DMA 经 pci_dma_read/pci_dma_write，它们先检查 command 的 Bus Master
+ * Enable：规范规定这一位为 0 时设备不能发起总线访问（第 6.2.2 节），驱动
+ * 在 probe 里调 pci_set_master 打开它。没打开就 DMA 说明设备模型或驱动
+ * 次序有问题，拒绝并记一次日志，而不是悄悄读写 guest 内存。
+ *
+ * 并发：配置空间、BAR、INTx 状态只在 vm->io_lock 下访问。conf1 端口的
+ * 访问本来就经 exit 分发进来、持着这把锁；I/O 线程上的设备回调先拿 io_lock
+ * 再调这里的函数（加锁顺序见 io/event_loop.h）；注册发生在 guest 启动之前。
  *
  * 参考：PCI Local Bus Spec 3.0 第 3.2.2.3.2 节（Type 1 配置机制）、
  * 第 6.1 节（配置空间头）、第 6.2.5 节（BAR）；linux/pci_regs.h；
@@ -119,6 +136,7 @@ struct pci_device {
     uint32_t class_code;           /* 24 位：base class | sub class | prog-if */
     uint8_t  revision;
     uint8_t  intx_pin;             /* 0 = 不用 INTx，1..4 = INTA..INTD */
+    bool     bus_master;           /* 会做 DMA：command 的 Bus Master 位可写 */
     struct pci_bar bars[PCI_NUM_BARS];
 
     /* 以下由 PCI 核心维护 */
@@ -126,6 +144,8 @@ struct pci_device {
     int      slot;
     uint8_t  cfg[PCI_CFG_SPACE_SIZE];
     uint8_t  wmask[PCI_CFG_SPACE_SIZE];
+    bool     intx_level;           /* 设备内部的中断请求电平 */
+    bool     dma_blocked_logged;   /* Bus Master 关闭时的 DMA 只记一次日志 */
 };
 
 struct pci_bus {
@@ -135,6 +155,7 @@ struct pci_bus {
     uint32_t           conf1_addr;    /* CONFIG_ADDRESS 当前值 */
     uint64_t           mmio_next;     /* BAR 分配游标 */
     uint32_t           io_next;
+    bool               intx_line[PCI_INTX_LINES];  /* 上次送给 KVM 的线电平 */
 };
 
 /* 注册 conf1 两个端口，把 host bridge 放进 slot 0 */
@@ -151,5 +172,15 @@ uint32_t pci_cfg_read(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
                       uint16_t reg, uint32_t size);
 void     pci_cfg_write(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
                        uint16_t reg, uint32_t size, uint32_t val);
+
+/* 设备报告自己的中断请求电平。重复设置同一电平没有副作用。
+ * 设备没有 INTx（intx_pin == 0）时调用是设备模型的 bug，只记日志。 */
+void pci_set_irq(struct pci_device *dev, bool level);
+
+/* 设备发起的 DMA。Bus Master 关闭返回 VMM_ERR_GUEST；地址范围的检查和
+ * 失败原因同 mem_read/mem_write。 */
+int  pci_dma_read(struct pci_device *dev, uint64_t gpa, void *dst, size_t len);
+int  pci_dma_write(struct pci_device *dev, uint64_t gpa, const void *src,
+                   size_t len);
 
 #endif /* PCI_PCI_H */

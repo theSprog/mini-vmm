@@ -10,6 +10,11 @@
  *   - BAR 探测：Linux drivers/pci/probe.c __pci_read_base() 的访问顺序，
  *     用同一个 pci_size() 算法从读回值推出大小（见 linux_bar_size）
  *   - command 只读位、interrupt line 0xFF：PCI 3.0 第 6.2.2、6.2.4 节
+ *   - INTx：Interrupt Disable 与 Interrupt Status 的关系是 PCI 3.0 第 6.2.2、
+ *     6.2.3 节；同一根线上多个设备取“或”是 INTx# 开漏线与的电气语义
+ *     （第 2.2.6 节），用例里的 KVM_IRQ_LINE 序列就是 IOAPIC 引脚上应当
+ *     看到的电平变化
+ *   - Bus Master：第 6.2.2 节，位为 0 时设备不得发起总线访问
  *
  * 不碰 /dev/kvm：src/vm.c 里用到的 kvm_* 全部是桩。
  */
@@ -68,6 +73,41 @@ int  kvm_get_mp_state(int f, uint32_t *st)      { (void)f; (void)st; return VMM_
 const char *kvm_mp_state_str(uint32_t st)       { (void)st; return "?"; }
 const struct arch_cpu_ops *arch_probe(void)     { return NULL; }
 int  irqchip_create(struct vmm_vm *vm)          { (void)vm; return VMM_OK; }
+
+/* KVM_IRQ_LINE 的记录：每次调用追加一条 "gsi=level"，用例比对整串序列，
+ * 多发、漏发、发错线都会体现在字符串里 */
+static char g_irq_log[512];
+
+int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
+{
+    size_t n = strlen(g_irq_log);
+
+    (void)vm;
+    snprintf(g_irq_log + n, sizeof(g_irq_log) - n, "%s%d=%d",
+             n ? " " : "", gsi, level);
+    return VMM_OK;
+}
+
+/* guest RAM 只要能区分“读写发生了”和“被拦下了”：[0, sizeof(g_ram)) */
+static uint8_t g_ram[4096];
+
+int mem_read(struct vmm_vm *vm, uint64_t gpa, void *dst, size_t len)
+{
+    (void)vm;
+    if (gpa > sizeof(g_ram) || len > sizeof(g_ram) - gpa)
+        return VMM_ERR_GUEST;
+    memcpy(dst, g_ram + gpa, len);
+    return VMM_OK;
+}
+
+int mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len)
+{
+    (void)vm;
+    if (gpa > sizeof(g_ram) || len > sizeof(g_ram) - gpa)
+        return VMM_ERR_GUEST;
+    memcpy(g_ram + gpa, src, len);
+    return VMM_OK;
+}
 
 /* ------------------------------------------------------------------ */
 /* guest 视角的访问：outb/outl/inl 和 MMIO load/store                    */
@@ -169,6 +209,7 @@ static uint64_t linux_bar_size(int slot, int bar)
 static void setup(void)
 {
     vm_reset();
+    g_irq_log[0] = 0;
     CHECK_U64(pci_bus_init(&g_bus, &g_vm), VMM_OK, "pci_bus_init");
     CHECK_U64(pci_test_attach(&g_dev, &g_bus), VMM_OK, "pci_test_attach");
 }
@@ -459,6 +500,141 @@ static void case_register_errors(void)
     }
 }
 
+/* 共线的两个设备：slot 1 的 INTA（pci-test）和 slot 2 的 INTD 都接 GSI 17
+ * （16 + ((slot + pin - 1) & 3)）；slot 3 的 INTA 接 GSI 19，用来确认
+ * 别的线不受影响。 */
+static struct pci_device g_peer, g_other;
+
+static void setup_shared(void)
+{
+    setup();
+    memset(&g_peer, 0, sizeof(g_peer));
+    g_peer.name     = "peer";
+    g_peer.intx_pin = 4;
+    CHECK_U64(pci_register_device(&g_bus, &g_peer), VMM_OK, "register peer");
+    memset(&g_other, 0, sizeof(g_other));
+    g_other.name     = "other";
+    g_other.intx_pin = 1;
+    CHECK_U64(pci_register_device(&g_bus, &g_other), VMM_OK, "register other");
+    CHECK_U64(pci_intx_gsi(g_dev.pci.slot, 1), 17, "pci-test INTA -> GSI 17");
+    CHECK_U64(pci_intx_gsi(g_peer.slot, 4), 17, "peer INTD -> GSI 17");
+    CHECK_U64(pci_intx_gsi(g_other.slot, 1), 19, "other INTA -> GSI 19");
+}
+
+#define IRQ_LOG(want, msg)  CHECK(!strcmp(g_irq_log, (want)), \
+                                  "%s: KVM_IRQ_LINE log \"%s\", want \"%s\"", \
+                                  (msg), g_irq_log, (want))
+
+static uint32_t status_int(int slot)
+{
+    return cfg_r(slot, PCI_STATUS, 2) & PCI_STATUS_INTERRUPT;
+}
+
+static void case_intx_level(void)
+{
+    T_CASE("INTx 电平：拉高、撤销各发一次 KVM_IRQ_LINE，重复设置不重发");
+    setup_shared();
+
+    pci_set_irq(&g_dev.pci, true);
+    IRQ_LOG("17=1", "assert");
+    CHECK_U64(status_int(TEST_SLOT), PCI_STATUS_INTERRUPT, "status.INT set");
+    pci_set_irq(&g_dev.pci, true);
+    IRQ_LOG("17=1", "asserting again changes nothing");
+    pci_set_irq(&g_dev.pci, false);
+    IRQ_LOG("17=1 17=0", "deassert lowers the level-triggered pin");
+    CHECK_U64(status_int(TEST_SLOT), 0, "status.INT clear");
+    pci_set_irq(&g_dev.pci, false);
+    IRQ_LOG("17=1 17=0", "deasserting again changes nothing");
+}
+
+static void case_intx_shared(void)
+{
+    T_CASE("INTx 共线：线电平是所有设备输出的或，一个撤销不能吞掉另一个");
+    setup_shared();
+
+    pci_set_irq(&g_dev.pci, true);
+    pci_set_irq(&g_peer, true);
+    IRQ_LOG("17=1", "second device on a high line: no new edge");
+    pci_set_irq(&g_dev.pci, false);
+    IRQ_LOG("17=1", "peer still requests: line stays high");
+    CHECK_U64(status_int(TEST_SLOT), 0, "pci-test status.INT clear");
+    CHECK_U64(status_int(g_peer.slot), PCI_STATUS_INTERRUPT, "peer status.INT set");
+    pci_set_irq(&g_other, true);
+    IRQ_LOG("17=1 19=1", "other line is independent");
+    pci_set_irq(&g_peer, false);
+    IRQ_LOG("17=1 19=1 17=0", "last requester gone: line low");
+}
+
+static void case_intx_disable(void)
+{
+    T_CASE("Interrupt Disable：屏蔽设备输出，status.INT 照样反映设备电平");
+    setup_shared();
+
+    pci_set_irq(&g_dev.pci, true);
+    cfg_w(TEST_SLOT, PCI_COMMAND, 2,
+          PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_INTX_DISABLE);
+    IRQ_LOG("17=1 17=0", "setting INTx Disable drops a pending interrupt");
+    CHECK_U64(status_int(TEST_SLOT), PCI_STATUS_INTERRUPT,
+              "status.INT still reflects the device while masked");
+    cfg_w(TEST_SLOT, PCI_COMMAND, 2, PCI_COMMAND_IO | PCI_COMMAND_MEMORY);
+    IRQ_LOG("17=1 17=0 17=1", "clearing INTx Disable re-asserts the line");
+
+    cfg_w(TEST_SLOT, PCI_COMMAND, 2,
+          PCI_COMMAND_IO | PCI_COMMAND_MEMORY | PCI_COMMAND_INTX_DISABLE);
+    pci_set_irq(&g_dev.pci, false);
+    pci_set_irq(&g_dev.pci, true);
+    IRQ_LOG("17=1 17=0 17=1 17=0", "requests while masked stay off the line");
+
+    /* 被屏蔽的设备不能把共线设备的中断压下去 */
+    pci_set_irq(&g_peer, true);
+    IRQ_LOG("17=1 17=0 17=1 17=0 17=1", "unmasked peer still drives the line");
+
+    /* 字节写 command 的高字节（bit 10 在第二个字节）也要生效 */
+    pci_set_irq(&g_peer, false);
+    g_irq_log[0] = 0;
+    cfg_w(TEST_SLOT, PCI_COMMAND + 1, 1, 0);
+    IRQ_LOG("17=1", "byte write to COMMAND[15:8] clears INTx Disable");
+}
+
+static void case_bus_master(void)
+{
+    static const uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+    struct pci_device dma;
+    uint8_t buf[4];
+    int slot;
+
+    T_CASE("Bus Master：有 DMA 能力的设备该位可写、默认关闭，关闭时 DMA 被拒");
+    setup();
+    memset(&dma, 0, sizeof(dma));
+    dma.name       = "dma";
+    dma.bus_master = true;
+    CHECK_U64(pci_register_device(&g_bus, &dma), VMM_OK, "register dma device");
+    slot = dma.slot;
+
+    CHECK_U64(cfg_r(slot, PCI_COMMAND, 2) & PCI_COMMAND_MASTER, 0,
+              "bus master off until the driver calls pci_set_master");
+    memset(g_ram, 0, sizeof(g_ram));
+    CHECK_U64(pci_dma_write(&dma, 0x100, pattern, 4), VMM_ERR_GUEST,
+              "DMA write refused with bus master off");
+    CHECK_U64(g_ram[0x100], 0, "refused write left guest memory untouched");
+    memset(buf, 0x55, sizeof(buf));
+    CHECK_U64(pci_dma_read(&dma, 0x100, buf, 4), VMM_ERR_GUEST,
+              "DMA read refused with bus master off");
+    CHECK_U64(buf[0], 0x55, "refused read left the buffer untouched");
+
+    cfg_w(slot, PCI_COMMAND, 2, PCI_COMMAND_MASTER);
+    CHECK_U64(cfg_r(slot, PCI_COMMAND, 2), PCI_COMMAND_MASTER, "bus master is RW");
+    CHECK_U64(pci_dma_write(&dma, 0x100, pattern, 4), VMM_OK, "DMA write allowed");
+    CHECK_U64(pci_dma_read(&dma, 0x100, buf, 4), VMM_OK, "DMA read allowed");
+    CHECK(!memcmp(buf, pattern, 4), "DMA round trip");
+    CHECK_U64(pci_dma_read(&dma, sizeof(g_ram) - 2, buf, 4), VMM_ERR_GUEST,
+              "out-of-range DMA still fails in the memory layer");
+
+    cfg_w(slot, PCI_COMMAND, 2, 0);
+    CHECK_U64(pci_dma_read(&dma, 0x100, buf, 4), VMM_ERR_GUEST,
+              "turning bus master off stops DMA again");
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -479,5 +655,9 @@ int main(int argc, char **argv)
     case_decode();
     case_static_wins();
     case_register_errors();
+    case_intx_level();
+    case_intx_shared();
+    case_intx_disable();
+    case_bus_master();
     return T_SUMMARY();
 }
