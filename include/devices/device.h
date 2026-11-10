@@ -17,8 +17,10 @@
 
 #include <stdio.h>
 
+struct netdev;
 struct opts;
 struct pci_bus;
+struct vmm_device;
 struct vmm_vm;
 
 struct vmm_device_type {
@@ -27,12 +29,20 @@ struct vmm_device_type {
     const char *const *props;      /* 合法属性名，NULL 结尾，含 "driver" */
     /* o 在 create 返回后释放，要保留的字符串自己拷贝 */
     int  (*create)(const struct opts *o, void **dev);
-    int  (*attach)(void *dev, struct vmm_vm *vm, struct pci_bus *bus);
+    /* d->dev 是 create 分配的对象；有 netdev= 属性的设备从 d->net 拿后端 */
+    int  (*attach)(const struct vmm_device *d, struct vmm_vm *vm,
+                   struct pci_bus *bus);
 };
 
 struct vmm_device {
     const struct vmm_device_type *type;
     void *dev;
+    const char *arg;               /* 原始参数，报错用；指向 argv，进程内有效 */
+    /* netdev= 属性的值（拷贝），没有这个属性时为 NULL。解析阶段只记下名字，
+     * 因为 --netdev 可以写在 --device 后面；全部解析完由 netdev_link
+     * 解析成 net（见 net/netdev.h） */
+    char *netdev_id;
+    struct netdev *net;
 };
 
 /* 解析阶段。失败时已打印原因 */

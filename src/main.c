@@ -18,6 +18,7 @@
 #include "boot/acpi.h"
 #include "devices/rtc.h"
 #include "devices/device.h"
+#include "net/netdev.h"
 #include "pci/pci.h"
 #include "console.h"
 #include "smp.h"
@@ -132,6 +133,10 @@ void vmm_usage(const char *prog)
 "                           Syntax follows QEMU -device: ',,' is a literal\n"
 "                           comma, a property may appear only once.\n"
 "                           --device help lists the drivers\n"
+"  --netdev TYPE,id=ID[,PROP=VALUE...]\n"
+"                         linux: add a network backend for the NIC whose\n"
+"                           netdev= names ID; each backend serves exactly\n"
+"                           one NIC. --netdev help lists the types\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -293,6 +298,19 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
             if (vmm_device_parse(argv[i], &cfg->devices[cfg->nr_devices]) != VMM_OK)
                 return VMM_ERR_INVAL;
             cfg->nr_devices++;
+        } else if (!strcmp(a, "--netdev")) {
+            NEED_ARG();
+            if (!strcmp(argv[i], "help")) {
+                netdev_list_types(stdout);
+                exit(0);
+            }
+            if (cfg->nr_netdevs == VMM_MAX_DEVICES) {
+                vmm_err("too many --netdev (max %d)", VMM_MAX_DEVICES);
+                return VMM_ERR_INVAL;
+            }
+            if (netdev_parse(argv[i], &cfg->netdevs[cfg->nr_netdevs]) != VMM_OK)
+                return VMM_ERR_INVAL;
+            cfg->nr_netdevs++;
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)
@@ -360,6 +378,14 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         vmm_err("--device requires --mode linux");
         return VMM_ERR_INVAL;
     }
+    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_netdevs) {
+        vmm_err("--netdev requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    /* --netdev 可以写在引用它的 --device 之后，所以引用要等全部解析完 */
+    if (netdev_link(cfg->devices, cfg->nr_devices,
+                    cfg->netdevs, cfg->nr_netdevs) != VMM_OK)
+        return VMM_ERR_INVAL;
     if (cfg->mode == VMM_BOOT_LINUX) {
         static char cmdline[ZP_CMDLINE_MAX];
         int n;
@@ -449,6 +475,12 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
         if (r != VMM_OK)
             return r;
     }
+    /* 网卡 attach 时登记了收帧回调，之后才能打开后端开始收帧 */
+    for (i = 0; i < cfg->nr_netdevs; i++) {
+        r = netdev_open(cfg->netdevs[i], loop);
+        if (r != VMM_OK)
+            return r;
+    }
 
     /* vmlinux 还是 bzImage 由文件头决定，见 boot/kernel_loader.h */
     r = kernel_load(vm, cfg->payload_path, &kimg);
@@ -520,7 +552,7 @@ int main(int argc, char **argv)
     FILE *stats_out = NULL;
     struct timespec t0, t1;
     size_t payload_len = 0;
-    int r;
+    int i, r;
 
     vmm_config_default(&cfg);
     if (argc < 2) {
@@ -647,8 +679,6 @@ run:
 
     /* Ctrl-A x 打断的现场一定要看：guest 卡住时这是唯一的线索 */
     if (r == VMM_OK && (vmm_log_level >= 3 || vm.user_stop)) {
-        int i;
-
         for (i = 0; i < vm.nr_vcpus; i++)
             vcpu_dump_state(&vm.vcpus[i]);
     }
@@ -667,6 +697,8 @@ run:
 
 out:
     evl_destroy(&loop);
+    for (i = 0; i < cfg.nr_netdevs; i++)
+        netdev_close(cfg.netdevs[i]);
     vm_destroy(&vm);
 close_stats:
     if (stats_out && stats_out != stderr && fclose(stats_out) != 0) {

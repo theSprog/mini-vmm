@@ -177,12 +177,14 @@
 | E15 | MP table 的 PCI 中断项与 DSDT `_PRT` 一致；AML PkgLength 在 1/2/3/4 字节编码的切换点上正确 | **PASS** — `boot_tables_test` 890 checks、`aml_test` 48 checks / 4 cases；MP 总线号错、GSI 偏一、INTx pin 偏一，以及 PkgLength 边界差一、不含自身长度、高位移位错共六种错误实现各自变红 | `make test unit` |
 | E16 | Linux guest 用上 PCI 总线：type 1 配置访问、`_CRS` 窗口原样接收不重新分配、BAR 读写路由、ACPI 与 `acpi=off` 都分到 GSI 17 | **PASS** — `pci-bus` 10/10；`--pci-test` 时代的二进制 7/7 变红；`_CRS` 窗口缩小、忽略 COMMAND、MP GSI 偏一三种错误实现分别只让对应用例变红；`--device` 的三条命令行用例在没有 `--device` 的二进制上报 unknown option 变红 | `make test pci-bus` |
 | E17 | `--device` 参数值解析：隐含键、`,,` 转义的结果与 QEMU `get_opt_name_value` 一致；重复键、短格式布尔、空元素、空键、超过 16 个属性在启动前报错，错误信息带原始参数和出错的键；未知属性列出合法属性 | **PASS** — `opts_test` 79 checks / 5 cases；重复键取最后一个、不认转义、短格式当 on、第一个元素无条件当隐含键、缓冲区少 1 字节五种错误实现各自变红（最后一种由 ASan 报堆越界） | `make test unit` → `opts_test` |
+| E18 | 网络后端：`--netdev` 语法与 id 规则（同 QEMU `id_wellformed`）；`netdev=` 引用一一对应，未知 id、两张网卡共用、没有网卡引用、id 重复都报错；经真实 TAP 收发（对端是绑在接口上的 AF_PACKET socket）：多段 iovec 拼成一帧原样出现、接口上的帧原样交给前端且在 I/O 线程上；前端回 FULL 后停止读 fd、`netdev_rx_resume` 后按原顺序交付且恢复读 fd；同一 TAP 第二次打开报 EBUSY、同名非 TAP 接口报 EINVAL、接口 down 时写入 EIO 且只警告一次；`evl_mod` 改关心的事件后原回调照常派发 | **PASS** — `netdev_test` 78 checks / 13 cases，`event_loop_test` 46 checks / 8 cases；暂停时不停读 fd、FULL 时丢弃挂起帧、resume 不写 eventfd、唤醒后不恢复读 fd、只写第一段 iovec、漏 `IFF_NO_PI`、不查未被引用的 netdev、每次写失败都警告、不查 id 格式九种错误实现各自变红（等待都有 5 s 上限，超时报出在等哪一帧）；内核不允许非特权 user namespace 时 TAP 部分打印 SKIP | `make test unit` → `netdev_test` |
+| E19 | 真实 `vmm` 程序接好了 `--netdev`：非 linux 模式拒绝、未被引用的后端、拼错的属性、未知类型都在创建 VM 前报错；`--netdev help` 列出类型 | **PASS** — `emu-net` 5/5；没有 `--netdev` 的二进制报 unknown option 变红 | `make test emu-net` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令
 
 ```sh
-make test unit                     # E1 E2 E3 E7 E13 E14 E17
+make test unit                     # E1 E2 E3 E7 E13 E14 E17 E18
 make test tables                   # E8
 FUZZ_TIME=300 make test fuzz       # E4 E5 E6
 ./build/fuzz/elf_loader_fuzz         build/fuzz/artifacts/elf-crash-50a488df453d94bf401917e701686c4e8ae6bed5

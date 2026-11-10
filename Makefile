@@ -37,6 +37,8 @@ SRCS := \
 	src/pci/pci.c \
 	src/devices/pci_test.c \
 	src/devices/device.c \
+	src/net/netdev.c \
+	src/net/tap.c \
 	src/opts.c \
 	src/devices/rtc.c \
 	src/console.c \
@@ -138,7 +140,7 @@ clean:
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
-               event-loop exit-stats pci-bus
+               event-loop exit-stats pci-bus emu-net
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -171,6 +173,7 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/kvm_stats_test \
              $(BUILD)/tests/pci_bus_test \
              $(BUILD)/tests/opts_test \
+             $(BUILD)/tests/netdev_test \
              $(BUILD)/tests/aml_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
@@ -232,6 +235,11 @@ $(BUILD)/tests/pci_bus_test: tests/unit/pci_bus_test.c src/pci/pci.c \
 $(BUILD)/tests/opts_test: tests/unit/opts_test.c src/opts.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/netdev_test: tests/unit/netdev_test.c src/net/netdev.c \
+                            src/net/tap.c src/opts.c src/io/event_loop.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
 $(BUILD)/tests/aml_test: tests/unit/aml_test.c src/boot/aml.c
 	@mkdir -p $(dir $@)

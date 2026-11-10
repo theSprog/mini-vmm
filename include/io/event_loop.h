@@ -7,7 +7,7 @@
  * 稍后送进来，KVM_RUN 不会因为 host 侧没有数据而停住。
  *
  * 线程模型
- *   evl_add / evl_del 只能在 evl_start 之前或者在回调里（即 I/O 线程上）
+ *   evl_add / evl_del / evl_mod 只能在 evl_start 之前或者在回调里（即 I/O 线程上）
  *   调用，从别的线程调用返回 VMM_ERR_INVAL。这样处理器表只有一个写者，
  *   不需要锁；别的线程需要 I/O 线程做事时，应当写一个由 I/O 线程监听的
  *   eventfd，而不是直接改表。
@@ -64,6 +64,10 @@ int  evl_init(struct event_loop *l);
 int  evl_add(struct event_loop *l, int fd, uint32_t events,
              evl_handler_fn fn, void *opaque);
 int  evl_del(struct event_loop *l, int fd);
+/* 改变已注册 fd 关心的事件，例如暂时传 0 停止接收 EPOLLIN（流控），之后
+ * 再改回来。和 evl_del + evl_add 相比不占用新槽位，也不会让同一批结果里
+ * 的陈旧事件指向别的 fd。线程限制同 evl_add。 */
+int  evl_mod(struct event_loop *l, int fd, uint32_t events);
 
 int  evl_start(struct event_loop *l);
 /* 唤醒并 join I/O 线程；返回后不会再有回调在运行。未启动时直接返回 */

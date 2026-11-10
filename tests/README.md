@@ -33,7 +33,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -45,6 +45,7 @@ tests/
 │   ├── aml_test.c          AML 编码：PkgLength 各长度的切换点、整数前缀、EisaId
 │   ├── pci_bus_test.c      配置空间 conf1 访问、BAR 探测与路由、COMMAND decode、INTx 线电平、Bus Master 与 DMA
 │   ├── opts_test.c         --device 参数值的 QEMU 风格解析与报错
+│   ├── netdev_test.c       --netdev 解析与引用规则；在自建的 user + net namespace 里经真实 TAP 收发帧、RX 流控
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
 │   ├── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
 │   └── kvm_stats_test.c    KVM_GET_STATS_FD 文件解析：乱序布局、不对齐、损坏文件
@@ -74,6 +75,7 @@ tests/
 | `event-loop` | 是 | 是 | host 的 `/proc/<pid>/task/*/{comm,wchan}` + guest shell 回显 + VMM 日志 |
 | `exit-stats` | 是 | payload 用例否，Linux 用例是 | 从 payload 源码逐条数出的 exit 次数 + KVM 的 `io_exits`/`exits` + 开关统计时 stdout 逐字节相同 |
 | `pci-bus` | 是 | 是 | guest 的 PCI 枚举日志和 `lspci` + 经 `devmem`、sysfs 读写 BAR 的回读值 + ACPI 与 `acpi=off` 两次启动分到的 IRQ |
+| `emu-net` | 是 | 否 | 真实 `vmm` 程序对 `--netdev` 参数和引用关系的报错，必须早于创建 VM |
 
 `linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
 

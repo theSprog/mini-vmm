@@ -1,4 +1,5 @@
 /* src/devices/device.c — --device 的设备类型表，两阶段的约定见 devices/device.h */
+#include <stdlib.h>
 #include <string.h>
 
 #include "vmm.h"
@@ -53,6 +54,16 @@ int vmm_device_parse(const char *arg, struct vmm_device *out)
         goto out;
 
     out->type = t;
+    out->arg = arg;
+    out->net = NULL;
+    out->netdev_id = NULL;
+    if (opts_get(&o, "netdev")) {
+        out->netdev_id = strdup(opts_get(&o, "netdev"));
+        if (!out->netdev_id) {
+            r = VMM_ERR_NOMEM;
+            goto out;
+        }
+    }
     r = t->create(&o, &out->dev);
 out:
     opts_free(&o);
@@ -62,5 +73,5 @@ out:
 int vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
                       struct pci_bus *bus)
 {
-    return d->type->attach(d->dev, vm, bus);
+    return d->type->attach(d, vm, bus);
 }

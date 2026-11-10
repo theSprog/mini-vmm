@@ -83,10 +83,11 @@ static int pci_test_create(const struct opts *o, void **dev)
     return *dev ? VMM_OK : VMM_ERR_NOMEM;
 }
 
-static int pci_test_dev_attach(void *dev, struct vmm_vm *vm, struct pci_bus *bus)
+static int pci_test_dev_attach(const struct vmm_device *d, struct vmm_vm *vm,
+                               struct pci_bus *bus)
 {
     (void)vm;
-    return pci_test_attach(dev, bus);
+    return pci_test_attach(d->dev, bus);
 }
 
 static const char *const pci_test_props[] = { "driver", NULL };

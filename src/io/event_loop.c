@@ -118,6 +118,33 @@ int evl_del(struct event_loop *l, int fd)
     return VMM_ERR_INVAL;
 }
 
+int evl_mod(struct event_loop *l, int fd, uint32_t events)
+{
+    struct epoll_event ev;
+    int i;
+
+    if (!on_owner_thread(l, "evl_mod", fd))
+        return VMM_ERR_INVAL;
+
+    for (i = 0; i < EVL_MAX_HANDLERS; i++) {
+        struct evl_slot *s = &l->slots[i];
+
+        if (!s->fn || s->fd != fd)
+            continue;
+        memset(&ev, 0, sizeof(ev));
+        ev.events = events;
+        ev.data.ptr = s;
+        if (epoll_ctl(l->epfd, EPOLL_CTL_MOD, fd, &ev) < 0) {
+            vmm_err("epoll_ctl(MOD fd=%d events=0x%x) failed: %s",
+                    fd, events, strerror(errno));
+            return VMM_ERR_SYS;
+        }
+        return VMM_OK;
+    }
+    vmm_err("evl_mod(fd=%d): fd is not registered", fd);
+    return VMM_ERR_INVAL;
+}
+
 static void *io_thread(void *arg)
 {
     struct event_loop *l = arg;

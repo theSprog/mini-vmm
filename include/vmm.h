@@ -186,6 +186,11 @@ struct vmm_config {
      * 上限是总线上除 host bridge 之外的 slot 数。 */
     struct vmm_device devices[VMM_MAX_DEVICES];
     int         nr_devices;
+
+    /* --netdev 给出的网络后端。每个后端恰好接一个网卡，所以上限和设备数
+     * 相同；对象在解析阶段分配，见 net/netdev.h */
+    struct netdev *netdevs[VMM_MAX_DEVICES];
+    int         nr_netdevs;
 };
 
 void vmm_config_default(struct vmm_config *cfg);

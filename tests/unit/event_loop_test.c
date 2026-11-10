@@ -6,7 +6,8 @@
  *   - 回调里删掉同一批结果里还没派发的 fd，它的回调不再被调用；
  *   - 同一批里删掉一个 fd 再注册新 fd，陈旧事件不能派发给新 fd
  *     （新 fd 是空管道，回调被调用就说明派发错了）；
- *   - I/O 线程运行期间，别的线程调用 evl_add / evl_del 被拒绝；
+ *   - I/O 线程运行期间，别的线程调用 evl_add / evl_del / evl_mod 被拒绝；
+ *   - evl_mod 改变关心的事件后，原来的回调照常收到事件；
  *   - fd 不支持 poll 时返回 VMM_ERR_UNSUPPORTED；
  *   - 写端关闭后回调能收到 EOF/HUP 并删掉自己，循环不会空转。
  *
@@ -257,6 +258,34 @@ static void case_foreign_thread_rejected(void)
     close(fds[1]);
 }
 
+/* evl_mod 只改关心的事件，回调和槽位不变：注册时传 0，数据到了也不派发；
+ * 改成 EPOLLIN 后，已经在等的数据立刻派发给原来的回调 */
+static void case_mod(void)
+{
+    struct thread_probe p = { .calls = 0 };
+    struct event_loop l;
+    int fds[2];
+
+    T_CASE("evl_mod switches interest without re-registering");
+    make_pipe(fds);
+    sem_init(&p.done, 0, 0);
+    CHECK_U64(evl_init(&l), VMM_OK, "evl_init");
+    CHECK_U64(evl_add(&l, fds[0], 0, on_probe, &p), VMM_OK, "evl_add events=0");
+    put_byte(fds[1]);
+    CHECK_U64(evl_mod(&l, fds[0], EPOLLIN), VMM_OK, "evl_mod -> EPOLLIN");
+    CHECK_U64(evl_mod(&l, fds[1], EPOLLIN), (uint64_t)VMM_ERR_INVAL,
+              "evl_mod of an unregistered fd");
+    CHECK_U64(evl_start(&l), VMM_OK, "evl_start");
+    sem_wait(&p.done);
+    CHECK_U64(p.calls, 1, "callback after evl_mod");
+    CHECK_U64(evl_mod(&l, fds[0], 0), (uint64_t)VMM_ERR_INVAL,
+              "evl_mod from main while running");
+    evl_destroy(&l);
+    sem_destroy(&p.done);
+    close(fds[0]);
+    close(fds[1]);
+}
+
 static void case_unpollable_fd(void)
 {
     struct event_loop l;
@@ -329,6 +358,7 @@ int main(int argc, char **argv)
     case_delete_in_batch();
     case_reuse_in_batch();
     case_foreign_thread_rejected();
+    case_mod();
     case_unpollable_fd();
     case_eof_self_delete();
     return T_SUMMARY();
