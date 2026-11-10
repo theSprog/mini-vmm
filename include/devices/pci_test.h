@@ -1,4 +1,4 @@
-/* include/devices/pci_test.h — 验证 PCI 总线用的最小设备（--pci-test）
+/* include/devices/pci_test.h — 验证 PCI 总线用的最小设备（--device pci-test）
  *
  * pci-bus 里程碑要证明“guest 能枚举到设备、BAR 能被探测和搬动、访问能
  * 路由到设备”，这需要一个总线上的设备，但还不需要任何设备语义。这个
@@ -29,6 +29,7 @@
 #include <stdint.h>
 
 #include "pci/pci.h"
+#include "devices/device.h"
 
 #define PCI_DEVICE_ID_TEST    0x0002
 #define PCI_TEST_MAGIC        0x74736574u      /* 't' 'e' 's' 't' */
@@ -53,5 +54,8 @@ struct pci_test {
 };
 
 int pci_test_attach(struct pci_test *t, struct pci_bus *bus);
+
+/* --device pci-test，没有 driver 以外的属性 */
+extern const struct vmm_device_type pci_test_device_type;
 
 #endif /* DEVICES_PCI_TEST_H */

@@ -17,7 +17,7 @@
 #include "boot/mptable.h"
 #include "boot/acpi.h"
 #include "devices/rtc.h"
-#include "devices/pci_test.h"
+#include "devices/device.h"
 #include "pci/pci.h"
 #include "console.h"
 #include "smp.h"
@@ -126,8 +126,12 @@ void vmm_usage(const char *prog)
 "  --exit-stats FILE      When the guest stops, write VM exit counts to FILE\n"
 "                           ('-' = stderr): user-space exits per reason and\n"
 "                           per device, plus KVM's own counters\n"
-"  --pci-test             linux: add the pci-test device to the PCI bus\n"
-"                           (two BARs over a magic/scratch register file)\n"
+"  --device DRIVER[,PROP=VALUE...]\n"
+"                         linux: add a PCI device, repeatable; devices take\n"
+"                           slots 1, 2, ... in command line order.\n"
+"                           Syntax follows QEMU -device: ',,' is a literal\n"
+"                           comma, a property may appear only once.\n"
+"                           --device help lists the drivers\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -146,9 +150,11 @@ void vmm_usage(const char *prog)
 "  # SMP\n"
 "  %s --mode linux --smp 4 --mem 512M --initrd initramfs.cpio.gz vmlinux\n"
 "  # which device caused the VM exits\n"
-"  %s --mode long64 --exit-stats - build/serial64.bin\n",
+"  %s --mode long64 --exit-stats - build/serial64.bin\n"
+"  # a PCI device\n"
+"  %s --mode linux --mem 512M --device pci-test --initrd initramfs.cpio.gz vmlinux\n",
             prog, (unsigned long long)PAYLOAD_LONG_GPA, VMM_MAX_VCPUS,
-            prog, prog, prog, prog, prog, prog, prog);
+            prog, prog, prog, prog, prog, prog, prog, prog);
 }
 
 static int parse_size(const char *s, uint64_t *out)
@@ -274,8 +280,19 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];
-        } else if (!strcmp(a, "--pci-test")) {
-            cfg->pci_test = true;
+        } else if (!strcmp(a, "--device")) {
+            NEED_ARG();
+            if (!strcmp(argv[i], "help")) {
+                vmm_device_list_types(stdout);
+                exit(0);
+            }
+            if (cfg->nr_devices == VMM_MAX_DEVICES) {
+                vmm_err("too many --device (max %d)", VMM_MAX_DEVICES);
+                return VMM_ERR_INVAL;
+            }
+            if (vmm_device_parse(argv[i], &cfg->devices[cfg->nr_devices]) != VMM_OK)
+                return VMM_ERR_INVAL;
+            cfg->nr_devices++;
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)
@@ -339,8 +356,8 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
     }
     /* PCI 总线只在 Linux 模式下创建：描述它的 DSDT 和 MP table 只有
      * 这个模式才生成，裸 payload 拿不到总线的地址窗口和中断路由 */
-    if (cfg->mode != VMM_BOOT_LINUX && cfg->pci_test) {
-        vmm_err("--pci-test requires --mode linux");
+    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_devices) {
+        vmm_err("--device requires --mode linux");
         return VMM_ERR_INVAL;
     }
     if (cfg->mode == VMM_BOOT_LINUX) {
@@ -404,12 +421,11 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
                       struct event_loop *loop)
 {
     static struct pci_bus pci;
-    static struct pci_test pci_test;
     struct boot_mem_layout layout;
     struct kernel_image kimg;
     struct zp_config zc;
     uint64_t rsdp;
-    int r;
+    int i, r;
 
     com1->irq_set    = irqchip_irq_cb;
     com1->irq_opaque = vm;
@@ -428,8 +444,8 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     r = pci_bus_init(&pci, vm);
     if (r != VMM_OK)
         return r;
-    if (cfg->pci_test) {
-        r = pci_test_attach(&pci_test, &pci);
+    for (i = 0; i < cfg->nr_devices; i++) {
+        r = vmm_device_attach(&cfg->devices[i], vm, &pci);
         if (r != VMM_OK)
             return r;
     }

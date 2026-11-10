@@ -36,6 +36,8 @@ SRCS := \
 	src/boot/aml.c \
 	src/pci/pci.c \
 	src/devices/pci_test.c \
+	src/devices/device.c \
+	src/opts.c \
 	src/devices/rtc.c \
 	src/console.c \
 	src/io/event_loop.c \
@@ -168,6 +170,7 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/event_loop_test \
              $(BUILD)/tests/kvm_stats_test \
              $(BUILD)/tests/pci_bus_test \
+             $(BUILD)/tests/opts_test \
              $(BUILD)/tests/aml_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
@@ -225,6 +228,10 @@ $(BUILD)/tests/pci_bus_test: tests/unit/pci_bus_test.c src/pci/pci.c \
                              src/devices/pci_test.c src/vm.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
+
+$(BUILD)/tests/opts_test: tests/unit/opts_test.c src/opts.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/aml_test: tests/unit/aml_test.c src/boot/aml.c
 	@mkdir -p $(dir $@)

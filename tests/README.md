@@ -44,6 +44,7 @@ tests/
 │   ├── boot_tables_test.c  MP/ACPI/boot_params 字段检查，MP table 与 _PRT 的 PCI 中断路由一致
 │   ├── aml_test.c          AML 编码：PkgLength 各长度的切换点、整数前缀、EisaId
 │   ├── pci_bus_test.c      配置空间 conf1 访问、BAR 探测与路由、COMMAND decode、INTx 线电平、Bus Master 与 DMA
+│   ├── opts_test.c         --device 参数值的 QEMU 风格解析与报错
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
 │   ├── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
 │   └── kvm_stats_test.c    KVM_GET_STATS_FD 文件解析：乱序布局、不对齐、损坏文件

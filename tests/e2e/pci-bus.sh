@@ -9,7 +9,7 @@
 #   ./tests/e2e/pci-bus.sh -a    只跑自动用例
 #   ./tests/e2e/pci-bus.sh -m    只看人工指引
 #
-# 被测设备是 --pci-test 挂上的 pci-test（1234:0002，src/devices/pci_test.c）：
+# 被测设备是 --device pci-test 挂上的 pci-test（1234:0002，src/devices/pci_test.c）：
 # BAR0 是 4KiB MEM32，BAR1 是 16 字节 IO，寄存器 0x0 是魔数 0x74736574，
 # 0x4 是两个 BAR 共用的 scratch，0x8 读出访问走的是哪个 BAR。
 #
@@ -79,7 +79,7 @@ boot \
     --cmd "printf '\\x00\\x00' | dd of=$D/config bs=2 seek=2 conv=notrunc 2>/dev/null" \
     --cmd "echo OFF-\$(devmem $MOVED)-\$(dd if=$D/resource1 bs=4 count=1 2>/dev/null | od -An -tx4)" \
     --stop 'poweroff -f' \
-    -- "$VMM" --mode linux --mem "$MEM" --pci-test --exit-stats - \
+    -- "$VMM" --mode linux --mem "$MEM" --device pci-test --exit-stats - \
           --initrd "$INITRD" "$VMLINUX"
 
 check_case "guest 启动并正常关机"
@@ -134,7 +134,7 @@ boot \
     --cmd "dmesg | grep -aE 'PCI->APIC|INT A'" \
     --cmd "echo 1 > $D/enable; echo IRQ-AFTER-\$(cat $D/irq)" \
     --stop 'reboot -f' \
-    -- "$VMM" --mode linux --mem "$MEM" --pci-test --append acpi=off \
+    -- "$VMM" --mode linux --mem "$MEM" --device pci-test --append acpi=off \
           --initrd "$INITRD" "$VMLINUX"
 
 check_case "MP table 的 PCI 中断项与 _PRT 一致：同样是 GSI 17"
@@ -147,17 +147,37 @@ end_case
 
 head1 "命令行约束"
 
-run_case "--pci-test 只能和 --mode linux 一起用" \
-    "$VMM" --mode long64 --pci-test "$ROOT/build/serial64.bin"
+run_case "--device 只能和 --mode linux 一起用" \
+    "$VMM" --mode long64 --device pci-test "$ROOT/build/serial64.bin"
 expect_rc 1
-expect_has "--pci-test requires --mode linux"
+expect_has "--device requires --mode linux"
+end_case
+
+# 参数错误必须在创建 VM 之前报出：输出里不能出现 KVM 初始化的日志
+run_case "--device 的属性名拼错：启动前报错并列出合法属性" \
+    "$VMM" --mode linux --device pci-test,bar=1 --initrd "$INITRD" "$VMLINUX"
+expect_rc 1
+expect_has "--device pci-test,bar=1: unknown property 'bar' (valid: driver)"
+expect_not "KVM API"
+end_case
+
+run_case "--device 的 driver 不存在" \
+    "$VMM" --mode linux --device pci-tset --initrd "$INITRD" "$VMLINUX"
+expect_rc 1
+expect_has "unknown driver 'pci-tset' (see --device help)"
+expect_not "KVM API"
+end_case
+
+run_case "--device help 列出可用的 driver" "$VMM" --device help
+expect_rc 0
+expect_re '^  pci-test +PCI bus test device'
 end_case
 
 }
 
 manual_guide() {
 guide "看 guest 怎样探测 BAR 大小" \
-"./build/vmm --mode linux --mem $MEM --pci-test --trace-pio /tmp/pio.txt \\
+"./build/vmm --mode linux --mem $MEM --device pci-test --trace-pio /tmp/pio.txt \\
     --initrd $INITRD \$VMLINUX
 grep -n -A26 'W4 80000804' /tmp/pio.txt | sed -n '/W2 0000/,/W2 0003/p'" \
 "先往 COMMAND（0x04）写 0 关掉 decode，再对 BAR0（0x10）依次：读原值

@@ -2,6 +2,7 @@
  *
  * 寄存器布局见 include/devices/pci_test.h。
  */
+#include <stdlib.h>
 #include <string.h>
 
 #include "vmm.h"
@@ -74,3 +75,26 @@ int pci_test_attach(struct pci_test *t, struct pci_bus *bus)
 
     return pci_register_device(bus, d);
 }
+
+static int pci_test_create(const struct opts *o, void **dev)
+{
+    (void)o;
+    *dev = calloc(1, sizeof(struct pci_test));
+    return *dev ? VMM_OK : VMM_ERR_NOMEM;
+}
+
+static int pci_test_dev_attach(void *dev, struct vmm_vm *vm, struct pci_bus *bus)
+{
+    (void)vm;
+    return pci_test_attach(dev, bus);
+}
+
+static const char *const pci_test_props[] = { "driver", NULL };
+
+const struct vmm_device_type pci_test_device_type = {
+    .name   = "pci-test",
+    .desc   = "PCI bus test device: MMIO and IO BAR over a magic/scratch register file",
+    .props  = pci_test_props,
+    .create = pci_test_create,
+    .attach = pci_test_dev_attach,
+};

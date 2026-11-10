@@ -15,6 +15,7 @@
 #include <linux/kvm.h>
 
 #include "memory.h"
+#include "devices/device.h"
 
 /* ------------------------------------------------------------------ */
 /* 常量与错误码                                                        */
@@ -23,6 +24,8 @@
 #define VMM_MAX_VCPUS        32
 #define VMM_MAX_PIO_DEVS     16
 #define VMM_MAX_MMIO_DEVS    32
+/* --device 的上限：PCI 总线 32 个 slot 去掉 host bridge（pci/pci.h） */
+#define VMM_MAX_DEVICES      31
 
 /* 按 exit_reason 计数的格数。<linux/kvm.h> 里 KVM_EXIT_* 目前不到 50 个，
  * 留出余量；超出的值都记进最后一格，不会越界。 */
@@ -179,8 +182,10 @@ struct vmm_config {
     /* VM 停下后把 exit 统计写到这里（--exit-stats），"-" 表示 stderr */
     const char *exit_stats_path;
 
-    /* 在 PCI 总线上挂验证用的 pci-test 设备（--pci-test），见 devices/pci_test.h */
-    bool        pci_test;
+    /* --device 给出的 PCI 设备，按命令行顺序占 slot 1 起的位置。
+     * 上限是总线上除 host bridge 之外的 slot 数。 */
+    struct vmm_device devices[VMM_MAX_DEVICES];
+    int         nr_devices;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
