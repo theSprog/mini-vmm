@@ -178,7 +178,8 @@ static int amd_prepare_vm(struct vmm_vm *vm)
  * 才会继续查 0x40000000 叶的 "KVMKVMKVM" 签名，进而启用 kvmclock、
  * PV EOI、steal time 等半虚拟化特性；这两片叶子 KVM_GET_SUPPORTED_CPUID
  * 已经给出，功能本身也都由 KVM 内核实现，VMM 不需要额外做什么。
- * mini-vmm 目前的 guest 没开 CONFIG_HYPERVISOR_GUEST，不受这一条影响。
+ * tools/build_guest_kernel.sh 构建的测试内核开了 CONFIG_KVM_GUEST，启动日志里的
+ * "Hypervisor detected: KVM" 和 "kvm-clock: Using msrs" 都依赖这一位。
  *
  * 顺带说明为什么不去改 HWCR（MSR 0xC0010015）的 bit 24 TscFreqSel：
  * guest 内核在 constant_tsc 时检查它，为 0 就打印
