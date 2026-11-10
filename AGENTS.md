@@ -108,6 +108,7 @@ src/
 include/                与 src/ 同构的头文件
 tests/                  见 tests/README.md
 tools/                  guest 内核、initramfs、rootfs 构建脚本，trace 解码
+ref/                    入库的硬件手册，来源和校验和见 ref/README.md
 ```
 
 `src/` 下没有列进 `Makefile` 的 `SRCS` 的 `.c` 是占位文件，首行注释标着它属于哪个里程碑。新子系统可以新建目录，但上面的分层边界不要打乱：总线和 transport 不认识具体设备语义，设备语义不直接操作后端 fd。

@@ -125,7 +125,7 @@
 
 ### emu-net — e1000 网卡
 
-依赖: pci-bus, event-loop · 参考: Intel PCI/PCI-X Family of Gigabit Ethernet Controllers Software Developer's Manual（8254x）、Linux `drivers/net/ethernet/intel/e1000/`；实现参考 QEMU `hw/net/e1000.c`
+依赖: pci-bus, event-loop · 参考: Intel 8254x Family of Gigabit Ethernet Controllers Software Developer's Manual（`ref/8254x_GBe_SDM.pdf`）、Linux `drivers/net/ethernet/intel/e1000/`；实现参考 QEMU `hw/net/e1000.c`
 
 全模拟设备复刻 QEMU 的传统做法：VMM 逐个寄存器模拟一块真实存在的硬件，guest 用原厂驱动，完全不知道自己在虚拟机里。选 e1000 和 AHCI，是因为它们是 QEMU q35 的默认网卡和磁盘控制器，同一个 guest 可以放到 QEMU 里跑同样的负载作对照；两者的数据面都是描述符环加 DMA，正好和后面的 virtqueue 对比。
 
