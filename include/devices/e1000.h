@@ -22,7 +22,9 @@
  *   - EEPROM 只支持 READ（Microwire 位操作和 EERD 两条路）；写命令被忽略
  *     并记一条 warn，镜像每次启动按 mac= 重新生成
  *   - RX 校验和 offload 不实现：每个 RX 描述符都置 IXSM（“忽略校验和
- *     指示”），驱动退回软件校验。Linux 驱动默认也不打开 RXCSUM
+ *     指示”），驱动退回软件校验。Linux 驱动默认写 RXCSUM.TUOFL 打开
+ *     这项 offload，但 e1000_rx_checksum() 见到 IXSM 直接返回，效果
+ *     和没打开一样
  *   - 统计寄存器（0x4000-0x40FC）读 0：Linux 驱动的收发包数、字节数在
  *     软件里计，这组寄存器只汇入错误计数和 ethtool -S
  * TX 方向的 offload（scatter-gather、校验和插入、TSO）按手册实现，因为
