@@ -179,12 +179,13 @@
 | E17 | `--device` 参数值解析：隐含键、`,,` 转义的结果与 QEMU `get_opt_name_value` 一致；重复键、短格式布尔、空元素、空键、超过 16 个属性在启动前报错，错误信息带原始参数和出错的键；未知属性列出合法属性 | **PASS** — `opts_test` 79 checks / 5 cases；重复键取最后一个、不认转义、短格式当 on、第一个元素无条件当隐含键、缓冲区少 1 字节五种错误实现各自变红（最后一种由 ASan 报堆越界） | `make test unit` → `opts_test` |
 | E18 | 网络后端：`--netdev` 语法与 id 规则（同 QEMU `id_wellformed`）；`netdev=` 引用一一对应，未知 id、两张网卡共用、没有网卡引用、id 重复都报错；经真实 TAP 收发（对端是绑在接口上的 AF_PACKET socket）：多段 iovec 拼成一帧原样出现、接口上的帧原样交给前端且在 I/O 线程上；前端回 FULL 后停止读 fd、`netdev_rx_resume` 后按原顺序交付且恢复读 fd；同一 TAP 第二次打开报 EBUSY、同名非 TAP 接口报 EINVAL、接口 down 时写入 EIO 且只警告一次；`evl_mod` 改关心的事件后原回调照常派发 | **PASS** — `netdev_test` 78 checks / 13 cases，`event_loop_test` 46 checks / 8 cases；暂停时不停读 fd、FULL 时丢弃挂起帧、resume 不写 eventfd、唤醒后不恢复读 fd、只写第一段 iovec、漏 `IFF_NO_PI`、不查未被引用的 netdev、每次写失败都警告、不查 id 格式九种错误实现各自变红（等待都有 5 s 上限，超时报出在等哪一帧）；内核不允许非特权 user namespace 时 TAP 部分打印 SKIP | `make test unit` → `netdev_test` |
 | E19 | 真实 `vmm` 程序接好了 `--netdev`：非 linux 模式拒绝、未被引用的后端、拼错的属性、未知类型都在创建 VM 前报错；`--netdev help` 列出类型 | **PASS** — `emu-net` 5/5；没有 `--netdev` 的二进制报 unknown option 变红 | `make test emu-net` |
+| E20 | e1000 设备模型（82540EM）：按 Linux 的 Microwire 序列逐位读出 EEPROM，校验和 0xBABA、MAC、EERD 一致，写命令被忽略；PHY ID 0x01410C20、link up 与自协商完成、只读位、自清零位、错误 PHY 地址置 ERROR；ICR/ICS/IMS/IMC 与 INTx 电平；CTRL.RST（含经 IO BAR）回到复位值；TX：SG 拼帧、legacy IC 与上下文描述符的 IP/TCP 校验和、TSO 分段（长度、IP ID、跨 2^32 的序号、FIN/PSH 只在最后一段、逐段校验和、载荷拼回原样）、PSP 补齐、VLAN 插入、环越界与 Bus Master 关闭时不处理、回绕；RX：补齐与 FCS、SECRC、超长丢弃、单播/广播/组播哈希/混杂过滤、环满返回 FULL 且不写、RDT 唤醒后端、回绕、多描述符与 null 缓冲、VLAN 剥离与 VFTA 过滤 | **PASS** — `e1000_test` 171 checks / 20 cases；校验和与 FCS 用独立实现验算（RFC 1071 含伪首部、逐位 CRC-32）；TSO 不加序号、不补每段 L4 长度、不清 FIN，RX 不回绕、不查容量、不加 FCS，ICR 读不清零、TX 不回写 DD、EEPROM 少哑位九种错误实现各自变红 | `make test unit` → `e1000_test` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令
 
 ```sh
-make test unit                     # E1 E2 E3 E7 E13 E14 E17 E18
+make test unit                     # E1 E2 E3 E7 E13 E14 E17 E18 E20
 make test tables                   # E8
 FUZZ_TIME=300 make test fuzz       # E4 E5 E6
 ./build/fuzz/elf_loader_fuzz         build/fuzz/artifacts/elf-crash-50a488df453d94bf401917e701686c4e8ae6bed5

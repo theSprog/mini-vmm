@@ -5,9 +5,11 @@
 #include "vmm.h"
 #include "opts.h"
 #include "devices/device.h"
+#include "devices/e1000.h"
 #include "devices/pci_test.h"
 
 static const struct vmm_device_type *const device_types[] = {
+    &e1000_device_type,
     &pci_test_device_type,
 };
 

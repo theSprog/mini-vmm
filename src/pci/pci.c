@@ -432,6 +432,8 @@ static int dev_setup(struct pci_bus *bus, struct pci_device *d)
     cfg_set16(d, PCI_DEVICE_ID, d->device_id);
     cfg_set32(d, PCI_CLASS_REVISION, d->class_code << 8 | d->revision);
     cfg_set8(d, PCI_HEADER_TYPE, PCI_HEADER_TYPE_NORMAL);
+    cfg_set16(d, PCI_SUBSYSTEM_VENDOR_ID, d->subsys_vendor_id);
+    cfg_set16(d, PCI_SUBSYSTEM_ID, d->subsys_id);
     /* cache line size 由软件写、硬件只是记住（规范第 6.2.4 节） */
     d->wmask[PCI_CACHE_LINE_SIZE] = 0xFF;
 

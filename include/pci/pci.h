@@ -135,6 +135,10 @@ struct pci_device {
     uint16_t device_id;
     uint32_t class_code;           /* 24 位：base class | sub class | prog-if */
     uint8_t  revision;
+    /* 0 表示不填（保持 0）。真实板卡由 EEPROM 或固件写入，驱动有时按它区分
+     * 同一芯片的不同板型 */
+    uint16_t subsys_vendor_id;
+    uint16_t subsys_id;
     uint8_t  intx_pin;             /* 0 = 不用 INTx，1..4 = INTA..INTD */
     bool     bus_master;           /* 会做 DMA：command 的 Bus Master 位可写 */
     struct pci_bar bars[PCI_NUM_BARS];
