@@ -233,75 +233,86 @@ uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu)
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
-/* PIO 追踪（--trace-pio）                                              */
+/* I/O 追踪（--trace-pio、--trace-mmio）                                */
 /* ------------------------------------------------------------------ */
 /*
  * 设备模拟到什么程度，由驱动的探测逻辑决定，而不是由芯片手册决定——
  * 想知道驱动到底要什么，最直接的办法是把它读写寄存器的顺序原样记下来。
  *
- * 每行一次访问：
- *   <单调时钟秒>.<微秒> <设备名> <端口> R|W<字节数> <值> [rip=<guest RIP>]
+ * PIO 和 MMIO 各一个文件，每行一次访问，格式相同：
+ *   <单调时钟秒>.<微秒> <设备名> <端口或 GPA> R|W<字节数> <值> [rip=<guest RIP>]
+ * 端口按 4 位十六进制、GPA 按至少 8 位十六进制打印；MMIO 的设备名是 BAR
+ * 的名字（如 e1000.bar0），寄存器偏移 = GPA - BAR 基址，BAR 基址在启动日志
+ * 的 "pci ... BAR0 [mem ...]" 一行。两种文件都用 tools/trace_decode.py 解读。
  *
- * rip 只对未注册端口输出：已注册端口的设备名已经回答了“谁在访问”，
- * 而未注册端口恰恰是需要反查调用者的那一类。拿 RIP 到 guest 的
+ * rip 只对没有设备的地址输出：已注册设备的名字已经回答了“谁在访问”，
+ * 而没有设备的地址恰恰是需要反查调用者的那一类。拿 RIP 到 guest 的
  * vmlinux 上 `nm -n` 一查就知道是哪个函数在盲探，例如 0x87 读回 0xFF
  * 正是 i8237A_init_ops() 判定“这台机器没有 8237 DMA 控制器”的依据。
  *
- * 只在 --trace-pio 给出时才打开。写文件本身不加锁——handle_io() 全程
- * 持有 vm->io_lock，多 vCPU 下也是串行的。
+ * 只在给出对应选项时才打开。写文件本身不加锁——分发路径全程持有
+ * vm->io_lock，多 vCPU 下也是串行的。
  */
 static FILE *g_pio_trace;
+static FILE *g_mmio_trace;
 
-static void pio_trace_open(struct vmm_vm *vm)
+static FILE *trace_open(const char *path, const char *what)
 {
-    if (!vm->cfg.trace_pio_path)
-        return;
-    g_pio_trace = fopen(vm->cfg.trace_pio_path, "w");
-    if (!g_pio_trace)
-        vmm_warn("cannot open PIO trace file %s: %s",
-                 vm->cfg.trace_pio_path, strerror(errno));
+    FILE *f;
+
+    if (!path)
+        return NULL;
+    f = fopen(path, "w");
+    if (!f)
+        vmm_warn("cannot open %s trace file %s: %s", what, path, strerror(errno));
     else
-        vmm_info("tracing PIO to %s", vm->cfg.trace_pio_path);
+        vmm_info("tracing %s to %s", what, path);
+    return f;
 }
 
-static void pio_trace_close(void)
+static void trace_open_all(struct vmm_vm *vm)
 {
-    if (g_pio_trace) {
-        fclose(g_pio_trace);
-        g_pio_trace = NULL;
-    }
+    g_pio_trace = trace_open(vm->cfg.trace_pio_path, "PIO");
+    g_mmio_trace = trace_open(vm->cfg.trace_mmio_path, "MMIO");
 }
 
-static void pio_trace(const char *name, uint16_t port, bool is_out,
-                      uint32_t size, const uint8_t *val, uint64_t rip)
+static void trace_close_all(void)
+{
+    if (g_pio_trace)
+        fclose(g_pio_trace);
+    if (g_mmio_trace)
+        fclose(g_mmio_trace);
+    g_pio_trace = g_mmio_trace = NULL;
+}
+
+/* addr_width 是地址的最少十六进制位数：PIO 4、MMIO 8 */
+static void trace_line(FILE *f, const char *name, uint64_t addr, int addr_width,
+                       bool is_write, uint32_t size, const uint8_t *val,
+                       uint64_t rip)
 {
     unsigned long long v = 0;
     struct timespec ts;
     uint32_t i;
 
-    if (!g_pio_trace)
-        return;
-
     clock_gettime(CLOCK_MONOTONIC, &ts);
     for (i = 0; i < size && i < sizeof(v); i++)
         v |= (unsigned long long)val[i] << (8 * i);
 
-    fprintf(g_pio_trace, "%lld.%06ld %-11s %04x %c%u %0*llx",
-            (long long)ts.tv_sec, ts.tv_nsec / 1000, name, port,
-            is_out ? 'W' : 'R', size, (int)(size * 2), v);
+    fprintf(f, "%lld.%06ld %-11s %0*llx %c%u %0*llx",
+            (long long)ts.tv_sec, ts.tv_nsec / 1000, name, addr_width,
+            (unsigned long long)addr, is_write ? 'W' : 'R', size,
+            (int)(size * 2), v);
     if (rip)
-        fprintf(g_pio_trace, " rip=%016llx", (unsigned long long)rip);
-    fputc('\n', g_pio_trace);
+        fprintf(f, " rip=%016llx", (unsigned long long)rip);
+    fputc('\n', f);
 }
 
-/* 未注册端口的访问才去取一次 RIP。这是一次 vCPU ioctl，只发生在
- * --trace-pio 打开、且访问落在没有设备的端口上的时候。 */
-static uint64_t pio_trace_rip(struct vmm_vcpu *vcpu)
+/* 没有设备的地址才去取一次 RIP。这是一次 vCPU ioctl，只发生在
+ * 对应的追踪打开、且访问落在没有设备的地址上的时候。 */
+static uint64_t trace_rip(struct vmm_vcpu *vcpu)
 {
     struct kvm_regs regs;
 
-    if (!g_pio_trace)
-        return 0;
     memset(&regs, 0, sizeof(regs));
     if (ioctl(vcpu->fd, KVM_GET_REGS, &regs) < 0)
         return 0;
@@ -335,8 +346,9 @@ int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
             memset(data, 0xFF, (size_t)size * count);
         vmm_dbg("unhandled PIO %s port=0x%04x size=%u count=%u",
                 is_write ? "OUT" : "IN", port, size, count);
-        pio_trace("unhandled", port, is_write, size, data,
-                  pio_trace_rip(vcpu));
+        if (g_pio_trace)
+            trace_line(g_pio_trace, "unhandled", port, 4, is_write, size,
+                       data, trace_rip(vcpu));
         return VMM_OK;
     }
 
@@ -353,7 +365,8 @@ int io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
             r = dev->read ? dev->read(dev->opaque, off, size, p) : VMM_OK;
         /* 先记录再判错：设备回调用返回值表示“guest 请求关机/复位”，
          * 触发退出的那一次写恰恰是最值得留在 trace 里的一行。 */
-        pio_trace(dev->name, port, is_write, size, p, 0);
+        if (g_pio_trace)
+            trace_line(g_pio_trace, dev->name, port, 4, is_write, size, p, 0);
         if (r != VMM_OK)
             return r;
     }
@@ -365,6 +378,7 @@ int io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
 {
     const struct vmm_io_dev *dev;
     uint64_t off;
+    int r;
 
     dev = vmm_lookup_mmio(vcpu->vm, addr);
     io_stats_count(dev ? &vcpu->vm->mmio_stats[dev - vcpu->vm->mmio_devs]
@@ -374,13 +388,21 @@ int io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
             memset(data, 0xFF, len);
         vmm_dbg("unhandled MMIO %s addr=0x%llx len=%u",
                 is_write ? "W" : "R", (unsigned long long)addr, len);
+        if (g_mmio_trace)
+            trace_line(g_mmio_trace, "unhandled", addr, 8, is_write, len,
+                       data, trace_rip(vcpu));
         return VMM_OK;
     }
 
     off = addr - dev->base;
     if (is_write)
-        return dev->write ? dev->write(dev->opaque, off, len, data) : VMM_OK;
-    return dev->read ? dev->read(dev->opaque, off, len, data) : VMM_OK;
+        r = dev->write ? dev->write(dev->opaque, off, len, data) : VMM_OK;
+    else
+        r = dev->read ? dev->read(dev->opaque, off, len, data) : VMM_OK;
+    /* 先记录再返回，理由同 PIO：触发停机的那一次写也要留在 trace 里 */
+    if (g_mmio_trace)
+        trace_line(g_mmio_trace, dev->name, addr, 8, is_write, len, data, 0);
+    return r;
 }
 
 /* 以下两个是 KVM_EXIT 路径上的薄封装：只负责从 kvm_run 里把字段取出来。 */
@@ -602,7 +624,7 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     vm->kvm_fd = vm->vm_fd = -1;
     vm->cfg = *cfg;
     pthread_mutex_init(&vm->io_lock, NULL);
-    pio_trace_open(vm);
+    trace_open_all(vm);
 
     /* 1. 打开 /dev/kvm */
     vm->kvm_fd = kvm_open();
@@ -720,5 +742,5 @@ void vm_destroy(struct vmm_vm *vm)
         close(vm->kvm_fd);
     vm->vm_fd = vm->kvm_fd = -1;
     vm->running = false;
-    pio_trace_close();
+    trace_close_all();
 }

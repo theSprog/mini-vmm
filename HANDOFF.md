@@ -37,9 +37,10 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 
 ## 观测手段
 
-`--trace-pio` 记录每一次落到用户态的 PIO，`tools/pio_decode.py` 负责切片和标注（用法见 `README.md`）。读 trace 时要记住：
+`--trace-pio` 和 `--trace-mmio` 分别记录每一次落到用户态的 PIO 和 MMIO，`tools/trace_decode.py` 负责切片和标注（用法见 `README.md`）。读 trace 时要记住：
 
 - **VMM 只看得见自己拥有的设备。** 内核态接管的 PIC、PIT、LAPIC、IOAPIC 永远不会出现在 trace 里，“trace 里没有”不等于“guest 没访问”。
+- MMIO trace 的地址列是 GPA，不是寄存器偏移。PCI 设备的 BAR 基址由 VMM 分配（`src/pci/pci.c`），guest 可以改写，以启动日志里 `pci ... BAR0 [mem ...]` 那一行为准。
 - 一次完整启动加关机的 PIO 次数是判断有没有轮询超时的快速指标：某个探测循环跑满超时，次数会多出几万次。这个基线依赖 guest 内核配置和串口输出量，换内核或改设备后先用 `--summary` 重新得到基线。
 - 症状到原因的对照表在 `learning-note/07` 第 10.2 节。
 

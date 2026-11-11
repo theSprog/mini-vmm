@@ -124,6 +124,9 @@ void vmm_usage(const char *prog)
 "  --trace-pio FILE       Log every PIO access that exits to user space,\n"
 "                           one line per access; rip= is appended for ports\n"
 "                           that have no device behind them\n"
+"  --trace-mmio FILE      Same for MMIO accesses that exit to user space\n"
+"                           (PCI BARs, unclaimed addresses); decode both\n"
+"                           with tools/trace_decode.py\n"
 "  --exit-stats FILE      When the guest stops, write VM exit counts to FILE\n"
 "                           ('-' = stderr): user-space exits per reason and\n"
 "                           per device, plus KVM's own counters\n"
@@ -282,6 +285,9 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         } else if (!strcmp(a, "--trace-pio")) {
             NEED_ARG();
             cfg->trace_pio_path = argv[i];
+        } else if (!strcmp(a, "--trace-mmio")) {
+            NEED_ARG();
+            cfg->trace_mmio_path = argv[i];
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];

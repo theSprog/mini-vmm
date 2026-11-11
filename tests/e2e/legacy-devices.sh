@@ -162,9 +162,9 @@ head1 "人工验收"
 guide "把一次启动的寄存器序列录下来并逐段读" \
 "./build/vmm --mode linux --mem 512M --trace-pio /tmp/pio.txt \\
     --initrd build/initramfs.cpio.gz \$VMLINUX
-./tools/pio_decode.py /tmp/pio.txt --summary
-./tools/pio_decode.py /tmp/pio.txt --console | less
-./tools/pio_decode.py /tmp/pio.txt --dev unhandled --syms \$VMLINUX" \
+./tools/trace_decode.py /tmp/pio.txt --summary
+./tools/trace_decode.py /tmp/pio.txt --console | less
+./tools/trace_decode.py /tmp/pio.txt --dev unhandled --syms \$VMLINUX" \
 "--summary: 串口占 98% 左右，没有 0x40-0x43 / 0x61
 --console: 每行日志对应的 trace 行号区间，用来定位某条消息前后发生了什么
 --dev unhandled --syms: 0x87 来自 i8237A_init_ops，0xcf8 来自 pci_direct_probe

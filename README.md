@@ -45,21 +45,28 @@ make test-list                         # 列出所有 suite
 
 e2e suite 以里程碑 ID 命名，需要 `/dev/kvm`；需要 guest 内核的用例读 `VMLINUX=`（bzImage 用例另读 `BZIMAGE=`），没设时取 `guest-kernel/` 里的产物，那里也没有时 SKIP。测试的组织方式和判据见 [`tests/README.md`](tests/README.md)。
 
-## 观测：`--trace-pio`
+## 观测：`--trace-pio` 与 `--trace-mmio`
 
-guest 每一次落到用户态的 PIO 都可以完整录下来，设备问题不需要靠猜：
+guest 每一次落到用户态的 PIO、MMIO 都可以完整录下来，设备问题不需要靠猜：
 
 ```sh
 ./build/vmm --mode linux --mem 512M --trace-pio /tmp/pio.txt \
     --initrd build/initramfs.cpio.gz $VMLINUX
 
-python3 tools/pio_decode.py /tmp/pio.txt --summary                  # 按端口/设备统计
-python3 tools/pio_decode.py /tmp/pio.txt --console | less           # 还原控制台文本，每行带 trace 行号区间
-python3 tools/pio_decode.py /tmp/pio.txt --from 25700 --to 25800    # 看某一段
-python3 tools/pio_decode.py /tmp/pio.txt --dev unhandled --syms $VMLINUX   # 谁在访问没实现的端口
+python3 tools/trace_decode.py /tmp/pio.txt --summary                  # 按端口/设备统计
+python3 tools/trace_decode.py /tmp/pio.txt --console | less           # 还原控制台文本，每行带 trace 行号区间
+python3 tools/trace_decode.py /tmp/pio.txt --from 25700 --to 25800    # 看某一段
+python3 tools/trace_decode.py /tmp/pio.txt --dev unhandled --syms $VMLINUX   # 谁在访问没实现的端口
 ```
 
 每行格式是 `<秒>.<微秒> <设备名> <端口> R|W<宽度> <值> [rip=...]`，RIP 只对没有设备的端口采集。
+
+`--trace-mmio FILE` 记录 MMIO（PCI 设备的 BAR、没有设备的地址），格式相同，地址列是 GPA，设备名是 BAR 的名字。寄存器偏移等于 GPA 减去 BAR 基址，基址见启动日志里 `pci ... BAR0 [mem ...]` 那一行：
+
+```sh
+python3 tools/trace_decode.py /tmp/mmio.txt --dev e1000.bar0 --summary   # e1000 每个寄存器被访问了多少次
+python3 tools/trace_decode.py /tmp/mmio.txt --addr c00000c0              # BAR0 在 0xc0000000 时的 ICR
+```
 
 ## 文档
 

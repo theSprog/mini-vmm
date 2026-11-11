@@ -178,6 +178,8 @@ struct vmm_config {
     /* 把每一次陷出到用户态的 PIO 访问写进这个文件（--trace-pio）。
      * 用来回答“驱动到底按什么顺序读写了哪些寄存器”，见 learning-note 卷七。 */
     const char *trace_pio_path;
+    /* 同上，记录陷出到用户态的 MMIO 访问（--trace-mmio） */
+    const char *trace_mmio_path;
 
     /* VM 停下后把 exit 统计写到这里（--exit-stats），"-" 表示 stderr */
     const char *exit_stats_path;
