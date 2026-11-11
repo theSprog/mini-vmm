@@ -24,7 +24,7 @@
 | 1 | linux-boot ✓ |
 | 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
 | 3 | pci-bus ✓ |
-| 4 | emu-net · emu-blk |
+| 4 | emu-net ✓ · emu-blk |
 | 5 | pci-msi |
 | 6 | arch-distro |
 | 7 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
@@ -129,11 +129,11 @@
 
 全模拟设备复刻 QEMU 的传统做法：VMM 逐个寄存器模拟一块真实存在的硬件，guest 用原厂驱动，完全不知道自己在虚拟机里。选 e1000 和 AHCI，是因为它们是 QEMU q35 的默认网卡和磁盘控制器，同一个 guest 可以放到 QEMU 里跑同样的负载作对照；两者的数据面都是描述符环加 DMA，正好和后面的 virtqueue 对比。
 
-- [ ] guest e1000 驱动完成探测：从 EEPROM 读出 VMM 配置的 MAC，链路状态为 up
-- [ ] TX 和 RX 描述符环经 DMA 读写 guest 内存，每个描述符的地址和长度都经 guest-memory 接口检查
-- [ ] 中断原因寄存器（ICR/IMS/IMC）语义正确，INTx 经 IOAPIC 送达，guest `/proc/interrupts` 计数和收发包数对得上
-- [ ] 网络后端是 TAP，后端接口和设备模型分离，后面的网卡设备直接复用
-- [ ] guest 与 host 能互相 ping 通并完成 TCP 传输
+- [x] guest e1000 驱动完成探测：从 EEPROM 读出 VMM 配置的 MAC，链路状态为 up
+- [x] TX 和 RX 描述符环经 DMA 读写 guest 内存，每个描述符的地址和长度都经 guest-memory 接口检查
+- [x] 中断原因寄存器（ICR/IMS/IMC）语义正确，INTx 经 IOAPIC 送达，guest `/proc/interrupts` 计数和收发包数对得上
+- [x] 网络后端是 TAP，后端接口和设备模型分离，后面的网卡设备直接复用
+- [x] guest 与 host 能互相 ping 通并完成 TCP 传输
 
 ### emu-blk — AHCI 磁盘控制器
 
