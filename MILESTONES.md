@@ -24,7 +24,7 @@
 | 1 | linux-boot ✓ |
 | 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
 | 3 | pci-bus ✓ |
-| 4 | emu-net ✓ · emu-blk |
+| 4 | emu-net ✓ · emu-blk ✓ |
 | 5 | pci-msi |
 | 6 | arch-distro |
 | 7 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
@@ -139,11 +139,11 @@
 
 依赖: pci-bus · 参考: `ref/` 下的 Serial ATA AHCI 1.3.1、Serial ATA Revision 3.0（FIS 布局）、ATA8-ACS r4a，Linux `drivers/ata/ahci.c`、`libahci.c`、`libata-core.c`；实现参考 QEMU `hw/ide/ahci.c`
 
-- [ ] HBA 复位、端口枚举、IDENTIFY DEVICE 正确，guest 识别出磁盘型号和容量
-- [ ] 命令列表、FIS、PRDT 经 DMA 访问 guest 内存，PRDT 的每个分段都单独检查
-- [ ] 支持 READ/WRITE DMA EXT 和 FLUSH CACHE EXT；guest `mkfs` 加 `mount` 后写入的文件，host 侧读镜像校验一致
-- [ ] 磁盘后端是 raw 镜像文件，后端接口和设备模型分离，后面的块设备直接复用
-- [ ] guest 能从这块盘启动（`root=/dev/sda`）
+- [x] HBA 复位、端口枚举、IDENTIFY DEVICE 正确，guest 识别出磁盘型号和容量
+- [x] 命令列表、FIS、PRDT 经 DMA 访问 guest 内存，PRDT 的每个分段都单独检查
+- [x] 支持 READ/WRITE DMA EXT 和 FLUSH CACHE EXT；guest `mkfs` 加 `mount` 后写入的文件，host 侧读镜像校验一致
+- [x] 磁盘后端是 raw 镜像文件，后端接口和设备模型分离，后面的块设备直接复用
+- [x] guest 能从这块盘启动（`root=/dev/sda`）
 
 ### pci-msi — MSI 中断
 

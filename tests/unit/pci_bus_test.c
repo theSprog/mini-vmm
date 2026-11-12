@@ -109,6 +109,22 @@ int mem_write(struct vmm_vm *vm, uint64_t gpa, const void *src, size_t len)
     return VMM_OK;
 }
 
+enum gpa_status gpa_to_hva(struct vmm_vm *vm, uint64_t gpa, uint64_t len, void **hva)
+{
+    (void)vm;
+    if (len == 0)
+        return GPA_ERR_ZERO_LEN;
+    if (gpa > sizeof(g_ram) || len > sizeof(g_ram) - gpa)
+        return GPA_ERR_PAST_END;
+    *hva = g_ram + gpa;
+    return GPA_OK;
+}
+
+const char *gpa_status_str(enum gpa_status st)
+{
+    return st == GPA_OK ? "ok" : "rejected";
+}
+
 /* ------------------------------------------------------------------ */
 /* guest 视角的访问：outb/outl/inl 和 MMIO load/store                    */
 /* ------------------------------------------------------------------ */
@@ -601,6 +617,7 @@ static void case_bus_master(void)
     static const uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
     struct pci_device dma;
     uint8_t buf[4];
+    void *hva;
     int slot;
 
     T_CASE("Bus Master：有 DMA 能力的设备该位可写、默认关闭，关闭时 DMA 被拒");
@@ -629,10 +646,20 @@ static void case_bus_master(void)
     CHECK(!memcmp(buf, pattern, 4), "DMA round trip");
     CHECK_U64(pci_dma_read(&dma, sizeof(g_ram) - 2, buf, 4), VMM_ERR_GUEST,
               "out-of-range DMA still fails in the memory layer");
+    hva = NULL;
+    CHECK_U64(pci_dma_map(&dma, 0x100, 4, &hva), VMM_OK, "DMA map allowed");
+    CHECK(hva == (void *)(g_ram + 0x100), "map points at the guest page");
+    hva = &dma;
+    CHECK_U64(pci_dma_map(&dma, sizeof(g_ram) - 2, 4, &hva), VMM_ERR_GUEST,
+              "out-of-range map fails in the memory layer");
+    CHECK(hva == (void *)&dma, "failed map leaves *hva untouched");
 
     cfg_w(slot, PCI_COMMAND, 2, 0);
     CHECK_U64(pci_dma_read(&dma, 0x100, buf, 4), VMM_ERR_GUEST,
               "turning bus master off stops DMA again");
+    CHECK_U64(pci_dma_map(&dma, 0x100, 4, &hva), VMM_ERR_GUEST,
+              "map refused with bus master off");
+    CHECK(hva == (void *)&dma, "refused map leaves *hva untouched");
 }
 
 int main(int argc, char **argv)

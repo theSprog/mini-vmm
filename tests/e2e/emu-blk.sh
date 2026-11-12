@@ -3,6 +3,7 @@
 #
 #   --drive 磁盘后端的命令行约束
 #   AHCI 控制器：Linux ahci 驱动探测、端口枚举、链路建立、INTx
+#   ATA 命令：IDENTIFY、DMA 读写、FLUSH，host 侧核对镜像；从盘启动
 #
 # 用法：
 #   ./tests/e2e/emu-blk.sh       全部
@@ -135,6 +136,116 @@ end_case
 check_case "命令完成产生 INTx 中断，寄存器访问经 BAR5"
 expect_re 'AHCI-IRQ-[1-9][0-9]*'
 expect_re '^  ahci\.bar5 +MMIO +[1-9][0-9]* +[1-9][0-9]*$'
+end_case
+
+data_tests
+root_tests
+}
+
+# 两个控制器各接一块盘：d0 是 host 用 mke2fs -d 做好的 ext2 镜像，guest
+# 只读挂载后读；d1 是空盘，guest 自己 mkfs、写文件、卸载，关机后 host 用
+# debugfs 从镜像里取出文件核对。两边的判据都是 sha256，数据的生产者和
+# 校验者分处 VMM 两侧，中间任何一处 LBA、PRD 或方向弄错都对不上。
+data_tests() {
+head1 "AHCI 控制器：guest 读写磁盘，host 核对镜像"
+
+local src="$WORK/src" blob_sha d0_sha wr_sha
+mkdir -p "$src"
+head -c 4M /dev/urandom > "$src/blob"
+blob_sha="$(sha256sum < "$src/blob" | cut -d' ' -f1)"
+mke2fs -q -F -t ext2 -d "$src" "$WORK/d0.img" 64M
+d0_sha="$(sha256sum < "$WORK/d0.img" | cut -d' ' -f1)"
+truncate -s 32M "$WORK/d1.img"
+
+# 单条命令不能超过 255 字节（见 guest_shell.py），所以拆成几条；
+# 每条的标记都由命令替换展开生成，回显的命令行里不会出现展开后的值
+boot \
+    --cmd "dmesg | grep -aE 'ata[0-9]+\.00|\[sd[ab]\]'" \
+    --cmd "echo RAW-\$(dd if=/dev/sda bs=1M iflag=direct 2>/dev/null | sha256sum)" \
+    --cmd "mkdir -p /mnt /m2 && mount -o ro -t ext2 /dev/sda /mnt" \
+    --cmd "echo RD-\$(sha256sum < /mnt/blob)" \
+    --cmd "mkfs.ext2 /dev/sdb >/dev/null && mount -t ext2 /dev/sdb /m2" \
+    --cmd "dd if=/dev/urandom of=/m2/up bs=1M count=8 2>/dev/null" \
+    --cmd "echo WR-\$(sha256sum < /m2/up)" \
+    --cmd "umount /m2 && umount /mnt && echo UMOUNT-\$(echo ok)" \
+    --stop 'poweroff -f' \
+    -- "$VMM" --mode linux --mem 512M \
+          --drive id=d0,file="$WORK/d0.img" --device ahci,drive=d0 \
+          --drive id=d1,file="$WORK/d1.img" --device ahci,drive=d1 \
+          --initrd "$INITRD" "$VMLINUX"
+
+check_case "IDENTIFY DEVICE：Linux 认出型号、LBA48、UDMA 和两块盘的容量"
+expect_rc 0
+expect_has "ata1.00: ATA-8: MINIVMM AHCI DISK, 1.0, max UDMA/133"
+expect_has "ata1.00: 131072 sectors, multi 0: LBA48"
+expect_has "ata1.00: configured for UDMA/133"
+expect_has "[sda] 131072 512-byte logical blocks: (67.1 MB/64.0 MiB)"
+expect_has "[sdb] 65536 512-byte logical blocks: (33.6 MB/32.0 MiB)"
+expect_has "[sda] Write cache: enabled, read cache: enabled"
+expect_not "failed command"
+expect_not "not supported, aborted"
+end_case
+
+# 只读挂载不写盘，镜像在 guest 运行之后必须原样不变。flush 不计：关机时
+# sd 驱动对每块盘都发 SYNCHRONIZE CACHE（"Synchronizing SCSI cache"）
+check_case "READ DMA：整盘直读和文件内容都与 host 的镜像一致，只读挂载不改镜像"
+expect_has "RAW-$d0_sha"
+expect_has "RD-$blob_sha"
+expect_re 'drive d0: read [1-9][0-9]* ops [0-9]+ bytes, write 0 ops 0 bytes, [0-9]+ flushes, 0 errors'
+end_case
+run_case "d0 镜像在 guest 运行后没有变化" sha256sum "$WORK/d0.img"
+expect_has "$d0_sha"
+end_case
+
+wr_sha="$(printf '%s\n' "$BOOT_OUT" | sed -n 's/^WR-\([0-9a-f]\{64\}\) .*/\1/p' | head -1)"
+check_case "WRITE DMA：guest mkfs 后写入的文件，guest 算出了 sha256"
+expect_re '^WR-[0-9a-f]{64} '
+expect_has "UMOUNT-ok"
+end_case
+# 文件内容由 host 从镜像里取出，和 guest 报的 sha256 比
+run_case "host 用 debugfs 从 d1 镜像取出的文件与 guest 写的一致，e2fsck 无错" \
+    bash -c 'debugfs -R "dump /up $1" "$2" 2>/dev/null; sha256sum < "$1"; e2fsck -fn "$2" >/dev/null 2>&1; echo "fsck=$?"' \
+    _ "$WORK/up" "$WORK/d1.img"
+expect_has "${wr_sha:-guest-reported-no-sha}"
+expect_has "fsck=0"
+end_case
+
+# 写缓存默认开着，卸载时 ext2 通过块层发 FLUSH CACHE EXT，后端执行 fdatasync
+check_case "FLUSH CACHE EXT：卸载时 flush 到达后端，全程没有 I/O 错误"
+expect_re 'drive d1: read [0-9]+ ops [0-9]+ bytes, write [1-9][0-9]* ops [0-9]+ bytes, [1-9][0-9]* flushes, 0 errors'
+end_case
+}
+
+# 根文件系统在 AHCI 盘上：镜像由 initramfs 的内容加一个标记文件做成。
+# initrd 照样传（VMM 的 linux 模式要求有），rdinit 指向不存在的路径，
+# 内核找不到 initramfs 里的 init 就转去挂 root=（init/main.c
+# kernel_init_freeable -> prepare_namespace），之后的 init 来自磁盘。
+root_tests() {
+head1 "AHCI 控制器：从磁盘启动"
+
+local rootfs="$WORK/rootfs"
+mkdir -p "$rootfs"
+# dev/console 是字符设备，非 root 解不出来；根文件系统上的 /dev 由
+# CONFIG_DEVTMPFS_MOUNT 在挂根之后自动挂上 devtmpfs
+( cd "$rootfs" && zcat "$INITRD" | cpio -idm --quiet -f './dev/console' )
+echo minivmm-disk-root > "$rootfs/disk-root"
+mke2fs -q -F -t ext2 -d "$rootfs" "$WORK/root.img" 64M
+
+boot \
+    --cmd "echo ROOT-\$(cat /disk-root)" \
+    --cmd "grep -a ' / ' /proc/mounts" \
+    --stop 'poweroff -f' \
+    -- "$VMM" --mode linux --mem 512M \
+          --drive id=r0,file="$WORK/root.img" --device ahci,drive=r0 \
+          --append "root=/dev/sda rdinit=/nonexistent init=/init" \
+          --initrd "$INITRD" "$VMLINUX"
+
+check_case "root=/dev/sda：内核从 AHCI 盘挂根，init 和 shell 来自磁盘"
+expect_rc 0
+expect_has "VFS: Mounted root (ext2 filesystem) on device 8:0."
+expect_has "ROOT-minivmm-disk-root"
+expect_re '^/dev/root / ext2 rw'
+expect_has "guest requested poweroff via ACPI S5"
 end_case
 }
 

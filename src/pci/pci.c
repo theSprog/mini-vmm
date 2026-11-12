@@ -199,6 +199,23 @@ int pci_dma_write(struct pci_device *d, uint64_t gpa, const void *src,
     return mem_write(d->bus->vm, gpa, src, len);
 }
 
+int pci_dma_map(struct pci_device *d, uint64_t gpa, size_t len, void **hva)
+{
+    enum gpa_status st;
+    void *p;
+
+    if (!dma_allowed(d, gpa, len, "map"))
+        return VMM_ERR_GUEST;
+    st = gpa_to_hva(d->bus->vm, gpa, len, &p);
+    if (st != GPA_OK) {
+        vmm_err("pci 00:%02x.0 %s: DMA map GPA [0x%llx,+0x%zx): %s", d->slot,
+                d->name, (unsigned long long)gpa, len, gpa_status_str(st));
+        return VMM_ERR_GUEST;
+    }
+    *hva = p;
+    return VMM_OK;
+}
+
 /* ------------------------------------------------------------------ */
 /* 配置空间                                                            */
 /* ------------------------------------------------------------------ */

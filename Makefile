@@ -256,7 +256,7 @@ $(BUILD)/tests/e1000_test: tests/unit/e1000_test.c src/devices/e1000.c src/opts.
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
-$(BUILD)/tests/ahci_test: tests/unit/ahci_test.c src/devices/ahci.c src/opts.c
+$(BUILD)/tests/ahci_test: tests/unit/ahci_test.c src/devices/ahci.c src/block/blockdev.c src/opts.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 

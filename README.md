@@ -15,8 +15,10 @@
 - 三种退出方式：`poweroff -f`（ACPI S5）、panic 后重启（i8042 reset）、`Ctrl-A x`
 - guest RAM 可以超过 3 GiB：低段 `[0, 3 GiB)` 加 4 GiB 以上的高段，中间 1 GiB 留给 MMIO
 - PCI 总线：0xCF8/0xCFC 配置访问、host bridge、BAR 预分配与按 COMMAND/BAR 改写实时路由，DSDT 里的 PCI0 给出地址窗口和 `_PRT`，MP table 带同样的 INTx 路由；`--device pci-test` 挂一个演示用的测试设备
+- 全模拟网卡 e1000（82540EM）：`--netdev tap,id=n0,ifname=tap0 --device e1000,netdev=n0`，Linux 自带的 e1000 驱动直接可用，支持校验和 offload 与 TSO
+- 全模拟 AHCI 磁盘控制器：`--drive id=d0,file=disk.img --device ahci,drive=d0`，后端是 raw 镜像，Linux 自带的 ahci 驱动直接可用，能读写、能 `root=/dev/sda` 从盘启动
 
-限制：还没有块设备、网络设备；PCI 只有总线 0，没有 MSI/MSI-X，也没有 PCIe 扩展配置空间。
+限制：中断只有 INTx，没有 MSI/MSI-X；磁盘 I/O 在 vCPU 线程上同步执行，没有 NCQ；PCI 只有总线 0，没有 MSI/MSI-X，也没有 PCIe 扩展配置空间。
 
 ## 构建与运行
 

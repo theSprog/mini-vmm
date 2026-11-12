@@ -189,4 +189,12 @@ int  pci_dma_read(struct pci_device *dev, uint64_t gpa, void *dst, size_t len);
 int  pci_dma_write(struct pci_device *dev, uint64_t gpa, const void *src,
                    size_t len);
 
+/* 把 [gpa, gpa+len) 映射成 host 指针，给设备直接读写（例如拼成 iovec
+ * 交给 preadv），省掉一次经中间缓冲的拷贝。检查同上：Bus Master 关闭或
+ * 范围没有完整落在一个 RAM slot 里时返回 VMM_ERR_GUEST，*hva 不变，失败
+ * 原因记进日志。guest 内存布局在 VM 运行期间不变，所以指针一直有效；但
+ * 调用方只在处理这一次请求时使用，不把它保存下来，免得 guest 改写描述符
+ * 之后设备还在按旧地址访问。 */
+int  pci_dma_map(struct pci_device *dev, uint64_t gpa, size_t len, void **hva);
+
 #endif /* PCI_PCI_H */
