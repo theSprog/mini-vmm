@@ -23,6 +23,16 @@
  *   - 读写命令的 LBA/Count 位置：SATA 3.0 第 10.3.4 节、ATA8-ACS 第 7.24
  *     节起；数据和镜像内容由测试用另一个 fd 直接 pread/pwrite 核对，盘是
  *     真实的 src/block/blockdev.c 打开的稀疏文件
+ *   - NCQ：FPDMA 命令的 Count/tag/Feature 位置见 ATA8-ACS 第 7.28/7.67 节；
+ *     接收用 I=0 的 D2H FIS、完成用 SDB FIS 见 SATA 3.0 第 13.6.1.1、
+ *     13.6.3 节，SDB 的布局见第 10.3.6 节；HBA 收到 SDB 后清 PxSACT、置
+ *     SDBS 见 AHCI 第 5.3.13.1 节，PRDBC 对 NCQ 不要求有效见第 5.4.1 节；
+ *     出错后只接受读日志 10h、读完先发 ACT 全 1 的 SDB 见 SATA 3.0 第
+ *     13.6.3.4 节，日志 10h 的布局与校验和见第 13.7.3 节
+ *   - 日志：READ/WRITE LOG EXT 见 ATA8-ACS 第 7.29/7.68 节，目录 00h 的
+ *     布局见附录表 A.2，NCQ 设备必须支持 GPL 与主机日志 80h-9Fh 见第
+ *     4.15.1、4.10 节；页号放在 LBA 15:8（与 47:40）按 Linux
+ *     ata_read_log_page 的发法
  */
 #define _GNU_SOURCE
 #include <fcntl.h>
@@ -222,7 +232,7 @@ static void case_identity(void)
     CHECK_U64((cap >> 20) & 0xF, 3, "CAP.ISS: Gen3");
     CHECK(cap & (1u << 31), "CAP.S64A");
     CHECK(cap & (1u << 18), "CAP.SAM: AHCI only");
-    CHECK(!(cap & (1u << 30)), "CAP.SNCQ clear: no NCQ");
+    CHECK(cap & (1u << 30), "CAP.SNCQ: native command queuing");
     CHECK(!(cap & (1u << 17)), "CAP.SPM clear: no port multiplier");
     CHECK(!(cap & (3u << 13)) && !(cap & (1u << 26)), "no partial/slumber, no ALPM");
     CHECK(!(cap & (1u << 27)), "CAP.SSS clear: ports spin up on reset");
@@ -699,8 +709,11 @@ static void case_identify_data(void)
     CHECK((id[87] & 0xC000) == 0x4000 && (id[85] & (1u << 5)), "write cache enabled at power-on");
     CHECK(id[93] == 0 && (int16_t)id[80] >= 0x20, "SATA device (ata_id_is_sata)");
     CHECK(id[80] & (1u << 8), "ATA8-ACS");
-    CHECK_U64(id[76] & 0x10F, 0x00E, "SATA Gen1-3 signaling, no NCQ");
-    CHECK_U64(id[84] & (1u << 5), 0, "no GPL: Linux sends no READ LOG EXT");
+    CHECK_U64(id[76] & 0x810F, 0x010E, "SATA Gen1-3 signaling, NCQ, log 10h not via DMA");
+    CHECK_U64(id[75] & 0x1F, 31, "queue depth 32 (word 75 = depth - 1)");
+    CHECK_U64(id[77] | id[78], 0, "no NCQ priority/management/auto-activate: no extra log reads");
+    CHECK((id[84] & 0xC000) == 0x4000 && (id[84] & (1u << 5)) && (id[87] & (1u << 5)),
+          "GPL supported and enabled (required for NCQ)");
     CHECK_U64(id[82] & (1u << 10), 0, "no HPA: Linux sends no READ NATIVE MAX");
     CHECK_U64(id[59] & 0x100, 0, "no READ/WRITE MULTIPLE setting");
     CHECK_U64(id[88], 0x407F, "UDMA 0-6 supported, UDMA 6 selected at power-on");
@@ -986,6 +999,291 @@ static void case_features(void)
     CHECK_U64(g_last_log[0], 0, "second time not logged");
 }
 
+/* ---- NCQ 与 GPL 日志 ---- */
+
+static struct blockdev *g_small;
+
+/* READ/WRITE FPDMA QUEUED（ATA8-ACS 第 7.28、7.67 节）：扇区数在 Feature
+ * （字节 3、11），tag 在 Count 的 bit 7:3（字节 12），LBA 48 位，FUA 在
+ * Device bit 7。tag 按 Linux 的做法等于槽号 */
+static void put_fpdma(int slot, uint8_t cmd, uint64_t lba, uint32_t count, uint32_t prdtl, bool fua)
+{
+    uint8_t *t = g_ram + CTBA;
+
+    put_cmd(slot, 5, SATA_FIS_REG_H2D, SATA_FIS_H2D_C, cmd);
+    put32(hdr(slot), 5 | prdtl << AHCI_CH_PRDTL_SHIFT);
+    t[3]  = (uint8_t)count;
+    t[11] = (uint8_t)(count >> 8);
+    t[4]  = (uint8_t)lba;
+    t[5]  = (uint8_t)(lba >> 8);
+    t[6]  = (uint8_t)(lba >> 16);
+    t[7]  = ATA_DEV_LBA | (fua ? ATA_DEV_FUA : 0);
+    t[8]  = (uint8_t)(lba >> 24);
+    t[9]  = (uint8_t)(lba >> 32);
+    t[10] = (uint8_t)(lba >> 40);
+    t[12] = (uint8_t)(slot << 3);
+}
+
+/* 软件发 NCQ 命令的顺序（Linux ahci_qc_issue）：先置 PxSACT 再置 PxCI */
+static void run_ncq(int slot)
+{
+    pwr(0, AHCI_PxSACT, 1u << slot);
+    run(slot);
+}
+
+/* READ/WRITE LOG EXT：日志地址在 LBA 7:0（字节 4），页号按 Linux 的布局
+ * 在字节 5 和 9，页数在 Count（字节 12、13） */
+static void put_log(int slot, uint8_t cmd, uint8_t log, unsigned page, unsigned count, uint32_t prdtl)
+{
+    uint8_t *t = g_ram + CTBA;
+
+    put_cmd(slot, 5, SATA_FIS_REG_H2D, SATA_FIS_H2D_C, cmd);
+    put32(hdr(slot), 5 | prdtl << AHCI_CH_PRDTL_SHIFT |
+          (cmd == ATA_CMD_WRITE_LOG_EXT ? AHCI_CH_WRITE : 0));
+    t[4]  = log;
+    t[5]  = (uint8_t)page;
+    t[9]  = (uint8_t)(page >> 8);
+    t[7]  = ATA_DEV_LBA;
+    t[12] = (uint8_t)count;
+    t[13] = (uint8_t)(count >> 8);
+}
+
+static uint8_t sum512(const uint8_t *p)
+{
+    uint8_t s = 0;
+    int i;
+
+    for (i = 0; i < 512; i++)
+        s = (uint8_t)(s + p[i]);
+    return s;
+}
+
+static void case_ncq(void)
+{
+    const uint8_t *d2h = g_ram + FB + AHCI_RFIS_RFIS;
+    const uint8_t *sdb = g_ram + FB + AHCI_RFIS_SDBFIS;
+    const uint64_t lba = 0x01000005;             /* LBA 位 24 在字节 8 */
+    uint64_t flushes;
+
+    T_CASE("NCQ 读写：先置 PxSACT，接受时 I=0 的 D2H 清 PxCI，完成时 SDB FIS 清 PxSACT 置 SDBS");
+    fresh();
+    port0_start();
+    fill(g_ram + DATA, 8 * 512, 21);
+    put_fpdma(3, ATA_CMD_WRITE_FPDMA, lba, 8, 2, false);
+    put_prd(0, DATA, 3 * 512 - 1);
+    put_prd(1, DATA + 0x4000, 5 * 512 - 1);
+    memcpy(g_ram + DATA + 0x4000, g_ram + DATA + 3 * 512, 5 * 512);
+    memset(g_ram + FB, 0xEE, AHCI_RFIS_SIZE);
+    put32(hdr(3) + 4, 0xDEADBEEFu);
+    run_ncq(3);
+    CHECK(image_is(g_img, lba * 512, g_ram + DATA, 3 * 512) &&
+          image_is(g_img, (lba + 3) * 512, g_ram + DATA + 0x4000, 5 * 512),
+          "8 sectors written at the 48-bit LBA from both PRDs");
+    CHECK_U64(prd(0, AHCI_PxCI), 0, "PxCI cleared by the acceptance D2H FIS");
+    CHECK_U64(prd(0, AHCI_PxSACT), 0, "PxSACT cleared by the SDB FIS");
+    CHECK(d2h[0] == 0x34 && !(d2h[1] & SATA_FIS_I) && d2h[2] == 0x40,
+          "acceptance: D2H Register FIS, I=0, DRDY and BSY=0");
+    CHECK(sdb[0] == 0xA1 && (sdb[1] & SATA_FIS_I) && sdb[2] == 0x40 && sdb[3] == 0 &&
+          get32(sdb + 4) == 1u << 3, "SDB FIS: I=1, status 40h, ACT = tag 3");
+    CHECK_U64(prd(0, AHCI_PxIS) & (AHCI_PxIS_SDBS | AHCI_PxIS_DHRS | AHCI_PxIS_TFES),
+              AHCI_PxIS_SDBS, "SDBS only: the acceptance FIS raises no DHRS");
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x40, "PxTFD = DRDY");
+    CHECK_U64(get32(hdr(3) + 4), 0xDEADBEEFu, "PRDBC not written for NCQ (5.4.1)");
+    CHECK(g_irq, "interrupt");
+
+    pwr(0, AHCI_PxIS, 0xFFFFFFFFu);
+    wr(AHCI_IS, 0xFFFFFFFFu);
+    memset(g_ram + DATA2, 0, 8 * 512);
+    put_fpdma(7, ATA_CMD_READ_FPDMA, lba, 8, 1, false);
+    put_prd(0, DATA2, 8 * 512 - 1);
+    run_ncq(7);
+    CHECK(!memcmp(g_ram + DATA2, g_ram + DATA, 3 * 512) &&
+          !memcmp(g_ram + DATA2 + 3 * 512, g_ram + DATA + 0x4000, 5 * 512),
+          "READ FPDMA returns what was written");
+    CHECK(get32(sdb + 4) == 1u << 7 && prd(0, AHCI_PxSACT) == 0, "completion for tag 7");
+
+    flushes = g_disk->stats.flush_ops;
+    put_fpdma(1, ATA_CMD_WRITE_FPDMA, 9, 1, 1, true);
+    put_prd(0, DATA, 511);
+    run_ncq(1);
+    CHECK_U64(g_disk->stats.flush_ops - flushes, 1, "FUA write is flushed with the write cache on");
+    put_fpdma(1, ATA_CMD_WRITE_FPDMA, 9, 1, 1, false);
+    run_ncq(1);
+    CHECK_U64(g_disk->stats.flush_ops - flushes, 1, "plain write is not flushed");
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x40, "both writes completed");
+
+    /* Feature 为 0 表示 65536 个扇区：从倒数第 65535 个扇区开始就越界 */
+    put_fpdma(2, ATA_CMD_READ_FPDMA, DISK_SECTORS - 65535, 0, 1, false);
+    run_ncq(2);
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x0441, "count 0 means 65536 sectors: out of range, ABRT");
+}
+
+static void case_ncq_error(void)
+{
+    const uint8_t *d2h = g_ram + FB + AHCI_RFIS_RFIS;
+    const uint8_t *sdb = g_ram + FB + AHCI_RFIS_SDBFIS;
+    const uint8_t *log = g_ram + DATA2;
+    int fd;
+
+    T_CASE("NCQ 出错：设备停止接受命令，读出日志 10h（带出错的 tag）后恢复");
+    fresh();
+    port0_start();
+    put_fpdma(4, ATA_CMD_READ_FPDMA, DISK_SECTORS, 1, 1, false);
+    put_prd(0, DATA, 511);
+    run_ncq(4);
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x0441, "acceptance error: ERR, ABRT (7.28.6)");
+    CHECK(d2h[0] == 0x34 && (d2h[1] & SATA_FIS_I) && d2h[2] == 0x41 && d2h[3] == 0x04,
+          "reported in a D2H Register FIS with I=1");
+    CHECK(prd(0, AHCI_PxIS) & AHCI_PxIS_TFES, "TFES");
+    CHECK_U64(prd(0, AHCI_PxCI), 1u << 4, "slot kept in PxCI, port halted");
+
+    port0_restart();
+    CHECK_U64(prd(0, AHCI_PxSACT), 0, "ST 1->0 clears PxSACT");
+    put_rw(0, ATA_CMD_READ_DMA_EXT, 0, 1, 1);
+    put_prd(0, DATA, 511);
+    run(0);
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x0441, "other commands aborted until log 10h is read");
+    port0_restart();
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_DIRECTORY, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x0441, "even reading another log is aborted");
+
+    port0_restart();
+    memset(g_ram + FB, 0xEE, AHCI_RFIS_SIZE);
+    memset(g_ram + DATA2, 0xEE, 512);
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_NCQ_ERR, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK(sdb[0] == 0xA1 && !(sdb[1] & SATA_FIS_I) && sdb[2] == 0x40 && sdb[3] == 0 &&
+          get32(sdb + 4) == 0xFFFFFFFFu,
+          "reading log 10h first sends SDB ACT=FFFFFFFFh, I=0, no error (13.6.3.4)");
+    CHECK_U64(prd(0, AHCI_PxCI), 0, "READ LOG EXT completed");
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x40, "PxTFD = DRDY");
+    CHECK(prd(0, AHCI_PxIS) & AHCI_PxIS_PSS, "PIO data-in");
+    CHECK_U64(log[0], 4, "log 10h: NQ=0, tag 4");
+    CHECK(log[2] == 0x41 && log[3] == 0x04, "log 10h: status 41h, error ABRT");
+    CHECK(log[4] == (uint8_t)DISK_SECTORS && log[5] == (uint8_t)(DISK_SECTORS >> 8) &&
+          log[6] == (uint8_t)(DISK_SECTORS >> 16) && log[8] == (uint8_t)(DISK_SECTORS >> 24) &&
+          log[7] == ATA_DEV_LBA && log[12] == 4 << 3,
+          "log 10h: LBA, Device and Count of the failed command");
+    CHECK_U64(sum512(log), 0, "log 10h checksum");
+
+    put_fpdma(5, ATA_CMD_READ_FPDMA, 0, 1, 1, false);
+    put_prd(0, DATA, 511);
+    run_ncq(5);
+    CHECK(prd(0, AHCI_PxTFD) == 0x40 && prd(0, AHCI_PxSACT) == 0, "queued commands accepted again");
+    memset(g_ram + FB, 0xEE, AHCI_RFIS_SIZE);
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_NCQ_ERR, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK_U64(sdb[0], 0xEE, "no SDB FIS when no error is pending");
+    CHECK_U64(log[0], 4, "log still reports the first error until the next one");
+
+    /* 执行阶段出错：镜像在运行中被截短，后端读到文件尾报 EIO */
+    g_small = open_disk("small", 1 << 20, false, &fd);
+    fresh_with(g_small);
+    port0_start();
+    if (ftruncate(fd, 512 << 10) != 0)
+        perror("ftruncate");
+    put_fpdma(6, ATA_CMD_READ_FPDMA, 1500, 8, 1, false);
+    put_prd(0, DATA, 8 * 512 - 1);
+    run_ncq(6);
+    CHECK(sdb[0] == 0xA1 && (sdb[1] & SATA_FIS_I) && sdb[2] == 0x41 && sdb[3] == ATA_ERR_UNC &&
+          get32(sdb + 4) == 0, "execution error: SDB FIS with ERR, UNC, ACT=0, I=1");
+    CHECK_U64(prd(0, AHCI_PxTFD), 0x4041, "PxTFD = UNC, DRDY|ERR");
+    CHECK(prd(0, AHCI_PxIS) & AHCI_PxIS_TFES, "TFES");
+    CHECK_U64(prd(0, AHCI_PxSACT), 1u << 6, "failed tag stays in PxSACT");
+    CHECK_U64(prd(0, AHCI_PxCI), 0, "already accepted: not in PxCI");
+    port0_restart();
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_NCQ_ERR, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK(log[0] == 6 && log[3] == ATA_ERR_UNC && sum512(log) == 0, "log 10h: tag 6, UNC");
+
+    /* COMRESET 清掉出错状态，日志回到 NQ=1。先发一条普通命令：日志 10h
+     * 在出错状态下本来就能读，只读它看不出出错状态有没有清掉 */
+    put_fpdma(6, ATA_CMD_READ_FPDMA, 1 << 20, 1, 1, false);
+    run_ncq(6);
+    pwr(0, AHCI_PxSCTL, 1);
+    pwr(0, AHCI_PxSCTL, 0);
+    port0_restart();
+    put_fpdma(2, ATA_CMD_READ_FPDMA, 0, 1, 1, false);
+    put_prd(0, DATA, 511);
+    run_ncq(2);
+    CHECK(prd(0, AHCI_PxTFD) == 0x40 && prd(0, AHCI_PxSACT) == 0,
+          "after COMRESET: queued commands accepted without reading the log");
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_NCQ_ERR, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK((log[0] & ATA_LOG_NCQ_NQ) && sum512(log) == 0, "after COMRESET: log 10h has NQ=1");
+    close(fd);
+}
+
+static void case_logs(void)
+{
+    const uint8_t *dir = g_ram + DATA2;
+    const uint8_t *ps = g_ram + FB + AHCI_RFIS_PSFIS;
+    const uint8_t *d2h = g_ram + FB + AHCI_RFIS_RFIS;
+    static const uint8_t zero[512];
+    int i, bad = 0;
+
+    T_CASE("GPL 日志：目录、主机日志的读写、非法参数中止");
+    fresh();
+    port0_start();
+    put_log(0, ATA_CMD_READ_LOG_EXT, ATA_LOG_DIRECTORY, 0, 1, 1);
+    put_prd(0, DATA2, 511);
+    run(0);
+    CHECK(dir[0] == 1 && dir[1] == 0, "directory version 0001h");
+    CHECK(dir[2 * 0x10] == 1 && dir[2 * 0x10 + 1] == 0, "log 10h: 1 page");
+    for (i = 0x80; i <= 0x9F; i++)
+        bad += dir[2 * i] != 16 || dir[2 * i + 1] != 0;
+    CHECK_U64(bad, 0, "logs 80h-9Fh: 16 pages each");
+    CHECK(dir[2 * 0x11] == 0 && dir[2 * 0x30] == 0 && dir[2 * 0xE0] == 0, "other logs absent");
+
+    fill(g_ram + DATA, 1024, 33);
+    put_log(0, ATA_CMD_WRITE_LOG_EXT, 0x85, 3, 2, 2);
+    put_prd(0, DATA, 299);
+    put_prd(1, DATA + 0x1000, 723);
+    memcpy(g_ram + DATA + 0x1000, g_ram + DATA + 300, 724);
+    memset(g_ram + FB, 0, AHCI_RFIS_SIZE);
+    put32(hdr(0) + 4, 0);
+    pwr(0, AHCI_PxIS, 0xFFFFFFFFu);              /* 清掉上一条读目录留下的 PSS */
+    run(0);
+    CHECK_U64(prd(0, AHCI_PxCI), 0, "WRITE LOG EXT completed");
+    CHECK(ps[0] == 0x5F && !(ps[1] & (SATA_FIS_PIO_D | SATA_FIS_I)),
+          "PIO Setup FIS for data-out: D=0, I=0");
+    CHECK(d2h[0] == 0x34 && (d2h[1] & SATA_FIS_I) && d2h[2] == 0x40,
+          "ends with a D2H Register FIS, I=1");
+    CHECK_U64(prd(0, AHCI_PxIS) & (AHCI_PxIS_DHRS | AHCI_PxIS_PSS), AHCI_PxIS_DHRS, "DHRS, no PSS");
+    CHECK_U64(get32(hdr(0) + 4), 1024, "PRDBC = 1024");
+
+    memset(g_ram + DATA2, 0, 2048);
+    put_log(0, ATA_CMD_READ_LOG_EXT, 0x85, 2, 3, 1);
+    put_prd(0, DATA2, 3 * 512 - 1);
+    run(0);
+    CHECK(!memcmp(g_ram + DATA2, zero, 512), "page 2 of log 85h still empty");
+    CHECK(!memcmp(g_ram + DATA2 + 512, g_ram + DATA, 300) &&
+          !memcmp(g_ram + DATA2 + 812, g_ram + DATA + 0x1000, 724),
+          "pages 3-4 read back what was written");
+
+    struct { uint8_t cmd, log; unsigned page, count; const char *what; } bad_cmds[] = {
+        { ATA_CMD_READ_LOG_EXT,  0x80, 0, 0,  "count 0" },
+        { ATA_CMD_READ_LOG_EXT,  0x80, 15, 2, "page + count beyond the log size" },
+        { ATA_CMD_READ_LOG_EXT,  0x10, 1, 1,  "page 1 of a one-page log" },
+        { ATA_CMD_READ_LOG_EXT,  0x11, 0, 1,  "unsupported log" },
+        { ATA_CMD_WRITE_LOG_EXT, 0x10, 0, 1,  "write to read-only log 10h" },
+        { ATA_CMD_WRITE_LOG_EXT, 0x00, 0, 1,  "write to the directory" },
+    };
+    for (i = 0; i < (int)(sizeof(bad_cmds) / sizeof(bad_cmds[0])); i++) {
+        port0_restart();
+        put_log(0, bad_cmds[i].cmd, bad_cmds[i].log, bad_cmds[i].page, bad_cmds[i].count, 1);
+        put_prd(0, DATA2, 8191);
+        run(0);
+        CHECK_U64(prd(0, AHCI_PxTFD), 0x0441, bad_cmds[i].what);
+    }
+}
+
 int main(int argc, char **argv)
 {
     T_MAIN_BEGIN();
@@ -1004,10 +1302,14 @@ int main(int argc, char **argv)
     case_rw_errors();
     case_prdt();
     case_features();
+    case_ncq();
+    case_ncq_error();
+    case_logs();
     free(S);
     free_disk(g_disk);
     free_disk(g_big);
     free_disk(g_ro);
+    free_disk(g_small);
     close(g_img);
     rmdir(g_dir);
     return T_SUMMARY();

@@ -38,8 +38,20 @@
  * 写缓存（FLUSH CACHE 落到 fdatasync）。实现的命令只有 Linux libata
  * 对这样一块盘实际会发的那些，见 ahci.c 的 exec_ata；其余命令按 ATA8-ACS
  * 第 4.1 节对“不支持的命令”的规定中止（ABRT），每个操作码记一次日志。
- * IDENTIFY DEVICE 里不声明 NCQ、GPL、HPA、SMART、安全、链路省电：声明了
- * Linux 就会发对应的命令（READ LOG EXT、SET FEATURES 0x10 等）。
+ * IDENTIFY DEVICE 里不声明 HPA、SMART、安全、链路省电：声明了 Linux 就会
+ * 发对应的命令（SET FEATURES 10h 等）。
+ *
+ * NCQ（CAP.SNCQ，IDENTIFY 字 75/76，队列深度 32）：READ/WRITE FPDMA QUEUED
+ * 按 SATA 3.0 第 13.6 节的协议走，软件先置 PxSACT 再置 PxCI；设备接受
+ * 命令时回一个 I=0 的 D2H FIS（清 PxCI），完成时回 Set Device Bits FIS
+ * （ACT 里是完成的 tag，清 PxSACT，置 PxIS.SDBS）。因为命令在写 PxCI 时
+ * 同步执行完，同一时刻在设备里的 NCQ 命令最多一条，队列真正被填满要等
+ * 异步后端（blk-io-uring）；协议本身、PxSACT 与 PxCI 的分工、SDB FIS 和
+ * 出错后的恢复流程都与真实盘一样。NCQ 命令出错时设备停止接受命令，直到
+ * 软件用 READ LOG EXT 读出 NCQ Command Error 日志（10h），ATA8-ACS 第
+ * 4.15.1 节因此要求 NCQ 盘支持 GPL（字 84/87 bit 5）；GPL 又要求支持日志
+ * 目录（00h）、WRITE LOG EXT 和全部 Host Vendor Specific 日志（80h-9Fh，
+ * 第 4.10 节），所以这些一并实现，主机日志只存在内存里，不随镜像保存。
  * PRDT 的每一项都单独经 pci_dma_map 检查后才读写，见 ahci.c 的 prdt_map。
  *
  * 线程与锁：所有状态由 vm->io_lock 保护，寄存器访问经 exit 分发进来，
@@ -53,7 +65,11 @@
  * （复位签名）；ref/ATA8-ACS_d1699r4a.pdf 第 4.1 节（不支持的命令）、表 22
  * 与第 7.16 节（IDENTIFY DEVICE）、第 7.24/7.25/7.61/7.62 节（DMA 读写）、
  * 第 7.14/7.15 节（FLUSH CACHE）、第 7.48 节（SET FEATURES）、第 7.55 节
- * （STANDBY IMMEDIATE）、表 92（签名）、表 113/131（读写的错误位）；
+ * （STANDBY IMMEDIATE）、表 92（签名）、表 113/131（读写的错误位）、
+ * 第 4.10/4.15 节与第 7.28/7.67 节（GPL、NCQ 与 FPDMA 命令）、第 7.29/7.68
+ * 节与表 A.2（READ/WRITE LOG EXT、日志目录）；SATA 3.0 第 13.6 节（NCQ
+ * 协议）、第 13.7.3 节（日志 10h）；AHCI 第 3.3.13 节（PxSACT）、第
+ * 5.3.13.1 节（SDB FIS）；
  * Linux drivers/ata/ahci.c、libahci.c、libata-core.c。
  */
 #ifndef DEVICES_AHCI_H
@@ -198,11 +214,13 @@ struct blockdev;
 #define SATA_FIS_REG_H2D     0x27
 #define SATA_FIS_REG_D2H     0x34
 #define SATA_FIS_PIO_SETUP   0x5F
+#define SATA_FIS_SDB         0xA1        /* Set Device Bits，第 10.3.6 节 */
 #define SATA_FIS_H2D_C       (1u << 7)   /* byte 1：这是命令（不是设备控制） */
 #define SATA_FIS_I           (1u << 6)   /* D2H / PIO Setup byte 1：中断位 */
 #define SATA_FIS_PIO_D       (1u << 5)   /* PIO Setup byte 1：数据方向设备到主机 */
 #define SATA_FIS_REG_LEN     20
 #define SATA_FIS_PIO_LEN     20
+#define SATA_FIS_SDB_LEN     8
 
 /* ATA 状态与错误寄存器的位（ATA8-ACS 第 6.1、6.2 节） */
 #define ATA_STS_BSY          0x80
@@ -216,10 +234,15 @@ struct blockdev;
 /* Device 寄存器的 bit 6（ATA8-ACS 的 Device 字段 bit 14“shall be set to
  * one”，即 LBA 寻址）；28 位命令的 LBA[27:24] 在它的低 4 位 */
 #define ATA_DEV_LBA          0x40
+#define ATA_DEV_FUA          0x80        /* FPDMA 命令的 Device bit 7（第 7.28.3.2 节） */
 
 /* 实现的 ATA 命令（ATA8-ACS 第 7 章） */
 #define ATA_CMD_READ_DMA_EXT    0x25
+#define ATA_CMD_READ_LOG_EXT    0x2F
 #define ATA_CMD_WRITE_DMA_EXT   0x35
+#define ATA_CMD_WRITE_LOG_EXT   0x3F
+#define ATA_CMD_READ_FPDMA      0x60
+#define ATA_CMD_WRITE_FPDMA     0x61
 #define ATA_CMD_READ_DMA        0xC8
 #define ATA_CMD_WRITE_DMA       0xCA
 #define ATA_CMD_STANDBY_NOW     0xE0
@@ -238,6 +261,15 @@ struct blockdev;
 
 #define ATA_SECTOR_SIZE      512
 #define ATA_ID_WORDS         256
+#define ATA_NCQ_DEPTH        32
+
+/* GPL 日志地址（ATA8-ACS 表 A.2）。日志按 512 字节的页读写 */
+#define ATA_LOG_DIRECTORY    0x00
+#define ATA_LOG_NCQ_ERR      0x10        /* SATA 3.0 第 13.7.3 节，1 页，只读 */
+#define ATA_LOG_HOST_FIRST   0x80        /* Host Vendor Specific，80h-9Fh 可读写 */
+#define ATA_LOG_HOST_LAST    0x9F
+#define ATA_LOG_HOST_PAGES   16
+#define ATA_LOG_NCQ_NQ       0x80        /* 日志 10h 字节 0：最近出错的不是 NCQ 命令 */
 
 /* 复位后的 PxTFD.STS（第 10.4.2 节） */
 #define AHCI_TFD_STS_RESET   0x7F
@@ -277,6 +309,13 @@ struct ahci {
     uint64_t sectors;              /* 容量，512 字节扇区数 */
     bool     wcache;               /* volatile 写缓存开着 */
     uint8_t  dma_mode;             /* 选中的 DMA 模式：SET FEATURES 03h 的 Count 值 */
+
+    /* NCQ 出错之后、日志 10h 被读出之前为真：这期间除读日志 10h 外的
+     * 命令都中止（SATA 3.0 第 13.6.3.4 节）。COMRESET 清掉它 */
+    bool     ncq_err;
+    uint8_t  ncq_log[ATA_SECTOR_SIZE];
+    uint8_t  host_log[ATA_LOG_HOST_LAST - ATA_LOG_HOST_FIRST + 1]
+                     [ATA_LOG_HOST_PAGES][ATA_SECTOR_SIZE];
 };
 
 extern const struct vmm_device_type ahci_device_type;

@@ -15,6 +15,7 @@ enum {
     W_CHS,
     W_SET_FEATURES,
     W_READ_ONLY,
+    W_LOG,
 };
 
 #define warn_once(s, w, ...)                                \
@@ -26,7 +27,7 @@ enum {
     } while (0)
 
 /* CAP 由下面几项拼成，含义见 ahci.h 开头 */
-#define AHCI_CAP_VALUE  (AHCI_CAP_S64A | AHCI_CAP_SCLO |                  \
+#define AHCI_CAP_VALUE  (AHCI_CAP_S64A | AHCI_CAP_SNCQ | AHCI_CAP_SCLO |  \
                          (AHCI_SPEED_GEN3 << AHCI_CAP_ISS_SHIFT) |        \
                          AHCI_CAP_SAM | AHCI_CAP_PMD |                    \
                          ((AHCI_NR_SLOTS - 1) << AHCI_CAP_NCS_SHIFT) |    \
@@ -153,10 +154,19 @@ static void host_bus_fatal(struct ahci *s, struct ahci_port *p, int slot)
 /* 盘的上电默认设置，复位后同样回到这里（ahci.h 里 struct ahci 的说明）。
  * 写缓存默认打开、选中最高的 UDMA 模式，这是 SATA 盘的常见出厂设置；
  * Linux 探测时会自己再发一遍 SET FEATURES 03h */
+static void log_checksum(uint8_t *page);
+
 static void disk_reset(struct ahci *s)
 {
     s->wcache = true;
     s->dma_mode = ATA_XFER_UDMA | 6;
+    /* 复位后日志 10h 的内容不确定（SATA 3.0 第 13.7.3 节）。填成 NQ=1，
+     * 即“最近出错的不是 NCQ 命令”，读它的软件不会把它当成某个 tag 的
+     * 错误；出错状态一并清掉，复位就是从 NCQ 错误里恢复的另一条路 */
+    s->ncq_err = false;
+    memset(s->ncq_log, 0, sizeof(s->ncq_log));
+    s->ncq_log[0] = ATA_LOG_NCQ_NQ;
+    log_checksum(s->ncq_log);
 }
 
 static void link_down(struct ahci_port *p, uint32_t det)
@@ -281,6 +291,38 @@ static void abort_cmd(struct ahci *s, struct ahci_port *p, int slot)
     complete_cmd(s, p, slot, ATA_STS_DRDY | ATA_STS_ERR, ATA_ERR_ABRT);
 }
 
+/* 设备发来 Set Device Bits FIS（SATA 3.0 第 10.3.6 节：字节 2 是 Status
+ * 的 bit 6:4 和 2:0，字节 3 Error，字节 4-7 是 ACT，小端）。HBA 的
+ * SDB:Entry（AHCI 第 5.3.13.1 节）：FIS 写进接收区 0x58，用它更新
+ * PxTFD（BSY、DRQ 不由 SDB 更新，第 3.3.8 节），清 PxSACT 里 ACT 为 1
+ * 的位；I=1 时置 PxIS.SDBS；Status 带 ERR 时按 ERR:FatalTaskfile 置
+ * TFES 并停下（第 6.1.4 节）。 */
+static void sdb_fis(struct ahci *s, struct ahci_port *p, int slot, uint32_t act,
+                    uint8_t status, uint8_t error, bool irq)
+{
+    uint8_t fis[SATA_FIS_SDB_LEN] = { 0 };
+
+    fis[0] = SATA_FIS_SDB;
+    fis[1] = irq ? SATA_FIS_I : 0;
+    fis[2] = status & 0x77;
+    fis[3] = error;
+    memcpy(&fis[4], &act, sizeof(act));          /* x86 小端，与 FIS 字节序一致 */
+    if (post_fis(s, p, AHCI_RFIS_SDBFIS, fis, sizeof(fis)) != VMM_OK) {
+        host_bus_fatal(s, p, slot);
+        return;
+    }
+    p->tfd = ((uint32_t)error << 8) | (p->tfd & (ATA_STS_BSY | ATA_STS_DRQ)) | (status & 0x77);
+    p->sact &= ~act;
+    if (irq)
+        p->is |= AHCI_PxIS_SDBS;
+    if (status & ATA_STS_ERR) {
+        p->is |= AHCI_PxIS_TFES;
+        p->halted = true;
+        p->ccs = (uint8_t)slot;
+    }
+    update_irq(s);
+}
+
 /* ---- IDENTIFY DEVICE 数据（ATA8-ACS 表 22） ---- */
 
 #define ID_SERIAL_BYTES   20
@@ -328,20 +370,25 @@ void ahci_identify(const struct ahci *s, uint16_t id[ATA_ID_WORDS])
     id[64] = 0x0003;                             /* 支持 PIO 3、4 */
     for (i = 65; i <= 68; i++)
         id[i] = 120;                             /* 周期时间（ns），只对并口有意义 */
-    /* 字 76：SATA Gen1/2/3（SATA 3.0 第 13.2.1 节表 69 的 bit 1-3），
-     * 不报 NCQ（bit 8）和主机发起的链路省电（bit 9） */
-    id[76] = (1u << 3) | (1u << 2) | (1u << 1);
+    id[75] = ATA_NCQ_DEPTH - 1;                  /* 队列深度减 1 */
+    /* 字 76：SATA Gen1/2/3（SATA 3.0 第 13.2.1 节表 69 的 bit 1-3）、NCQ
+     * （bit 8）；不报主机发起的链路省电（bit 9），也不报日志 10h 可以用
+     * READ LOG DMA EXT 读（bit 15），Linux 于是用 READ LOG EXT 读它。
+     * 字 77、78 为 0：没有 NCQ 优先级、NCQ 管理命令、自动激活，Linux 就
+     * 不去读这些特性对应的日志 */
+    id[76] = (1u << 8) | (1u << 3) | (1u << 2) | (1u << 1);
     id[80] = 0x01F0;                             /* ATA/ATAPI-4 到 ATA8-ACS */
     /* 字 82-87：支持与已启用的命令集。写缓存（82/85 bit 5）、强制的电源
      * 管理（82/85 bit 3），FLUSH CACHE 和 FLUSH CACHE EXT（83/86 bit 12/13），
-     * 48 位地址（83/86 bit 10）。83、84、87 的 bit 14 恒 1 表示字有效，
-     * Linux 的 ata_id_has_* 先看这一位 */
+     * 48 位地址（83/86 bit 10），GPL（84/87 bit 5，NCQ 要求它，见 ahci.h）。
+     * 83、84、87 的 bit 14 恒 1 表示字有效，Linux 的 ata_id_has_* 先看
+     * 这一位 */
     id[82] = (1u << 5) | (1u << 3);
     id[83] = 0x4000 | (1u << 13) | (1u << 12) | (1u << 10);
-    id[84] = 0x4000;
+    id[84] = 0x4000 | (1u << 5);
     id[85] = (1u << 3) | (s->wcache ? 1u << 5 : 0);
     id[86] = (1u << 13) | (1u << 12) | (1u << 10);
-    id[87] = 0x4000;
+    id[87] = 0x4000 | (1u << 5);
     id[88] = 0x007F;                             /* 支持 UDMA 0-6 */
     if ((s->dma_mode & 0xF8) == ATA_XFER_UDMA)
         id[88] |= 1u << (8 + (s->dma_mode & 7));
@@ -483,28 +530,23 @@ static int disk_io(struct blockdev *bd, bool write, const struct iovec *iov, int
 
 /* ---- ATA 命令 ---- */
 
-/* IDENTIFY DEVICE（ECh，PIO data-in，第 7.16 节）。设备先发 PIO Setup FIS
- * 再发 Data FIS，结束时不再发 D2H Register FIS：最终状态在 PIO Setup FIS
- * 的 E_Status 里，HBA 在 PIO:Update 状态用它更新 PxTFD，再清 PxCI
- * （AHCI 第 5.3.9 节）。Linux 的 ahci_qc_fill_rtf 也从 PIO Setup FIS 的
- * 第 15 字节取结果状态。 */
-static void cmd_identify(struct ahci *s, struct ahci_port *p, int slot,
-                         uint64_t hdr_gpa, uint32_t prdtl, uint64_t ctba)
+/* PIO data-in：把 data 的 len 字节交给 guest。设备先发 PIO Setup FIS 再发
+ * Data FIS，结束时不再发 D2H Register FIS：最终状态在 PIO Setup FIS 的
+ * E_Status 里，HBA 在 PIO:Update 状态用它更新 PxTFD，再清 PxCI（AHCI
+ * 第 5.3.9 节）。Linux 的 ahci_qc_fill_rtf 也从 PIO Setup FIS 的第 15 字节
+ * 取结果状态。每个 DRQ 数据块（512 字节）各有一个 PIO Setup FIS，接收区
+ * 里留下的是最后一个，Transfer Count 是一块的字节数。 */
+static void pio_in(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr_gpa,
+                   uint32_t prdtl, uint64_t ctba, const uint8_t *data, uint32_t len)
 {
-    uint16_t id[ATA_ID_WORDS];
-    uint8_t data[ATA_SECTOR_SIZE], fis[SATA_FIS_PIO_LEN] = { 0 };
+    uint8_t fis[SATA_FIS_PIO_LEN] = { 0 };
     struct iovec *iov;
     enum prdt_result r;
     size_t off = 0;
     bool dps;
     int n, i;
 
-    ahci_identify(s, id);
-    for (i = 0; i < ATA_ID_WORDS; i++) {        /* 数据按小端的 16 位字传 */
-        data[2 * i] = (uint8_t)id[i];
-        data[2 * i + 1] = (uint8_t)(id[i] >> 8);
-    }
-    r = prdt_map(s, p, slot, ctba, prdtl, sizeof(data), &iov, &n, &dps);
+    r = prdt_map(s, p, slot, ctba, prdtl, len, &iov, &n, &dps);
     if (r != PRDT_OK) {
         prdt_fail(s, p, slot, r);
         return;
@@ -514,15 +556,15 @@ static void cmd_identify(struct ahci *s, struct ahci_port *p, int slot,
         off += iov[i].iov_len;
     }
     free(iov);
-    if (set_prdbc(s, p, slot, hdr_gpa, sizeof(data)) != VMM_OK)
+    if (set_prdbc(s, p, slot, hdr_gpa, len) != VMM_OK)
         return;
 
     fis[0]  = SATA_FIS_PIO_SETUP;
     fis[1]  = SATA_FIS_PIO_D | SATA_FIS_I;
     fis[2]  = ATA_STS_DRDY | ATA_STS_DRQ;        /* 传输开始时的状态 */
     fis[15] = ATA_STS_DRDY;                      /* E_Status：传完之后 */
-    fis[16] = (uint8_t)sizeof(data);             /* Transfer Count */
-    fis[17] = (uint8_t)(sizeof(data) >> 8);
+    fis[16] = (uint8_t)ATA_SECTOR_SIZE;          /* Transfer Count */
+    fis[17] = (uint8_t)(ATA_SECTOR_SIZE >> 8);
     if (post_fis(s, p, AHCI_RFIS_PSFIS, fis, sizeof(fis)) != VMM_OK) {
         host_bus_fatal(s, p, slot);
         return;
@@ -531,6 +573,145 @@ static void cmd_identify(struct ahci *s, struct ahci_port *p, int slot,
     p->is |= AHCI_PxIS_PSS | (dps ? AHCI_PxIS_DPS : 0);
     p->ci &= ~(1u << slot);
     update_irq(s);
+}
+
+/* PIO data-out：从 guest 取 len 字节放进 buf。设备为每个数据块发一个
+ * D=0 的 PIO Setup FIS（I=0：PIO 写在第一块之前不产生中断），收下最后
+ * 一块后忙于处理，最终状态由一个 D2H Register FIS（I=1）给出，PxCI 在
+ * RegFIS:ClearCI 清掉（AHCI 第 5.3.8 节）。成功返回 VMM_OK，否则端口
+ * 已经停下。 */
+static int pio_out(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr_gpa,
+                   uint32_t prdtl, uint64_t ctba, uint8_t *buf, uint32_t len)
+{
+    uint8_t fis[SATA_FIS_PIO_LEN] = { 0 };
+    struct iovec *iov;
+    enum prdt_result r;
+    size_t off = 0;
+    bool dps;
+    int n, i;
+
+    r = prdt_map(s, p, slot, ctba, prdtl, len, &iov, &n, &dps);
+    if (r != PRDT_OK) {
+        prdt_fail(s, p, slot, r);
+        return VMM_ERR_GUEST;
+    }
+    for (i = 0; i < n; i++) {
+        memcpy(buf + off, iov[i].iov_base, iov[i].iov_len);
+        off += iov[i].iov_len;
+    }
+    free(iov);
+    if (set_prdbc(s, p, slot, hdr_gpa, len) != VMM_OK)
+        return VMM_ERR_GUEST;
+
+    fis[0]  = SATA_FIS_PIO_SETUP;
+    fis[2]  = ATA_STS_DRDY | ATA_STS_DRQ;
+    fis[15] = ATA_STS_DRDY | ATA_STS_BSY;        /* 收下数据后设备在处理 */
+    fis[16] = (uint8_t)ATA_SECTOR_SIZE;
+    fis[17] = (uint8_t)(ATA_SECTOR_SIZE >> 8);
+    if (post_fis(s, p, AHCI_RFIS_PSFIS, fis, sizeof(fis)) != VMM_OK) {
+        host_bus_fatal(s, p, slot);
+        return VMM_ERR_GUEST;
+    }
+    if (dps)
+        p->is |= AHCI_PxIS_DPS;
+    return VMM_OK;
+}
+
+/* IDENTIFY DEVICE（ECh，PIO data-in，第 7.16 节） */
+static void cmd_identify(struct ahci *s, struct ahci_port *p, int slot,
+                         uint64_t hdr_gpa, uint32_t prdtl, uint64_t ctba)
+{
+    uint16_t id[ATA_ID_WORDS];
+    uint8_t data[ATA_SECTOR_SIZE];
+    int i;
+
+    ahci_identify(s, id);
+    for (i = 0; i < ATA_ID_WORDS; i++) {        /* 数据按小端的 16 位字传 */
+        data[2 * i] = (uint8_t)id[i];
+        data[2 * i + 1] = (uint8_t)(id[i] >> 8);
+    }
+    pio_in(s, p, slot, hdr_gpa, prdtl, ctba, data, sizeof(data));
+}
+
+/* ---- GPL 日志（ATA8-ACS 第 4.10 节、附录 A） ---- */
+
+/* 日志页的最后一个字节使 512 字节之和为 0（表 A.2 目录不要求，日志 10h
+ * 要求，SATA 3.0 第 13.7.3 节；Linux 读 10h 时校验它） */
+static void log_checksum(uint8_t *page)
+{
+    uint8_t sum = 0;
+    int i;
+
+    for (i = 0; i < ATA_SECTOR_SIZE - 1; i++)
+        sum = (uint8_t)(sum + page[i]);
+    page[ATA_SECTOR_SIZE - 1] = (uint8_t)-sum;
+}
+
+/* 日志的页数，不支持的日志返回 0。目录（表 A.2）第 n 个字是日志 n 的
+ * 页数，字 0 是版本 0001h */
+static unsigned log_pages(uint8_t log)
+{
+    if (log == ATA_LOG_DIRECTORY || log == ATA_LOG_NCQ_ERR)
+        return 1;
+    if (log >= ATA_LOG_HOST_FIRST && log <= ATA_LOG_HOST_LAST)
+        return ATA_LOG_HOST_PAGES;
+    return 0;
+}
+
+/* READ LOG EXT（2Fh，PIO data-in，第 7.29 节）与 WRITE LOG EXT（3Fh，
+ * PIO data-out，第 7.68 节）。Count 是页数，0 中止；页号加页数超出日志
+ * 大小、日志不存在、写只读日志都中止。
+ * 页号的位置：ref/ 里的 ATA8-ACS r4a 草案写在 LBA 31:16，Linux
+ * （ata_read_log_page）放在 LBA 15:8 与 LBA 39:32，也就是 FIS 的字节 5
+ * 和 9，这是后来 ACS 标准的布局（ref/ 里没有 ACS-2 原文）。guest 是
+ * Linux，按它的布局取；Linux 自己只读第 0 页。
+ * 读日志 10h 是 NCQ 出错后的恢复动作：设备先发一个 ACT 全 1、I=0 的
+ * SDB FIS 结束所有未完成的 NCQ 命令（SATA 3.0 第 13.6.3.4 节与状态
+ * DFPDMAQ14），然后照常传数据，之后重新接受命令。 */
+static void cmd_log(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr_gpa,
+                    uint32_t prdtl, uint64_t ctba, const uint8_t *cfis)
+{
+    bool write = cfis[2] == ATA_CMD_WRITE_LOG_EXT;
+    uint8_t log = cfis[4];
+    unsigned page = cfis[5] | (unsigned)cfis[9] << 8;
+    unsigned count = cfis[12] | (unsigned)cfis[13] << 8;
+    unsigned pages = log_pages(log), i;
+    uint8_t buf[ATA_LOG_HOST_PAGES * ATA_SECTOR_SIZE];
+
+    if (!pages || !count || page + count > pages ||
+        (write && (log == ATA_LOG_DIRECTORY || log == ATA_LOG_NCQ_ERR))) {
+        warn_once(s, W_LOG, "ahci: port %d: %s LOG EXT log 0x%02x page %u count %u rejected, aborted",
+                  port_no(s, p), write ? "WRITE" : "READ", log, page, count);
+        abort_cmd(s, p, slot);
+        return;
+    }
+    if (write) {
+        if (pio_out(s, p, slot, hdr_gpa, prdtl, ctba, buf, count * ATA_SECTOR_SIZE) != VMM_OK)
+            return;
+        memcpy(s->host_log[log - ATA_LOG_HOST_FIRST][page], buf, count * ATA_SECTOR_SIZE);
+        complete_cmd(s, p, slot, ATA_STS_DRDY, 0);
+        return;
+    }
+
+    if (log == ATA_LOG_DIRECTORY) {
+        memset(buf, 0, ATA_SECTOR_SIZE);
+        buf[0] = 1;                              /* 版本 0001h */
+        for (i = 1; i < 256; i++) {
+            buf[2 * i] = (uint8_t)log_pages((uint8_t)i);
+            buf[2 * i + 1] = 0;
+        }
+    } else if (log == ATA_LOG_NCQ_ERR) {
+        if (s->ncq_err) {
+            s->ncq_err = false;
+            sdb_fis(s, p, slot, 0xFFFFFFFFu, ATA_STS_DRDY, 0, false);
+            if (p->halted)
+                return;
+        }
+        memcpy(buf, s->ncq_log, ATA_SECTOR_SIZE);
+    } else {
+        memcpy(buf, s->host_log[log - ATA_LOG_HOST_FIRST][page], count * ATA_SECTOR_SIZE);
+    }
+    pio_in(s, p, slot, hdr_gpa, prdtl, ctba, buf, count * ATA_SECTOR_SIZE);
 }
 
 /* READ/WRITE DMA（C8h/CAh，28 位）与 READ/WRITE DMA EXT（25h/35h，48 位），
@@ -606,6 +787,112 @@ static void cmd_rw(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr_g
     complete_cmd(s, p, slot, ATA_STS_DRDY, 0);
 }
 
+/* ---- NCQ（SATA 3.0 第 13.6 节） ---- */
+
+/* 记下出错的 NCQ 命令（日志 10h，SATA 3.0 第 13.7.3 节）：NQ=0、tag，
+ * 出错时的 Status/Error，以及这条命令的 LBA、Device、Count 字段；进入
+ * 出错状态，直到日志被读出 */
+static void ncq_record_error(struct ahci *s, const uint8_t *cfis, uint8_t status, uint8_t error)
+{
+    uint8_t *l = s->ncq_log;
+
+    memset(l, 0, ATA_SECTOR_SIZE);
+    l[0] = cfis[12] >> 3;                        /* TAG */
+    l[2] = status;
+    l[3] = error;
+    memcpy(&l[4], &cfis[4], 3);                  /* LBA 7:0 .. 23:16 */
+    l[7] = cfis[7];
+    memcpy(&l[8], &cfis[8], 3);                  /* LBA 31:24 .. 47:40 */
+    l[12] = cfis[12];
+    l[13] = cfis[13];
+    log_checksum(l);
+    s->ncq_err = true;
+}
+
+/* READ/WRITE FPDMA QUEUED（60h/61h，ATA8-ACS 第 7.28、7.67 节）。扇区数
+ * 在 Feature 字段（字节 3、11，0 表示 65536），Count 字段 bit 7:3 是 tag，
+ * LBA 是 48 位的，Device bit 7 是 FUA。
+ * 接受阶段（第 13.6.3.1 节）：检查不过时回 ERR+ABRT 的 Register FIS
+ * （第 7.28.6 节：地址越界也报 ABRT），这也算 NCQ 错误，记进日志 10h；
+ * 通过时回 I=0 的 D2H Register FIS，HBA 据此清 PxCI（RegFIS:ClearCI，
+ * 不置 DHRS），命令从此只在 PxSACT 里。
+ * 执行完回 SDB FIS：成功时 ACT 是这个 tag、I=1；出错时 ERR 加错误位
+ * （读 UNC，写 ABRT，表 137、138）、ACT 为 0，并记进日志 10h。
+ * PRDBC 不写：AHCI 第 5.4.1 节说 NCQ 命令的 PRDBC 不必有效。
+ * PRDT 本身出错是 HBA 的错误（HBFS/OFS），不经过设备，不进日志 10h。 */
+static void cmd_fpdma(struct ahci *s, struct ahci_port *p, int slot,
+                      uint32_t prdtl, uint64_t ctba, const uint8_t *cfis)
+{
+    bool write = cfis[2] == ATA_CMD_WRITE_FPDMA;
+    bool fua = cfis[7] & ATA_DEV_FUA;
+    unsigned tag = cfis[12] >> 3;
+    uint8_t fis[SATA_FIS_REG_LEN] = { 0 };
+    uint64_t lba, count, len;
+    struct iovec *iov;
+    enum prdt_result r;
+    uint8_t err;
+    bool dps;
+    int n, rc;
+
+    lba = (uint64_t)cfis[4] | (uint64_t)cfis[5] << 8 | (uint64_t)cfis[6] << 16 |
+          (uint64_t)cfis[8] << 24 | (uint64_t)cfis[9] << 32 | (uint64_t)cfis[10] << 40;
+    count = (uint64_t)cfis[3] | (uint64_t)cfis[11] << 8;
+    if (!count)
+        count = 65536;
+
+    err = 0;
+    if (!(cfis[7] & ATA_DEV_LBA)) {
+        warn_once(s, W_CHS, "ahci: port %d: ATA command 0x%02x with CHS addressing (device 0x%02x), aborted",
+                  port_no(s, p), cfis[2], cfis[7]);
+        err = ATA_ERR_ABRT;
+    } else if (lba >= s->sectors || count > s->sectors - lba) {
+        vmm_dbg("ahci: port %d slot %d: cmd 0x%02x tag %u lba %llu count %llu beyond %llu sectors",
+                port_no(s, p), slot, cfis[2], tag, (unsigned long long)lba,
+                (unsigned long long)count, (unsigned long long)s->sectors);
+        err = ATA_ERR_ABRT;
+    } else if (write && s->blk->read_only) {
+        warn_once(s, W_READ_ONLY, "ahci: port %d: write to read-only drive %s aborted",
+                  port_no(s, p), s->blk->id);
+        err = ATA_ERR_ABRT;
+    }
+    if (err) {
+        ncq_record_error(s, cfis, ATA_STS_DRDY | ATA_STS_ERR, err);
+        complete_cmd(s, p, slot, ATA_STS_DRDY | ATA_STS_ERR, err);
+        return;
+    }
+
+    /* 接受：I=0 的 D2H FIS，BSY=0 */
+    fis[0] = SATA_FIS_REG_D2H;
+    fis[2] = ATA_STS_DRDY;
+    if (post_fis(s, p, AHCI_RFIS_RFIS, fis, sizeof(fis)) != VMM_OK) {
+        host_bus_fatal(s, p, slot);
+        return;
+    }
+    p->tfd = ATA_STS_DRDY;
+    p->ci &= ~(1u << slot);
+
+    len = count * ATA_SECTOR_SIZE;
+    r = prdt_map(s, p, slot, ctba, prdtl, len, &iov, &n, &dps);
+    if (r != PRDT_OK) {
+        prdt_fail(s, p, slot, r);
+        return;
+    }
+    rc = disk_io(s->blk, write, iov, n, lba * ATA_SECTOR_SIZE);
+    free(iov);
+    /* FUA 或写缓存关着：数据要落到持久介质才算完成（第 7.67.3.2 节） */
+    if (rc == VMM_OK && write && (fua || !s->wcache))
+        rc = blk_flush(s->blk);
+    if (rc != VMM_OK) {
+        err = write ? ATA_ERR_ABRT : ATA_ERR_UNC;
+        ncq_record_error(s, cfis, ATA_STS_DRDY | ATA_STS_ERR, err);
+        sdb_fis(s, p, slot, 0, ATA_STS_DRDY | ATA_STS_ERR, err, true);
+        return;
+    }
+    if (dps)
+        p->is |= AHCI_PxIS_DPS;
+    sdb_fis(s, p, slot, 1u << tag, ATA_STS_DRDY, 0, true);
+}
+
 /* SET FEATURES（EFh，第 7.48 节）。传输模式只记下来反映到 IDENTIFY 的
  * 字 63/88：SATA 链路上它不影响任何传输。选中一种 DMA 模式会取消另一类
  * DMA 模式（第 7.48.5 节），PIO 模式在 IDENTIFY 里没有“已选中”字段，
@@ -649,15 +936,26 @@ static void cmd_set_features(struct ahci *s, struct ahci_port *p, int slot, cons
 }
 
 /* 把一条 ATA 命令交给盘。只实现 Linux libata 对这块盘实际会发的命令：
- * 探测时 IDENTIFY DEVICE 和 SET FEATURES（设传输模式），读写用 DMA
- * 命令（数据量小、地址在 28 位以内时用 28 位版本，否则用 EXT 版本，见
- * ata_build_rw_tf），sd 的 SYNCHRONIZE CACHE 被翻译成 FLUSH CACHE (EXT)，
- * 关机时的 START STOP UNIT 被翻译成 STANDBY IMMEDIATE。其余命令中止，
- * 第一次遇到时记下操作码。 */
+ * 探测时 IDENTIFY DEVICE 和 SET FEATURES（设传输模式）；读写在 NCQ 打开
+ * 时用 READ/WRITE FPDMA QUEUED，关掉 NCQ（libata.force=noncq 或队列深度
+ * 设为 1）时用 DMA 命令（数据量小、地址在 28 位以内时用 28 位版本，否则
+ * 用 EXT 版本，见 ata_build_rw_tf）；sd 的 SYNCHRONIZE CACHE 被翻译成
+ * FLUSH CACHE (EXT)，关机时的 START STOP UNIT 被翻译成 STANDBY IMMEDIATE；
+ * NCQ 出错后用 READ LOG EXT 读日志 10h。WRITE LOG EXT 和日志目录是 GPL
+ * 的必备部分（见 ahci.h）。其余命令中止，第一次遇到时记下操作码。 */
 static void exec_ata(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr_gpa,
                      uint32_t prdtl, uint64_t ctba, const uint8_t *cfis)
 {
     uint8_t cmd = cfis[2];
+
+    /* NCQ 出错后、日志 10h 读出之前，设备不处理别的命令（SATA 3.0 第
+     * 13.6.3.4 节，ATA8-ACS 第 4.15.1 节：中止新命令） */
+    if (s->ncq_err && !(cmd == ATA_CMD_READ_LOG_EXT && cfis[4] == ATA_LOG_NCQ_ERR)) {
+        vmm_dbg("ahci: port %d slot %d: cmd 0x%02x aborted, NCQ error log not read yet",
+                port_no(s, p), slot, cmd);
+        abort_cmd(s, p, slot);
+        return;
+    }
 
     switch (cmd) {
     case ATA_CMD_IDENTIFY:
@@ -678,6 +976,14 @@ static void exec_ata(struct ahci *s, struct ahci_port *p, int slot, uint64_t hdr
         break;
     case ATA_CMD_SET_FEATURES:
         cmd_set_features(s, p, slot, cfis);
+        break;
+    case ATA_CMD_READ_FPDMA:
+    case ATA_CMD_WRITE_FPDMA:
+        cmd_fpdma(s, p, slot, prdtl, ctba, cfis);
+        break;
+    case ATA_CMD_READ_LOG_EXT:
+    case ATA_CMD_WRITE_LOG_EXT:
+        cmd_log(s, p, slot, hdr_gpa, prdtl, ctba, cfis);
         break;
     case ATA_CMD_STANDBY_NOW:
         /* STANDBY IMMEDIATE（E0h，第 7.55 节），sd 关机时经 START STOP UNIT

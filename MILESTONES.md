@@ -144,6 +144,7 @@
 - [x] 支持 READ/WRITE DMA EXT 和 FLUSH CACHE EXT；guest `mkfs` 加 `mount` 后写入的文件，host 侧读镜像校验一致
 - [x] 磁盘后端是 raw 镜像文件，后端接口和设备模型分离，后面的块设备直接复用
 - [x] guest 能从这块盘启动（`root=/dev/sda`）
+- [x] NCQ：Linux 以深度 32 使用 READ/WRITE FPDMA QUEUED，出错时经日志 10h 定位出错的命令并恢复
 
 ### pci-msi — MSI 中断
 
