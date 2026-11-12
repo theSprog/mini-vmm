@@ -137,7 +137,7 @@
 
 ### emu-blk — AHCI 磁盘控制器
 
-依赖: pci-bus · 参考: Serial ATA AHCI 1.3.1 Specification、ATA8-ACS、Linux `drivers/ata/ahci.c` 和 `libahci.c`；实现参考 QEMU `hw/ide/ahci.c`
+依赖: pci-bus · 参考: `ref/` 下的 Serial ATA AHCI 1.3.1、Serial ATA Revision 3.0（FIS 布局）、ATA8-ACS r4a，Linux `drivers/ata/ahci.c`、`libahci.c`、`libata-core.c`；实现参考 QEMU `hw/ide/ahci.c`
 
 - [ ] HBA 复位、端口枚举、IDENTIFY DEVICE 正确，guest 识别出磁盘型号和容量
 - [ ] 命令列表、FIS、PRDT 经 DMA 访问 guest 内存，PRDT 的每个分段都单独检查
