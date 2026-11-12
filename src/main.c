@@ -19,6 +19,7 @@
 #include "devices/rtc.h"
 #include "devices/device.h"
 #include "net/netdev.h"
+#include "block/blockdev.h"
 #include "pci/pci.h"
 #include "console.h"
 #include "smp.h"
@@ -140,6 +141,11 @@ void vmm_usage(const char *prog)
 "                         linux: add a network backend for the NIC whose\n"
 "                           netdev= names ID; each backend serves exactly\n"
 "                           one NIC. --netdev help lists the types\n"
+"  --drive id=ID,file=PATH[,format=raw][,readonly=on]\n"
+"                         linux: add a raw disk image for the disk controller\n"
+"                           whose drive= names ID; each drive serves exactly\n"
+"                           one controller. The image is locked while the VM\n"
+"                           runs\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
 "  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
 "  -q                     Errors only\n"
@@ -204,7 +210,7 @@ static const char *g_append;
 
 int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
 {
-    int i;
+    int i, r;
 
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -317,6 +323,15 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
             if (netdev_parse(argv[i], &cfg->netdevs[cfg->nr_netdevs]) != VMM_OK)
                 return VMM_ERR_INVAL;
             cfg->nr_netdevs++;
+        } else if (!strcmp(a, "--drive")) {
+            NEED_ARG();
+            if (cfg->nr_drives == VMM_MAX_DEVICES) {
+                vmm_err("too many --drive (max %d)", VMM_MAX_DEVICES);
+                return VMM_ERR_INVAL;
+            }
+            if (blockdev_parse(argv[i], &cfg->drives[cfg->nr_drives]) != VMM_OK)
+                return VMM_ERR_INVAL;
+            cfg->nr_drives++;
         } else if (!strcmp(a, "--walk")) {
             NEED_ARG();
             if (parse_hex(argv[i], &g_walk_gva) != VMM_OK)
@@ -388,9 +403,16 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         vmm_err("--netdev requires --mode linux");
         return VMM_ERR_INVAL;
     }
-    /* --netdev 可以写在引用它的 --device 之后，所以引用要等全部解析完 */
-    if (netdev_link(cfg->devices, cfg->nr_devices,
-                    cfg->netdevs, cfg->nr_netdevs) != VMM_OK)
+    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_drives) {
+        vmm_err("--drive requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    /* --netdev、--drive 可以写在引用它们的 --device 之后，所以引用要等
+     * 全部解析完。两边都检查完再返回，一次报出所有引用错误 */
+    r = netdev_link(cfg->devices, cfg->nr_devices,
+                    cfg->netdevs, cfg->nr_netdevs);
+    if (blockdev_link(cfg->devices, cfg->nr_devices,
+                      cfg->drives, cfg->nr_drives) != VMM_OK || r != VMM_OK)
         return VMM_ERR_INVAL;
     if (cfg->mode == VMM_BOOT_LINUX) {
         static char cmdline[ZP_CMDLINE_MAX];
@@ -476,6 +498,12 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     r = pci_bus_init(&pci, vm);
     if (r != VMM_OK)
         return r;
+    /* 磁盘控制器 attach 时要按镜像容量生成设备信息，所以镜像先打开 */
+    for (i = 0; i < cfg->nr_drives; i++) {
+        r = blockdev_open(cfg->drives[i]);
+        if (r != VMM_OK)
+            return r;
+    }
     for (i = 0; i < cfg->nr_devices; i++) {
         r = vmm_device_attach(&cfg->devices[i], vm, &pci);
         if (r != VMM_OK)
@@ -705,6 +733,8 @@ out:
     evl_destroy(&loop);
     for (i = 0; i < cfg.nr_netdevs; i++)
         netdev_close(cfg.netdevs[i]);
+    for (i = 0; i < cfg.nr_drives; i++)
+        blockdev_close(cfg.drives[i]);
     vm_destroy(&vm);
 close_stats:
     if (stats_out && stats_out != stderr && fclose(stats_out) != 0) {

@@ -42,14 +42,14 @@ suite_script() {
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net) echo "e2e/$1.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net) return 0 ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -71,11 +71,12 @@ suite_desc() {
     exit-stats)     echo "按 exit_reason、按设备的 exit 计数，KVM 二进制统计" ;;
     pci-bus)        echo "conf1 配置空间、BAR 探测与路由、PCI0 窗口、INTx 路由" ;;
     emu-net)        echo "--netdev tap 后端的命令行约束（e1000 前端见里程碑 emu-net）" ;;
+    emu-blk)        echo "--drive 磁盘后端的命令行约束（AHCI 前端见里程碑 emu-blk）" ;;
     esac
 }
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
-E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net"
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk"
 ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
 DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
 

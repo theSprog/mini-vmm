@@ -153,6 +153,63 @@ static void case_check_keys(void)
     opts_free(&o);
 }
 
+static void case_bool(void)
+{
+    static const char *const yes[] = { "on", "yes", "true", "y" };
+    static const char *const no[]  = { "off", "no", "false", "n" };
+    char arg[64];
+    struct opts o;
+    bool v;
+    size_t i;
+
+    T_CASE("布尔属性：取值集合同 QEMU 的 qapi_bool_parse，缺省时取默认值");
+    for (i = 0; i < 4; i++) {
+        snprintf(arg, sizeof(arg), "id=d0,readonly=%s", yes[i]);
+        CHECK_U64(opts_parse(&o, "--drive", arg, NULL), VMM_OK, "parse %s", arg);
+        v = false;
+        CHECK_U64(opts_get_bool(&o, "readonly", false, &v), VMM_OK, "%s accepted", arg);
+        CHECK(v, "%s is true", arg);
+        opts_free(&o);
+
+        snprintf(arg, sizeof(arg), "id=d0,readonly=%s", no[i]);
+        CHECK_U64(opts_parse(&o, "--drive", arg, NULL), VMM_OK, "parse %s", arg);
+        v = true;
+        CHECK_U64(opts_get_bool(&o, "readonly", true, &v), VMM_OK, "%s accepted", arg);
+        CHECK(!v, "%s is false", arg);
+        opts_free(&o);
+    }
+
+    CHECK_U64(opts_parse(&o, "--drive", "id=d0", NULL), VMM_OK, "parse without the key");
+    v = false;
+    CHECK_U64(opts_get_bool(&o, "readonly", true, &v), VMM_OK, "absent key accepted");
+    CHECK(v, "absent key takes the default");
+    opts_free(&o);
+
+    /* 大小写和空串都不认：QEMU 用 g_str_equal 精确比较 */
+    CHECK_U64(opts_parse(&o, "--drive", "id=d0,readonly=ON", NULL), VMM_OK, "parse ON");
+    g_last_log[0] = '\0';
+    CHECK_U64(opts_get_bool(&o, "readonly", false, &v), VMM_ERR_INVAL, "ON rejected");
+    CHECK(!strcmp(g_last_log, "--drive id=d0,readonly=ON: property 'readonly' "
+                  "must be 'on' or 'off', not 'ON'"),
+          "bad bool message: \"%s\"", g_last_log);
+    opts_free(&o);
+    CHECK_U64(opts_parse(&o, "--drive", "id=d0,readonly=", NULL), VMM_OK, "parse empty");
+    CHECK_U64(opts_get_bool(&o, "readonly", false, &v), VMM_ERR_INVAL, "empty rejected");
+    opts_free(&o);
+}
+
+static void case_id(void)
+{
+    T_CASE("id 规则同 QEMU 的 id_wellformed：字母开头，其后字母、数字或 -._");
+    CHECK(opts_id_wellformed("d0"), "d0");
+    CHECK(opts_id_wellformed("Disk-1.root_a"), "Disk-1.root_a");
+    CHECK(!opts_id_wellformed(""), "empty");
+    CHECK(!opts_id_wellformed("0d"), "leading digit");
+    CHECK(!opts_id_wellformed("_d"), "leading underscore");
+    CHECK(!opts_id_wellformed("d/0"), "slash");
+    CHECK(!opts_id_wellformed("d 0"), "space");
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -167,5 +224,7 @@ int main(int argc, char **argv)
     case_escape_first();
     case_errors();
     case_check_keys();
+    case_bool();
+    case_id();
     return T_SUMMARY();
 }

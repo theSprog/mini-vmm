@@ -59,9 +59,18 @@ int vmm_device_parse(const char *arg, struct vmm_device *out)
     out->arg = arg;
     out->net = NULL;
     out->netdev_id = NULL;
+    out->blk = NULL;
+    out->drive_id = NULL;
     if (opts_get(&o, "netdev")) {
         out->netdev_id = strdup(opts_get(&o, "netdev"));
         if (!out->netdev_id) {
+            r = VMM_ERR_NOMEM;
+            goto out;
+        }
+    }
+    if (opts_get(&o, "drive")) {
+        out->drive_id = strdup(opts_get(&o, "drive"));
+        if (!out->drive_id) {
             r = VMM_ERR_NOMEM;
             goto out;
         }

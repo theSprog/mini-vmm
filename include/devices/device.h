@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 
+struct blockdev;
 struct netdev;
 struct opts;
 struct pci_bus;
@@ -29,7 +30,8 @@ struct vmm_device_type {
     const char *const *props;      /* 合法属性名，NULL 结尾，含 "driver" */
     /* o 在 create 返回后释放，要保留的字符串自己拷贝 */
     int  (*create)(const struct opts *o, void **dev);
-    /* d->dev 是 create 分配的对象；有 netdev= 属性的设备从 d->net 拿后端 */
+    /* d->dev 是 create 分配的对象；有 netdev= / drive= 属性的设备从
+     * d->net / d->blk 拿后端 */
     int  (*attach)(const struct vmm_device *d, struct vmm_vm *vm,
                    struct pci_bus *bus);
 };
@@ -43,6 +45,10 @@ struct vmm_device {
      * 解析成 net（见 net/netdev.h） */
     char *netdev_id;
     struct netdev *net;
+    /* drive= 属性，道理同 netdev=，由 blockdev_link 解析成 blk
+     * （见 block/blockdev.h） */
+    char *drive_id;
+    struct blockdev *blk;
 };
 
 /* 解析阶段。失败时已打印原因 */

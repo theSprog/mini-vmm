@@ -40,6 +40,7 @@ SRCS := \
 	src/devices/device.c \
 	src/net/netdev.c \
 	src/net/tap.c \
+	src/block/blockdev.c \
 	src/opts.c \
 	src/devices/rtc.c \
 	src/console.c \
@@ -141,7 +142,7 @@ clean:
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
-               event-loop exit-stats pci-bus emu-net
+               event-loop exit-stats pci-bus emu-net emu-blk
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -175,6 +176,7 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/pci_bus_test \
              $(BUILD)/tests/opts_test \
              $(BUILD)/tests/netdev_test \
+             $(BUILD)/tests/blockdev_test \
              $(BUILD)/tests/e1000_test \
              $(BUILD)/tests/aml_test
 
@@ -242,6 +244,11 @@ $(BUILD)/tests/netdev_test: tests/unit/netdev_test.c src/net/netdev.c \
                             src/net/tap.c src/opts.c src/io/event_loop.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
+
+$(BUILD)/tests/blockdev_test: tests/unit/blockdev_test.c src/block/blockdev.c \
+                              src/opts.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/e1000_test: tests/unit/e1000_test.c src/devices/e1000.c src/opts.c
 	@mkdir -p $(dir $@)

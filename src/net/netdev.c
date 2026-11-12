@@ -24,24 +24,6 @@ void netdev_list_types(FILE *f)
             "host TAP interface; properties: id, ifname");
 }
 
-/* 规则沿用 QEMU 的 id_wellformed（util/id.c）：字母开头，其后是字母、
- * 数字或 "-._"，这样从 QEMU 搬过来的命令行里的 id 都能直接用 */
-static bool id_wellformed(const char *id)
-{
-    size_t i;
-
-    if (!((id[0] >= 'a' && id[0] <= 'z') || (id[0] >= 'A' && id[0] <= 'Z')))
-        return false;
-    for (i = 1; id[i]; i++) {
-        char c = id[i];
-
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-              (c >= '0' && c <= '9') || strchr("-._", c)))
-            return false;
-    }
-    return true;
-}
-
 int netdev_parse(const char *arg, struct netdev **out)
 {
     struct netdev *nd = NULL;
@@ -70,7 +52,7 @@ int netdev_parse(const char *arg, struct netdev **out)
     ifname = opts_require(&o, "ifname");
     if (!id || !ifname)
         goto out;
-    if (!id_wellformed(id) || strlen(id) >= NETDEV_ID_MAX) {
+    if (!opts_id_wellformed(id) || strlen(id) >= NETDEV_ID_MAX) {
         vmm_err("--netdev %s: invalid id '%s' (a letter followed by letters, "
                 "digits, '-', '.' or '_', at most %d characters)",
                 arg, id, NETDEV_ID_MAX - 1);

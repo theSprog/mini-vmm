@@ -1,6 +1,6 @@
 /* include/opts.h — QEMU 风格的 "type,key=val,..." 参数值解析
  *
- * --device、--netdev 的参数值都是这种格式，语法沿用 QEMU 的 QemuOpts
+ * --device、--netdev、--drive 的参数值都是这种格式，语法沿用 QEMU 的 QemuOpts
  * （util/qemu-option.c 的 get_opt_name_value、get_opt_value），这样 QEMU
  * 的命令行可以几乎原样搬过来对照：
  *
@@ -53,6 +53,14 @@ const char *opts_get(const struct opts *o, const char *key);
 
 /* 键不存在时报 "missing property"，返回 NULL */
 const char *opts_require(const struct opts *o, const char *key);
+
+/* 布尔属性。键不存在时 *out = def。取值集合沿用 QEMU 的 qapi_bool_parse
+ * （qapi/qapi-util.c）：on/yes/true/y 与 off/no/false/n，其余报错。 */
+int  opts_get_bool(const struct opts *o, const char *key, bool def, bool *out);
+
+/* id= 的取值规则，沿用 QEMU 的 id_wellformed（util/id.c）：字母开头，其后
+ * 是字母、数字或 "-._"，这样从 QEMU 搬过来的命令行里的 id 都能直接用 */
+bool opts_id_wellformed(const char *id);
 
 /* 每个键都必须在 allowed（NULL 结尾）里，否则报错并列出合法的键 */
 int  opts_check_keys(const struct opts *o, const char *const allowed[]);

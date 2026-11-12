@@ -139,6 +139,46 @@ const char *opts_require(const struct opts *o, const char *key)
     return v;
 }
 
+int opts_get_bool(const struct opts *o, const char *key, bool def, bool *out)
+{
+    static const char *const yes[] = { "on", "yes", "true", "y", NULL };
+    static const char *const no[]  = { "off", "no", "false", "n", NULL };
+    const char *v = opts_get(o, key);
+    int i;
+
+    if (!v) {
+        *out = def;
+        return VMM_OK;
+    }
+    for (i = 0; yes[i]; i++)
+        if (!strcmp(v, yes[i])) {
+            *out = true;
+            return VMM_OK;
+        }
+    for (i = 0; no[i]; i++)
+        if (!strcmp(v, no[i])) {
+            *out = false;
+            return VMM_OK;
+        }
+    return opts_fail(o, "property '%s' must be 'on' or 'off', not '%s'", key, v);
+}
+
+bool opts_id_wellformed(const char *id)
+{
+    size_t i;
+
+    if (!((id[0] >= 'a' && id[0] <= 'z') || (id[0] >= 'A' && id[0] <= 'Z')))
+        return false;
+    for (i = 1; id[i]; i++) {
+        char c = id[i];
+
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || strchr("-._", c)))
+            return false;
+    }
+    return true;
+}
+
 int opts_check_keys(const struct opts *o, const char *const allowed[])
 {
     char list[256];

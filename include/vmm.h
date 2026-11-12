@@ -193,6 +193,10 @@ struct vmm_config {
      * 相同；对象在解析阶段分配，见 net/netdev.h */
     struct netdev *netdevs[VMM_MAX_DEVICES];
     int         nr_netdevs;
+
+    /* --drive 给出的磁盘后端，道理同 netdevs，见 block/blockdev.h */
+    struct blockdev *drives[VMM_MAX_DEVICES];
+    int         nr_drives;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
