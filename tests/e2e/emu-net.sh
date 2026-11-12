@@ -30,6 +30,22 @@ GUEST_MAC=52:54:00:ab:cd:ef
 # e1000 BAR0 的地址由 VMM 分配（src/pci/pci.c，MMIO hole 起点），ICR 在偏移 0xC0
 ICR_GPA=c00000c0
 UPLOAD_MIB=16
+# UDP 洪泛的包数。host 发得比 guest 收得快时，guest 的接收环会被用完，
+# 前端返回 FULL、后端暂停读 TAP。驱动默认的 256 项环在 guest 跟得上时
+# 可能一次都不满，所以 guest 启动时用 e1000.RxDescriptors=48（驱动允许的
+# 最小值，E1000_MIN_RXD）把环缩小：两次补充缓冲之间 guest 往往要处理上百
+# 帧，48 项的环必然被用完。小环也让每条用例都多次走到 RDH 的回绕
+RX_DESCS=48
+FLOOD_PKTS=200000
+# host 侧发洪泛的脚本：每个包 18 字节负载，发往 guest 上没有人监听的端口。
+# 发送缓冲调大，sendto 不会因为 socket 缓冲满而失败
+FLOOD_PY='import socket, sys
+n = int(sys.argv[2])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4 << 20)
+for i in range(n):
+    s.sendto(b"x" * 18, (sys.argv[1], 9))
+print(f"FLOOD-SENT-{n}")'
 
 # 从 /proc/net/snmp 取 Tcp 的 InCsumErrors：第一行 Tcp: 是列名，第二行是值。
 # host 和 guest（busybox awk）用同一段脚本。
@@ -68,11 +84,15 @@ in_netns() {
         --cmd "dd if=/dev/urandom of=/tmp/up bs=1M count=$UPLOAD_MIB 2>/dev/null; echo UPSRC-\$(sha256sum /tmp/up | cut -c1-64)" \
         --cmd "nc $HOST_IP 9000 < /tmp/up; echo NC-RC-\$?" \
         --cmd "echo GUEST-TCP-CSUM-ERRORS-\$(awk '$SNMP_CSUM_AWK' /proc/net/snmp)" \
+        --cmd 'B=$(cat /sys/class/net/eth0/statistics/rx_packets); echo FLOOD-RXB-$B' \
+        --host "ip neigh replace $GUEST_IP lladdr $GUEST_MAC dev tap0 && python3 -I -c '$FLOOD_PY' $GUEST_IP $FLOOD_PKTS" \
+        --cmd "i=0; while [ \$((\$(cat /sys/class/net/eth0/statistics/rx_packets) - B)) -lt $FLOOD_PKTS ] && [ \$i -lt 100 ]; do sleep 0.1; i=\$((i + 1)); done; echo FLOOD-RXA-\$(cat /sys/class/net/eth0/statistics/rx_packets)" \
         --cmd 'grep -a eth0 /proc/interrupts; echo IRQ-$(awk "/eth0/{print \$2}" /proc/interrupts)' \
         --cmd 'cat /sys/class/net/eth0/statistics/rx_packets /sys/class/net/eth0/statistics/tx_packets | tr "\n" " " | sed "s/^/PKTS-/"; echo' \
         --stop 'poweroff -f' -- \
         "$VMM" --mode linux --mem 512M \
         --netdev tap,id=n0,ifname=tap0 --device "e1000,netdev=n0,mac=$GUEST_MAC" \
+        --append "e1000.RxDescriptors=$RX_DESCS" \
         --trace-mmio "$work/mmio.txt" \
         --initrd "$INITRD" "$VMLINUX"
     echo "GUEST-RC-$?"
@@ -209,6 +229,27 @@ end_case
 check_case "TCP 校验和错误计数：host 和 guest 都为 0（offload 算出的校验和被对端接受）"
 expect_same "host InCsumErrors" "$(field HOST-TCP-CSUM-ERRORS-)" 0
 expect_same "guest InCsumErrors" "$(field GUEST-TCP-CSUM-ERRORS-)" 0
+end_case
+
+# 洪泛之后等 guest 的 rx_packets 增量达到发出的包数，最多等 10 秒（guest 里
+# 没有“收完了”的信号，计数器本身就是要等的状态）。增量可以略多于发出的包数，
+# 多出来的是同时段的 ARP、IPv6 等流量。前端在环满时如果不返回 FULL 而是
+# 悄悄丢帧，增量会少于发出的数量，guest 里也没有任何计数记下丢失。
+# 后端的暂停次数必须大于 0：否则环从没满过，这条用例没有测到流控
+local rxb rxa pauses
+rxb="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'FLOOD-RXB-[0-9][0-9]*' | tail -n1 | cut -c11-)"
+rxa="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'FLOOD-RXA-[0-9][0-9]*' | tail -n1 | cut -c11-)"
+pauses="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'netdev n0: rx [0-9]* frames, [0-9]* pauses' | tail -n1 | awk '{print $6}')"
+check_case "host -> guest UDP 洪泛 $FLOOD_PKTS 个包：guest 一个不少地收到（$rxb -> $rxa），后端因环满暂停过（$pauses 次）"
+expect_has "FLOOD-SENT-$FLOOD_PKTS"
+if ! [ -n "$rxb" ] || ! [ -n "$rxa" ] || [ $((rxa - rxb)) -lt "$FLOOD_PKTS" ]; then
+    printf '   %sFAIL%s want rx_packets to grow by at least %d\n' "$C_RED" "$C_RST" "$FLOOD_PKTS"
+    CUR_BAD=1
+fi
+if ! [ "${pauses:-0}" -gt 0 ] 2>/dev/null; then
+    printf '   %sFAIL%s backend never paused: the RX ring did not fill, flow control was not exercised\n' "$C_RED" "$C_RST"
+    CUR_BAD=1
+fi
 end_case
 
 # e1000_intr() 每次被调用先读一次 ICR，所以 INTx 送达的次数 ≈ ICR 读的次数；

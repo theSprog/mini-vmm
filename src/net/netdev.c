@@ -334,6 +334,15 @@ void netdev_rx_resume(struct netdev *nd)
 
 void netdev_close(struct netdev *nd)
 {
+    /* 暂停次数说明前端的环满过几次（rx_pause()）。后端流控有没有真的被
+     * 用到只有这里看得到：帧在 TAP 队列里等着，guest 侧没有对应的计数 */
+    if (nd->fd >= 0)
+        vmm_info("netdev %s: rx %llu frames, %llu pauses, %llu errors; tx %llu frames, %llu errors",
+                 nd->id, (unsigned long long)nd->stats.rx_frames,
+                 (unsigned long long)nd->stats.rx_pauses,
+                 (unsigned long long)nd->stats.rx_errors,
+                 (unsigned long long)nd->stats.tx_frames,
+                 (unsigned long long)nd->stats.tx_errors);
     if (nd->fd >= 0)
         close(nd->fd);
     if (nd->wake_fd >= 0)
