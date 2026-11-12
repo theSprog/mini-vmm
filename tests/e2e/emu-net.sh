@@ -46,6 +46,16 @@ s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4 << 20)
 for i in range(n):
     s.sendto(b"x" * 18, (sys.argv[1], 9))
 print(f"FLOOD-SENT-{n}")'
+# 洪泛期间 host 内核自己丢掉、VMM 根本读不到的包数：TAP 的发送方向（发往
+# guest）先经 qdisc，再进 tun 的 ptr_ring（长度是 txqueuelen，默认 1000）。
+# VMM 因 guest 环满暂停读 TAP 时 ptr_ring 会满，tun_net_xmit 直接丢包并记进
+# 接口的 tx dropped（SKB_DROP_REASON_FULL_RING）；qdisc 自己的丢包记在 tc 的
+# drops 里。guest 慢的时候（host 负载高）两千来个包这样丢掉是正常的，它们
+# 不是 VMM 丢的，判据里要扣掉
+HOSTDROP_PY='import json, subprocess
+link = json.loads(subprocess.check_output(["ip", "-j", "-s", "link", "show", "tap0"]))
+qd = json.loads(subprocess.check_output(["tc", "-j", "-s", "qdisc", "show", "dev", "tap0"]))
+print("HOSTDROP-%d" % (link[0]["stats64"]["tx"]["dropped"] + sum(q.get("drops", 0) for q in qd)))'
 
 # 从 /proc/net/snmp 取 Tcp 的 InCsumErrors：第一行 Tcp: 是列名，第二行是值。
 # host 和 guest（busybox awk）用同一段脚本。
@@ -87,6 +97,7 @@ in_netns() {
         --cmd 'B=$(cat /sys/class/net/eth0/statistics/rx_packets); echo FLOOD-RXB-$B' \
         --host "ip neigh replace $GUEST_IP lladdr $GUEST_MAC dev tap0 && python3 -I -c '$FLOOD_PY' $GUEST_IP $FLOOD_PKTS" \
         --cmd "i=0; while [ \$((\$(cat /sys/class/net/eth0/statistics/rx_packets) - B)) -lt $FLOOD_PKTS ] && [ \$i -lt 100 ]; do sleep 0.1; i=\$((i + 1)); done; echo FLOOD-RXA-\$(cat /sys/class/net/eth0/statistics/rx_packets)" \
+        --host "python3 -I -c '$HOSTDROP_PY'" \
         --cmd 'grep -a eth0 /proc/interrupts; echo IRQ-$(awk "/eth0/{print \$2}" /proc/interrupts)' \
         --cmd 'cat /sys/class/net/eth0/statistics/rx_packets /sys/class/net/eth0/statistics/tx_packets | tr "\n" " " | sed "s/^/PKTS-/"; echo' \
         --stop 'poweroff -f' -- \
@@ -232,18 +243,24 @@ expect_same "guest InCsumErrors" "$(field GUEST-TCP-CSUM-ERRORS-)" 0
 end_case
 
 # 洪泛之后等 guest 的 rx_packets 增量达到发出的包数，最多等 10 秒（guest 里
-# 没有“收完了”的信号，计数器本身就是要等的状态）。增量可以略多于发出的包数，
+# 没有“收完了”的信号，计数器本身就是要等的状态）。host 内核丢了包时增量
+# 永远到不了，这一等会用满 10 秒，之后 host 才读丢包计数（读早了，qdisc
+# 里还排着的包之后仍可能被丢）。
+# 判据是 增量 >= 发出数 - host 侧丢包数（见 HOSTDROP_PY）。增量可以略多，
 # 多出来的是同时段的 ARP、IPv6 等流量。前端在环满时如果不返回 FULL 而是
-# 悄悄丢帧，增量会少于发出的数量，guest 里也没有任何计数记下丢失。
+# 悄悄丢帧，增量会少于这个下限，guest 和 host 里也都没有任何计数记下丢失。
 # 后端的暂停次数必须大于 0：否则环从没满过，这条用例没有测到流控
-local rxb rxa pauses
+local rxb rxa pauses hostdrop
 rxb="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'FLOOD-RXB-[0-9][0-9]*' | tail -n1 | cut -c11-)"
 rxa="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'FLOOD-RXA-[0-9][0-9]*' | tail -n1 | cut -c11-)"
 pauses="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'netdev n0: rx [0-9]* frames, [0-9]* pauses' | tail -n1 | awk '{print $6}')"
-check_case "host -> guest UDP 洪泛 $FLOOD_PKTS 个包：guest 一个不少地收到（$rxb -> $rxa），后端因环满暂停过（$pauses 次）"
+hostdrop="$(printf '%s\n' "$BOOT_OUT" | grep -ao 'HOSTDROP-[0-9][0-9]*' | tail -n1 | cut -c10-)"
+check_case "host -> guest UDP 洪泛 $FLOOD_PKTS 个包：除 host 内核丢的 ${hostdrop:-?} 个外 guest 一个不少地收到（$rxb -> $rxa），后端因环满暂停过（$pauses 次）"
 expect_has "FLOOD-SENT-$FLOOD_PKTS"
-if ! [ -n "$rxb" ] || ! [ -n "$rxa" ] || [ $((rxa - rxb)) -lt "$FLOOD_PKTS" ]; then
-    printf '   %sFAIL%s want rx_packets to grow by at least %d\n' "$C_RED" "$C_RST" "$FLOOD_PKTS"
+if ! [ -n "$rxb" ] || ! [ -n "$rxa" ] || ! [ -n "$hostdrop" ] ||
+   [ $((rxa - rxb)) -lt $((FLOOD_PKTS - hostdrop)) ]; then
+    printf '   %sFAIL%s want rx_packets to grow by at least %d - %s (dropped by the host kernel)\n' \
+        "$C_RED" "$C_RST" "$FLOOD_PKTS" "${hostdrop:-?}"
     CUR_BAD=1
 fi
 if ! [ "${pauses:-0}" -gt 0 ] 2>/dev/null; then
