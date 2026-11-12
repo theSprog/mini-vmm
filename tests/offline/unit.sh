@@ -14,7 +14,7 @@ set -u
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
 BIN_DIR="$ROOT/build/tests"
-UNITS="mem_test io_bus_test boot_tables_test serial8250_test event_loop_test kvm_stats_test pci_bus_test opts_test netdev_test blockdev_test e1000_test aml_test"
+UNITS="mem_test io_bus_test boot_tables_test serial8250_test event_loop_test kvm_stats_test pci_bus_test opts_test netdev_test blockdev_test e1000_test ahci_test aml_test"
 
 # 让 sanitizer 的报告尽量好读，并保证一出问题就退出
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:abort_on_error=0:print_stacktrace=1}"

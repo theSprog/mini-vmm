@@ -99,8 +99,10 @@ static inline int pci_intx_gsi(int slot, int pin)
 
 /* 本项目自己的设备用的 vendor ID。0x1234 不在 PCI-SIG 的分配表里
  * （pci.ids 没有这个 vendor），QEMU 也拿它标识自己的模拟设备。Linux 里
- * 唯一按 0x1234 匹配的驱动是 bochs（device 0x1111），下面的 device ID 都
- * 避开了它，guest 不会给这些设备绑定任何驱动。 */
+ * 唯一按 0x1234 匹配 vendor 的驱动是 bochs（device 0x1111），本项目的
+ * device ID 都避开了它，所以按 vendor/device 匹配的驱动不会绑上来。按类代码
+ * 匹配的驱动不看 vendor ID：ahci 设备（类代码 01/06/01）靠 Linux ahci 驱动的
+ * 通用类匹配表项绑定，见 include/devices/ahci.h。 */
 #define PCI_VENDOR_ID_MINIVMM      0x1234
 #define PCI_DEVICE_ID_HOST_BRIDGE  0x0001
 

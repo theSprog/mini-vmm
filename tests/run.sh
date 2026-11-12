@@ -71,7 +71,7 @@ suite_desc() {
     exit-stats)     echo "按 exit_reason、按设备的 exit 计数，KVM 二进制统计" ;;
     pci-bus)        echo "conf1 配置空间、BAR 探测与路由、PCI0 窗口、INTx 路由" ;;
     emu-net)        echo "--netdev tap 后端的命令行约束（e1000 前端见里程碑 emu-net）" ;;
-    emu-blk)        echo "--drive 磁盘后端的命令行约束（AHCI 前端见里程碑 emu-blk）" ;;
+    emu-blk)        echo "--drive 磁盘后端，AHCI 控制器的探测与端口枚举" ;;
     esac
 }
 
