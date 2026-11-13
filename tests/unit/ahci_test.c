@@ -411,6 +411,8 @@ static void case_irq(void)
  * 端口置一次不算变化。 */
 static void case_msi(void)
 {
+    unsigned mark;
+
     T_CASE("MSI：IS 每次变成非全 0 的新值发一条消息（第 10.7.2.1 节）");
     fresh();
     CHECK(g_registered && g_registered->msi, "the controller asks the PCI layer for an MSI capability");
@@ -420,48 +422,58 @@ static void case_msi(void)
     pwr(1, AHCI_PxIS, 0xFFFFFFFFu);
     pwr(1, AHCI_PxIE, AHCI_PxIS_PRCS);
     g_msi_on = true;
+    mark = g_msi_sent;
 
     /* 端口 0 置位：IS 0 -> 1 */
     pwr(0, AHCI_PxSCTL, 0x301);
     CHECK_U64(rd(AHCI_IS), 1, "IS bit 0");
-    CHECK_U64(g_msi_sent, 1, "new IS bit: one message");
+    CHECK_U64(g_msi_sent - mark, 1, "new IS bit: one message");
+    mark = g_msi_sent;
     CHECK(g_irq, "level still goes to the PCI layer, which keeps it off the pin while MSI is on");
 
     /* 同一个端口再来一个事件：IS 不变，不发 */
     pwr(0, AHCI_PxSCTL, 0x300);
     pwr(0, AHCI_PxSCTL, 0x301);
     CHECK_U64(rd(AHCI_IS), 1, "IS unchanged");
-    CHECK_U64(g_msi_sent, 1, "bit already set: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "bit already set: no message");
+    mark = g_msi_sent;
 
     /* 另一个端口置位：IS 1 -> 3。端口 1 起步时链路没起来，COMRESET
      * 释放后链路建立才置 PxSERR.DIAG.N */
     pwr(1, AHCI_PxSCTL, 0x301);
     pwr(1, AHCI_PxSCTL, 0x300);
     CHECK_U64(rd(AHCI_IS), 3, "IS bits 0 and 1");
-    CHECK_U64(g_msi_sent, 2, "another port sets a new bit: one message");
+    CHECK_U64(g_msi_sent - mark, 1, "another port sets a new bit: one message");
+    mark = g_msi_sent;
 
     /* 端口 0 的原因清掉，软件只清 IS bit 0：IS 3 -> 2，不是全 0 */
     pwr(0, AHCI_PxSERR, 0xFFFFFFFFu);    /* PRCS 与 PCS 随 DIAG.N/X 清 */
     pwr(0, AHCI_PxIS, 0xFFFFFFFFu);
     wr(AHCI_IS, 1);
     CHECK_U64(rd(AHCI_IS), 2, "IS bit 1 left");
-    CHECK_U64(g_msi_sent, 3, "partial clear by software: one message");
+    CHECK_U64(g_msi_sent - mark, 1, "partial clear by software: one message");
+    mark = g_msi_sent;
 
-    /* 软件清 IS bit 1，但端口 1 的原因还在：位立刻又置上 */
+    /* 软件清 IS bit 1，但端口 1 的原因还在：位立刻又置上。驱动清 PxIS
+     * 之后、写 IS 之前有命令完成时就是这个情形，只看 INTx 电平上升沿的
+     * 实现在这里不发，那次完成的中断就丢了 */
     wr(AHCI_IS, 2);
     CHECK_U64(rd(AHCI_IS), 2, "wire still high: bit set again");
-    CHECK_U64(g_msi_sent, 4, "cleared and set again: one message");
+    CHECK_U64(g_msi_sent - mark, 1, "cleared and set again: one message");
+    mark = g_msi_sent;
 
     /* 写 0 不改变 IS：不发 */
     wr(AHCI_IS, 0);
-    CHECK_U64(g_msi_sent, 4, "IS write that clears nothing: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "IS write that clears nothing: no message");
+    mark = g_msi_sent;
 
     /* 原因清掉后全清：IS -> 0，不发 */
     pwr(1, AHCI_PxSERR, 0xFFFFFFFFu);    /* PRCS 与 PCS 随 DIAG.N/X 清 */
     pwr(1, AHCI_PxIS, 0xFFFFFFFFu);
     wr(AHCI_IS, 2);
     CHECK_U64(rd(AHCI_IS), 0, "IS clear");
-    CHECK_U64(g_msi_sent, 4, "all clear: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "all clear: no message");
+    mark = g_msi_sent;
     CHECK(!g_irq, "INTx level low");
 
     /* GHC.IE=0 时置位不发；打开 GHC.IE 时有挂着的位就补发一条 */
@@ -469,11 +481,14 @@ static void case_msi(void)
     pwr(0, AHCI_PxSCTL, 0x300);
     pwr(0, AHCI_PxSCTL, 0x301);
     CHECK_U64(rd(AHCI_IS), 1, "IS records the port while GHC.IE=0");
-    CHECK_U64(g_msi_sent, 4, "GHC.IE=0: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "GHC.IE=0: no message");
+    mark = g_msi_sent;
     wr(AHCI_GHC, AHCI_GHC_IE);
-    CHECK_U64(g_msi_sent, 5, "GHC.IE 0->1 with IS pending: one message");
+    CHECK_U64(g_msi_sent - mark, 1, "GHC.IE 0->1 with IS pending: one message");
+    mark = g_msi_sent;
     wr(AHCI_GHC, AHCI_GHC_IE);
-    CHECK_U64(g_msi_sent, 5, "rewriting GHC.IE=1: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "rewriting GHC.IE=1: no message");
+    mark = g_msi_sent;
 
     /* MSI 关掉：只走 INTx，不调 pci_msi_notify（桩里调了会直接失败） */
     g_msi_on = false;
@@ -481,7 +496,7 @@ static void case_msi(void)
     pwr(1, AHCI_PxSCTL, 0x301);
     CHECK_U64(rd(AHCI_IS), 3, "IS bit 1 set with MSI off");
     CHECK(g_irq, "INTx asserted");
-    CHECK_U64(g_msi_sent, 5, "MSI off: no message");
+    CHECK_U64(g_msi_sent - mark, 0, "MSI off: no message");
 }
 
 static void case_cmd_abort(void)
