@@ -111,6 +111,28 @@ void pci_set_irq(struct pci_device *dev, bool level)
     g_irq = level;
 }
 
+/* MSI：开关由用例直接设，pci_msi_notify 只计数。PCI 层自己的检查
+ * （总线主控、地址合法性）在 pci_bus_test 里测，这里只看 AHCI 什么时候
+ * 决定发一条 */
+static bool     g_msi_on;
+static unsigned g_msi_sent;
+
+bool pci_msi_enabled(const struct pci_device *dev)
+{
+    (void)dev;
+    return g_msi_on;
+}
+
+void pci_msi_notify(struct pci_device *dev)
+{
+    (void)dev;
+    if (!g_msi_on) {
+        printf("FAIL: pci_msi_notify called with MSI disabled\n");
+        exit(1);
+    }
+    g_msi_sent++;
+}
+
 static struct pci_device *g_registered;
 
 int pci_register_device(struct pci_bus *bus, struct pci_device *dev)
@@ -141,6 +163,8 @@ static void fresh_with(struct blockdev *blk)
     g_master = true;
     g_irq = false;
     g_irq_edges = 0;
+    g_msi_on = false;
+    g_msi_sent = 0;
     g_dma_writes = 0;
     g_registered = NULL;
     if (opts_parse(&o, "--device", blk ? "ahci,drive=d0" : "ahci", "driver") != VMM_OK ||
@@ -379,6 +403,85 @@ static void case_irq(void)
     CHECK_U64(rd(AHCI_IS), 1, "IS still records the port");
     wr(AHCI_GHC, AHCI_GHC_IE);
     CHECK(g_irq, "GHC.IE=1 asserts it again");
+}
+
+/* MSI 模式下什么时候发消息：第 10.7.2.1 节和图 22。IS 每发生一次变化，
+ * 只要结果不是全 0 就发一条：有新位置上；软件清掉一部分但还有别的位；
+ * 软件清掉了但虚拟线还是 1、位立刻又被置上。已经置着的位再被同一个
+ * 端口置一次不算变化。 */
+static void case_msi(void)
+{
+    T_CASE("MSI：IS 每次变成非全 0 的新值发一条消息（第 10.7.2.1 节）");
+    fresh();
+    CHECK(g_registered && g_registered->msi, "the controller asks the PCI layer for an MSI capability");
+    port0_start();
+    S->port[1].has_disk = true;         /* 端口 1 也能产生事件 */
+    pwr(1, AHCI_PxSERR, 0xFFFFFFFFu);
+    pwr(1, AHCI_PxIS, 0xFFFFFFFFu);
+    pwr(1, AHCI_PxIE, AHCI_PxIS_PRCS);
+    g_msi_on = true;
+
+    /* 端口 0 置位：IS 0 -> 1 */
+    pwr(0, AHCI_PxSCTL, 0x301);
+    CHECK_U64(rd(AHCI_IS), 1, "IS bit 0");
+    CHECK_U64(g_msi_sent, 1, "new IS bit: one message");
+    CHECK(g_irq, "level still goes to the PCI layer, which keeps it off the pin while MSI is on");
+
+    /* 同一个端口再来一个事件：IS 不变，不发 */
+    pwr(0, AHCI_PxSCTL, 0x300);
+    pwr(0, AHCI_PxSCTL, 0x301);
+    CHECK_U64(rd(AHCI_IS), 1, "IS unchanged");
+    CHECK_U64(g_msi_sent, 1, "bit already set: no message");
+
+    /* 另一个端口置位：IS 1 -> 3。端口 1 起步时链路没起来，COMRESET
+     * 释放后链路建立才置 PxSERR.DIAG.N */
+    pwr(1, AHCI_PxSCTL, 0x301);
+    pwr(1, AHCI_PxSCTL, 0x300);
+    CHECK_U64(rd(AHCI_IS), 3, "IS bits 0 and 1");
+    CHECK_U64(g_msi_sent, 2, "another port sets a new bit: one message");
+
+    /* 端口 0 的原因清掉，软件只清 IS bit 0：IS 3 -> 2，不是全 0 */
+    pwr(0, AHCI_PxSERR, 0xFFFFFFFFu);    /* PRCS 与 PCS 随 DIAG.N/X 清 */
+    pwr(0, AHCI_PxIS, 0xFFFFFFFFu);
+    wr(AHCI_IS, 1);
+    CHECK_U64(rd(AHCI_IS), 2, "IS bit 1 left");
+    CHECK_U64(g_msi_sent, 3, "partial clear by software: one message");
+
+    /* 软件清 IS bit 1，但端口 1 的原因还在：位立刻又置上 */
+    wr(AHCI_IS, 2);
+    CHECK_U64(rd(AHCI_IS), 2, "wire still high: bit set again");
+    CHECK_U64(g_msi_sent, 4, "cleared and set again: one message");
+
+    /* 写 0 不改变 IS：不发 */
+    wr(AHCI_IS, 0);
+    CHECK_U64(g_msi_sent, 4, "IS write that clears nothing: no message");
+
+    /* 原因清掉后全清：IS -> 0，不发 */
+    pwr(1, AHCI_PxSERR, 0xFFFFFFFFu);    /* PRCS 与 PCS 随 DIAG.N/X 清 */
+    pwr(1, AHCI_PxIS, 0xFFFFFFFFu);
+    wr(AHCI_IS, 2);
+    CHECK_U64(rd(AHCI_IS), 0, "IS clear");
+    CHECK_U64(g_msi_sent, 4, "all clear: no message");
+    CHECK(!g_irq, "INTx level low");
+
+    /* GHC.IE=0 时置位不发；打开 GHC.IE 时有挂着的位就补发一条 */
+    wr(AHCI_GHC, 0);
+    pwr(0, AHCI_PxSCTL, 0x300);
+    pwr(0, AHCI_PxSCTL, 0x301);
+    CHECK_U64(rd(AHCI_IS), 1, "IS records the port while GHC.IE=0");
+    CHECK_U64(g_msi_sent, 4, "GHC.IE=0: no message");
+    wr(AHCI_GHC, AHCI_GHC_IE);
+    CHECK_U64(g_msi_sent, 5, "GHC.IE 0->1 with IS pending: one message");
+    wr(AHCI_GHC, AHCI_GHC_IE);
+    CHECK_U64(g_msi_sent, 5, "rewriting GHC.IE=1: no message");
+
+    /* MSI 关掉：只走 INTx，不调 pci_msi_notify（桩里调了会直接失败） */
+    g_msi_on = false;
+    pwr(1, AHCI_PxSCTL, 0x300);
+    pwr(1, AHCI_PxSCTL, 0x301);
+    CHECK_U64(rd(AHCI_IS), 3, "IS bit 1 set with MSI off");
+    CHECK(g_irq, "INTx asserted");
+    CHECK_U64(g_msi_sent, 5, "MSI off: no message");
 }
 
 static void case_cmd_abort(void)
@@ -1293,6 +1396,7 @@ int main(int argc, char **argv)
     case_comreset();
     case_hba_reset();
     case_irq();
+    case_msi();
     case_cmd_abort();
     case_cmd_bus_errors();
     case_register_bits();

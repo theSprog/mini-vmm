@@ -25,7 +25,7 @@
 | 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
 | 3 | pci-bus ✓ |
 | 4 | emu-net ✓ · emu-blk ✓ |
-| 5 | pci-msi |
+| 5 | pci-msi ✓ |
 | 6 | arch-distro |
 | 7 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
 | 8 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
@@ -150,9 +150,9 @@
 
 依赖: emu-blk · 参考: PCI Local Bus Spec 3.0 MSI 章节、`linux/kvm.h`（`KVM_SIGNAL_MSI`）
 
-- [ ] PCI 层提供通用的 MSI capability，emu-blk 启用后 guest 切换到 MSI，`/proc/interrupts` 显示 PCI-MSI
-- [ ] guest 关闭 MSI 后回到 INTx，设备照常工作
-- [ ] MSI 地址和数据非法时有诊断输出，不会静默丢弃中断
+- [x] PCI 层提供通用的 MSI capability，emu-blk 启用后 guest 切换到 MSI，`/proc/interrupts` 显示 PCI-MSI
+- [x] guest 关闭 MSI 后回到 INTx，设备照常工作
+- [x] MSI 地址和数据非法时有诊断输出，不会静默丢弃中断
 
 ### arch-distro — 启动完整的 Arch Linux
 

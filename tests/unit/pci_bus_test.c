@@ -15,6 +15,11 @@
  *     （第 2.2.6 节），用例里的 KVM_IRQ_LINE 序列就是 IOAPIC 引脚上应当
  *     看到的电平变化
  *   - Bus Master：第 6.2.2 节，位为 0 时设备不得发起总线访问
+ *   - MSI：capability 链表是 PCI 3.0 第 6.7 节，MSI capability 的布局和
+ *     读写属性是第 6.8.1 节（链表按 Linux pci_find_capability 的方式走），
+ *     MSI Enable 打开时不得使用 INTx 是第 6.8.3.3 节，消息内容是第
+ *     6.8.3.4 节；哪些消息不合法见 include/devices/irqchip.h（Intel SDM
+ *     第 13.11 节），这里记录送进 KVM_SIGNAL_MSI 的每一条消息
  *
  * 不碰 /dev/kvm：src/vm.c 里用到的 kvm_* 全部是桩。
  */
@@ -40,18 +45,22 @@
 
 int vmm_log_level = -1;
 
+/* 最近一条日志，和“没送达的 MSI”日志的条数：诊断输出本身也是被测行为 */
+static char     g_last_log[512];
+static unsigned g_drop_logs;
+
 void vmm_log(int level, const char *file, int line, const char *fmt, ...)
 {
     va_list ap;
 
     (void)file; (void)line;
-    if (level > vmm_log_level)
-        return;
     va_start(ap, fmt);
-    fprintf(stderr, "       [vmm] ");
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
+    vsnprintf(g_last_log, sizeof(g_last_log), fmt, ap);
     va_end(ap);
+    if (strstr(g_last_log, "not delivered"))
+        g_drop_logs++;
+    if (level <= vmm_log_level)
+        fprintf(stderr, "       [vmm] %s\n", g_last_log);
 }
 
 int  mem_init(struct vmm_vm *vm, uint64_t sz)   { (void)vm; (void)sz; return VMM_OK; }
@@ -86,6 +95,25 @@ int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
     snprintf(g_irq_log + n, sizeof(g_irq_log) - n, "%s%d=%d",
              n ? " " : "", gsi, level);
     return VMM_OK;
+}
+
+/* KVM_SIGNAL_MSI 的记录：每条消息追加 "地址:数据"。g_msi_ret 模拟 KVM
+ * 没有 vCPU 收下的情形 */
+static char        g_msi_log[512];
+static int         g_msi_ret = VMM_OK;
+static const char *g_msi_why;
+
+int irqchip_signal_msi(struct vmm_vm *vm, uint64_t addr, uint32_t data,
+                       const char **why)
+{
+    size_t n = strlen(g_msi_log);
+
+    (void)vm;
+    snprintf(g_msi_log + n, sizeof(g_msi_log) - n, "%s%llx:%x",
+             n ? " " : "", (unsigned long long)addr, data);
+    if (g_msi_ret != VMM_OK)
+        *why = g_msi_why;
+    return g_msi_ret;
 }
 
 /* guest RAM 只要能区分“读写发生了”和“被拦下了”：[0, sizeof(g_ram)) */
@@ -662,6 +690,222 @@ static void case_bus_master(void)
     CHECK(hva == (void *)&dma, "refused map leaves *hva untouched");
 }
 
+/* ---- MSI ---- */
+
+static struct pci_device g_msi;
+
+#define CAP     PCI_MSI_CAP_OFFSET
+#define MSI_LOG(want, msg)  CHECK(!strcmp(g_msi_log, (want)), \
+                                  "%s: KVM_SIGNAL_MSI log \"%s\", want \"%s\"", \
+                                  (msg), g_msi_log, (want))
+
+/* 一个带 MSI 和 INTA 的设备，放在 pci-test 后面的 slot 2（INTA -> GSI 18） */
+static void setup_msi(void)
+{
+    setup();
+    memset(&g_msi, 0, sizeof(g_msi));
+    g_msi.name     = "msi";
+    g_msi.intx_pin = 1;
+    g_msi.msi      = true;
+    CHECK_U64(pci_register_device(&g_bus, &g_msi), VMM_OK, "register msi device");
+    CHECK_U64(g_msi.slot, 2, "msi device in slot 2");
+    g_msi_log[0] = 0;
+    g_msi_ret = VMM_OK;
+    g_drop_logs = 0;
+}
+
+/* Linux 的 pci_find_capability：从 0x34 出发沿 next 指针找 ID，低两位屏蔽 */
+static int find_cap(int slot, int id)
+{
+    int pos, ttl = 48;
+
+    if (!(cfg_r(slot, PCI_STATUS, 2) & PCI_STATUS_CAP_LIST))
+        return 0;
+    pos = cfg_r(slot, PCI_CAPABILITY_LIST, 1);
+    while (ttl-- && pos >= 0x40) {
+        pos &= ~3;
+        if (cfg_r(slot, pos + PCI_CAP_LIST_ID, 1) == (uint32_t)id)
+            return pos;
+        pos = cfg_r(slot, pos + PCI_CAP_LIST_NEXT, 1);
+    }
+    return 0;
+}
+
+/* 驱动的做法：写地址、高地址、数据，打开 Bus Master，最后置 MSI Enable */
+static void msi_program(uint32_t lo, uint32_t hi, uint32_t data)
+{
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_LO, 4, lo);
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_HI, 4, hi);
+    cfg_w(2, CAP + PCI_MSI_DATA_64, 2, data);
+    cfg_w(2, PCI_COMMAND, 2, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, PCI_MSI_FLAGS_ENABLE);
+}
+
+static void case_msi_cap(void)
+{
+    T_CASE("MSI capability：链表、布局、只读位和可写位（PCI 3.0 第 6.7、6.8.1 节）");
+    setup_msi();
+
+    CHECK_U64(find_cap(TEST_SLOT, PCI_CAP_ID_MSI), 0, "device without msi has no capability list");
+    CHECK_U64(cfg_r(TEST_SLOT, PCI_CAPABILITY_LIST, 1), 0, "and a zero capability pointer");
+    CHECK_U64(find_cap(2, PCI_CAP_ID_MSI), CAP, "Linux walk finds MSI at 0x40");
+    CHECK_U64(cfg_r(2, CAP + PCI_CAP_LIST_NEXT, 1), 0, "MSI is the last capability");
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_FLAGS, 2), PCI_MSI_FLAGS_64BIT,
+              "control after reset: 64-bit, one vector, no masking, disabled");
+    CHECK(!pci_msi_enabled(&g_msi), "MSI disabled after reset");
+
+    cfg_w(2, PCI_CAPABILITY_LIST, 1, 0x80);
+    cfg_w(2, CAP, 2, 0xFFFF);
+    CHECK_U64(cfg_r(2, PCI_CAPABILITY_LIST, 1), CAP, "capability pointer is read-only");
+    CHECK_U64(cfg_r(2, CAP, 2), PCI_CAP_ID_MSI, "ID and next pointer are read-only");
+
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, 0xFFFF);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_FLAGS, 2),
+              PCI_MSI_FLAGS_64BIT | PCI_MSI_FLAGS_QSIZE | PCI_MSI_FLAGS_ENABLE,
+              "only MSI Enable and Multiple Message Enable are writable");
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, 0);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_FLAGS, 2), PCI_MSI_FLAGS_64BIT, "and they clear again");
+
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_LO, 4, 0xFFFFFFFFu);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_ADDRESS_LO, 4), 0xFFFFFFFCu, "address bits 1:0 read as 0");
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_HI, 4, 0xFFFFFFFFu);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_ADDRESS_HI, 4), 0xFFFFFFFFu, "upper address is RW");
+    cfg_w(2, CAP + PCI_MSI_DATA_64, 4, 0xFFFFFFFFu);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_DATA_64, 4), 0xFFFF,
+              "data is 16 bits at +0xC, the next two bytes are reserved");
+    cfg_w(2, CAP + PCI_MSI_DATA_64 + 4, 4, 0xFFFFFFFFu);
+    CHECK_U64(cfg_r(2, CAP + PCI_MSI_DATA_64 + 4, 4), 0,
+              "no mask/pending registers after the data (no per-vector masking)");
+
+    cfg_w(2, PCI_COMMAND, 2, 0xFFFF);
+    CHECK_U64(cfg_r(2, PCI_COMMAND, 2) & PCI_COMMAND_MASTER, PCI_COMMAND_MASTER,
+              "sending MSI makes Bus Master writable even without DMA");
+}
+
+static void case_msi_intx(void)
+{
+    T_CASE("MSI Enable 与 INTx 互斥：打开时撤下线上的请求，关掉时挂着的请求回到线上");
+    setup_msi();
+
+    pci_set_irq(&g_msi, true);
+    IRQ_LOG("18=1", "INTx before MSI");
+    msi_program(0xFEE01004u, 0, 0x21);
+    CHECK(pci_msi_enabled(&g_msi), "MSI enabled");
+    IRQ_LOG("18=1 18=0", "enabling MSI takes the request off the INTx line");
+    CHECK_U64(status_int(2), PCI_STATUS_INTERRUPT, "status.INT still follows the device");
+    pci_set_irq(&g_msi, false);
+    pci_set_irq(&g_msi, true);
+    IRQ_LOG("18=1 18=0", "level changes while MSI is on stay off the line");
+    MSI_LOG("", "pci_set_irq alone never sends a message");
+
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 1, 0);
+    CHECK(!pci_msi_enabled(&g_msi), "byte write clears MSI Enable");
+    IRQ_LOG("18=1 18=0 18=1", "disabling MSI puts the pending request back on INTx");
+    pci_set_irq(&g_msi, false);
+    IRQ_LOG("18=1 18=0 18=1 18=0", "and INTx works as before");
+
+    /* MSI 打开时撤下的是这个设备的输出，共线的别的设备照样能拉线 */
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, PCI_MSI_FLAGS_ENABLE);
+    pci_set_irq(&g_msi, true);
+    g_irq_log[0] = 0;
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, 0);
+    IRQ_LOG("18=1", "16-bit write clearing MSI Enable");
+}
+
+static void case_msi_send(void)
+{
+    T_CASE("发消息：64 位地址拼接、数据只取 16 位、Bus Master 关着不发");
+    setup_msi();
+
+    msi_program(0xFEE01004u, 0, 0x21);
+    cfg_w(2, CAP + PCI_MSI_DATA_64, 4, 0xABCD0021u);
+    pci_msi_notify(&g_msi);
+    MSI_LOG("fee01004:21", "one message with the programmed address and 16-bit data");
+    CHECK_U64(g_msi.msi_sent, 1, "counted as sent");
+    pci_msi_notify(&g_msi);
+    MSI_LOG("fee01004:21 fee01004:21", "each notify is one message");
+
+    /* KVM 不看高地址；高地址非 0 的消息在真实机器上是一次普通内存写 */
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_HI, 4, 1);
+    pci_msi_notify(&g_msi);
+    MSI_LOG("fee01004:21 fee01004:21", "upper address set: not sent");
+    CHECK(strstr(g_last_log, "pci 00:02.0 msi: MSI address 0x1fee01004 data 0x0021 not delivered: "
+                 "address is outside the interrupt window") != NULL,
+          "diagnostic shows the 64-bit address: %s", g_last_log);
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_HI, 4, 0);
+
+    cfg_w(2, PCI_COMMAND, 2, PCI_COMMAND_MEMORY);
+    pci_msi_notify(&g_msi);
+    MSI_LOG("fee01004:21 fee01004:21", "bus master off: not sent");
+    CHECK(strstr(g_last_log, "not delivered: bus master disabled") != NULL,
+          "diagnostic names bus master: %s", g_last_log);
+    CHECK_U64(g_msi.msi_dropped, 2, "two dropped");
+
+    cfg_w(2, PCI_COMMAND, 2, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+    cfg_w(2, CAP + PCI_MSI_FLAGS, 2, 0);
+    pci_msi_notify(&g_msi);
+    MSI_LOG("fee01004:21 fee01004:21", "MSI disabled: notify is a device-model bug, not sent");
+    CHECK(strstr(g_last_log, "pci_msi_notify with MSI disabled") != NULL,
+          "bug is logged: %s", g_last_log);
+}
+
+/* 改写数据后发一条，返回是否交给了 KVM */
+static bool send_with(uint32_t lo, uint32_t data)
+{
+    size_t n = strlen(g_msi_log);
+
+    cfg_w(2, CAP + PCI_MSI_ADDRESS_LO, 4, lo);
+    cfg_w(2, CAP + PCI_MSI_DATA_64, 2, data);
+    pci_msi_notify(&g_msi);
+    return strlen(g_msi_log) != n;
+}
+
+static void case_msi_invalid(void)
+{
+    unsigned i;
+
+    T_CASE("非法消息：不在中断窗口、保留投递模式、异常向量，报原因不投递");
+    setup_msi();
+    msi_program(0xFEE01004u, 0, 0x21);
+
+    CHECK(!send_with(0xFED01004u, 0x21), "address 0xfed01004 is not an interrupt");
+    CHECK(strstr(g_last_log, "outside the interrupt window") != NULL, "%s", g_last_log);
+    CHECK(!send_with(0xFEE01004u, 0x0321), "delivery mode 011 is reserved");
+    CHECK(strstr(g_last_log, "reserved delivery mode") != NULL, "%s", g_last_log);
+    CHECK(!send_with(0xFEE01004u, 0x0621), "delivery mode 110 is reserved");
+    CHECK(!send_with(0xFEE01004u, 0x000F), "fixed vector 0x0f is an exception vector");
+    CHECK(strstr(g_last_log, "vector outside 0x10-0xfe") != NULL, "%s", g_last_log);
+    CHECK(!send_with(0xFEE01004u, 0x01FF), "lowest-priority vector 0xff is out of range");
+    CHECK_U64(g_drop_logs, 5, "every new bad message is logged at once");
+
+    CHECK(send_with(0xFEE01004u, 0x0010), "vector 0x10 is the lowest legal one");
+    CHECK(send_with(0xFEE01004u, 0x00FE), "vector 0xfe is the highest legal one");
+    CHECK(send_with(0xFEE01004u, 0x0405), "NMI ignores the vector field");
+    CHECK(send_with(0xFEEFFFFCu, 0x8021), "reserved address bits, RH/DM and level trigger pass to KVM");
+
+    /* KVM 没有 vCPU 收下：原因来自 irqchip 层 */
+    g_msi_ret = VMM_ERR_GUEST;
+    g_msi_why = "no LAPIC matches the destination";
+    g_drop_logs = 0;
+    for (i = 0; i < 5; i++)
+        send_with(0xFEE00004u, 0x21);
+    CHECK(strstr(g_last_log, "MSI address 0xfee00004 data 0x0021 not delivered: "
+                 "no LAPIC matches the destination (4 with this address/data") != NULL,
+          "KVM reason with the run count: %s", g_last_log);
+    CHECK_U64(g_drop_logs, 3, "same message repeated: logged at the 1st, 2nd and 4th drop");
+    send_with(0xFEE00004u, 0x22);
+    CHECK_U64(g_drop_logs, 4, "a different bad message is logged at once");
+    CHECK(strstr(g_last_log, "(1 with this address/data, 11 in total)") != NULL,
+          "run restarts, the total also counts the 5 format errors above: %s", g_last_log);
+    g_msi_ret = VMM_OK;
+    CHECK(send_with(0xFEE01004u, 0x21), "delivered again once the guest fixes it");
+    g_msi_ret = VMM_ERR_GUEST;
+    g_drop_logs = 0;
+    send_with(0xFEE00004u, 0x22);
+    CHECK_U64(g_drop_logs, 1, "a success in between restarts the run");
+    g_msi_ret = VMM_OK;
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -686,5 +930,9 @@ int main(int argc, char **argv)
     case_intx_shared();
     case_intx_disable();
     case_bus_master();
+    case_msi_cap();
+    case_msi_intx();
+    case_msi_send();
+    case_msi_invalid();
     return T_SUMMARY();
 }

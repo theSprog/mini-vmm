@@ -101,12 +101,15 @@ head1 "AHCI 控制器：探测与端口枚举"
 
 truncate -s 64M "$WORK/disk.img"
 # 中断计数的标记由 guest 的命令替换展开生成，回显的命令行里只有 $(...)
+# 控制器也有 MSI capability，pci=nomsi 让 guest 不申请 MSI，这次启动验证的
+# 是 INTx 这条路（MSI 由 pci-msi suite 验证）
 boot \
     --cmd "dmesg | grep -aE 'ahci|ata[0-9]'" \
     --cmd "echo AHCI-IRQ-\$(awk '/ahci/ {print \$2}' /proc/interrupts)" \
     --stop 'poweroff -f' \
     -- "$VMM" --mode linux --mem 512M --drive id=d0,file="$WORK/disk.img" \
-          --device ahci,drive=d0 --exit-stats - --initrd "$INITRD" "$VMLINUX"
+          --device ahci,drive=d0 --exit-stats - --append pci=nomsi \
+          --initrd "$INITRD" "$VMLINUX"
 
 check_case "guest 启动并正常关机"
 expect_rc 0
@@ -135,6 +138,7 @@ end_case
 # 命令完成经 PxIS -> IS -> INTx 到 IOAPIC 17 号脚
 check_case "命令完成产生 INTx 中断，寄存器访问经 BAR5"
 expect_re 'AHCI-IRQ-[1-9][0-9]*'
+expect_not "MSI enabled"
 expect_re '^  ahci\.bar5 +MMIO +[1-9][0-9]* +[1-9][0-9]*$'
 end_case
 

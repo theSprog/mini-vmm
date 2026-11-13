@@ -34,7 +34,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -44,10 +44,10 @@ tests/
 │   ├── io_bus_mutants.c    故意写错的 dispatch，共 8 份
 │   ├── boot_tables_test.c  MP/ACPI/boot_params 字段检查，MP table 与 _PRT 的 PCI 中断路由一致
 │   ├── aml_test.c          AML 编码：PkgLength 各长度的切换点、整数前缀、EisaId
-│   ├── pci_bus_test.c      配置空间 conf1 访问、BAR 探测与路由、COMMAND decode、INTx 线电平、Bus Master 与 DMA
+│   ├── pci_bus_test.c      配置空间 conf1 访问、BAR 探测与路由、COMMAND decode、INTx 线电平、Bus Master 与 DMA、MSI capability 与 INTx 互斥、非法 MSI 的诊断
 │   ├── opts_test.c         --device/--netdev/--drive 参数值的 QEMU 风格解析与报错、布尔值和 id 规则
 │   ├── netdev_test.c       --netdev 解析与引用规则；在自建的 user + net namespace 里经真实 TAP 收发帧、RX 流控
-│   ├── ahci_test.c         AHCI 控制器：HBA/端口复位、COMRESET 与签名、PxIS 到 IS 再到 INTx 的三级中断、命令出错停端口与恢复、寄存器位与访问宽度；IDENTIFY 数据、DMA 读写与 PRDT 的逐段检查、FLUSH 与写缓存、SET FEATURES；NCQ 的接收与 SDB 完成、出错后经日志 10h 恢复，READ/WRITE LOG EXT
+│   ├── ahci_test.c         AHCI 控制器：HBA/端口复位、COMRESET 与签名、PxIS 到 IS 再到 INTx 的三级中断、MSI 模式下何时发消息、命令出错停端口与恢复、寄存器位与访问宽度；IDENTIFY 数据、DMA 读写与 PRDT 的逐段检查、FLUSH 与写缓存、SET FEATURES；NCQ 的接收与 SDB 完成、出错后经日志 10h 恢复，READ/WRITE LOG EXT
 │   ├── blockdev_test.c     --drive 解析与引用规则；镜像加锁、多段读写、越界与溢出、只读盘、部分传输与 EINTR
 │   ├── e1000_test.c        e1000 设备模型：EEPROM 位操作、PHY、中断原因、TX 校验和与 TSO、RX 过滤与描述符环
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
@@ -81,8 +81,9 @@ tests/
 | `pci-bus` | 是 | 是 | guest 的 PCI 枚举日志和 `lspci` + 经 `devmem`、sysfs 读写 BAR 的回读值 + ACPI 与 `acpi=off` 两次启动分到的 IRQ |
 | `emu-net` | 是 | 是 | `--netdev` 参数和引用关系的报错早于创建 VM；在 `unshare -rn` 建的 namespace 里经 TAP 跑 Linux e1000 驱动：探测与链路、双向 ping、双向 TCP 哈希一致、两端 TCP 校验和错误为 0、20 万个 UDP 包的洪泛除 host 内核在 TAP 上丢的之外一个不少、且后端因环满暂停过（guest 用 48 项的接收环）、INTx 计数与 ICR 读次数和包数对得上、`--trace-mmio` 记录 |
 | `emu-blk` | 是 | 是 | `--drive` 参数和引用关系的报错早于创建 VM；Linux ahci 驱动绑定 AHCI 控制器，端口 0 链路建立、其余 5 个端口报告无设备，中断经 INTx 送达；IDENTIFY 出的型号和容量；guest 读 host 用 `mke2fs -d` 做的镜像、整盘和文件的 sha256 与 host 一致；guest mkfs 后写的文件由 host 用 `debugfs` 取出核对、`e2fsck` 无错；卸载时 flush 到达后端；NCQ 深度 32、文件系统读写经 PxSACT 发出，`libata.force=noncq` 时走 READ/WRITE DMA；host 截短镜像造出读错误，Linux 经日志 10h 定位出错的 tag 并恢复；`root=/dev/sda` 从盘启动 |
+| `pci-msi` | 是 | 是 | Linux ahci 驱动打开 MSI，`/proc/interrupts` 上走 PCI-MSI、每次完成都送达；运行中经 `msi_bus` 和重新绑定驱动回到 INTx（IO-APIC 17）再切回 MSI，读盘内容都与镜像一致；guest 把 MSI 的向量、地址、目标 ID 写坏时 VMM 报出 BDF、地址、数据和原因 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
 
 要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。
 

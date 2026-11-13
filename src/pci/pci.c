@@ -121,11 +121,12 @@ static void bars_update(struct pci_device *d)
 /* ------------------------------------------------------------------ */
 
 /* 设备实际驱动到 INTx 线上的电平（PCI 3.0 第 6.2.2 节 Interrupt Disable、
- * 第 6.2.3 节 Interrupt Status） */
+ * 第 6.2.3 节 Interrupt Status；MSI 打开时不得使用 INTx，第 6.8.3.3 节） */
 static bool intx_output(const struct pci_device *d)
 {
     return d->intx_pin && d->intx_level &&
-           !(cfg_get(d, PCI_COMMAND, 2) & PCI_COMMAND_INTX_DISABLE);
+           !(cfg_get(d, PCI_COMMAND, 2) & PCI_COMMAND_INTX_DISABLE) &&
+           !pci_msi_enabled(d);
 }
 
 /* 重新计算 d 所在那根线的电平，变了才通知 KVM */
@@ -164,6 +165,83 @@ void pci_set_irq(struct pci_device *d, bool level)
     st = level ? st | PCI_STATUS_INTERRUPT : st & ~PCI_STATUS_INTERRUPT;
     cfg_set16(d, PCI_STATUS, st);
     intx_line_update(d->bus, d);
+}
+
+/* ------------------------------------------------------------------ */
+/* MSI                                                                 */
+/* ------------------------------------------------------------------ */
+
+#define MSI_CTRL    (PCI_MSI_CAP_OFFSET + PCI_MSI_FLAGS)
+#define MSI_ADDR    (PCI_MSI_CAP_OFFSET + PCI_MSI_ADDRESS_LO)
+#define MSI_ADDR_HI (PCI_MSI_CAP_OFFSET + PCI_MSI_ADDRESS_HI)
+#define MSI_DATA    (PCI_MSI_CAP_OFFSET + PCI_MSI_DATA_64)
+
+bool pci_msi_enabled(const struct pci_device *d)
+{
+    return d->msi && (cfg_get(d, MSI_CTRL, 2) & PCI_MSI_FLAGS_ENABLE);
+}
+
+static uint64_t msi_addr(const struct pci_device *d)
+{
+    return (uint64_t)cfg_get(d, MSI_ADDR_HI, 4) << 32 | cfg_get(d, MSI_ADDR, 4);
+}
+
+/* MSI Enable 的切换记一行日志：之后每条中断走哪条路，看这一行就知道 */
+static void msi_note_enable(struct pci_device *d)
+{
+    bool on = pci_msi_enabled(d);
+
+    if (on == d->msi_was_enabled)
+        return;
+    d->msi_was_enabled = on;
+    if (on)
+        vmm_info("pci 00:%02x.0 %s: MSI enabled, address 0x%llx data 0x%04x",
+                 d->slot, d->name, (unsigned long long)msi_addr(d),
+                 cfg_get(d, MSI_DATA, 2));
+    else
+        vmm_info("pci 00:%02x.0 %s: MSI disabled, interrupts go to INT%c",
+                 d->slot, d->name, d->intx_pin ? 'A' + d->intx_pin - 1 : '-');
+}
+
+void pci_msi_notify(struct pci_device *d)
+{
+    uint64_t addr;
+    uint32_t data;
+    const char *why;
+
+    if (!pci_msi_enabled(d)) {
+        vmm_err("pci 00:%02x.0 %s: pci_msi_notify with MSI disabled",
+                d->slot, d->name);
+        return;
+    }
+    addr = msi_addr(d);
+    /* 数据寄存器只有 16 位，消息的高 16 位恒为 0（第 6.8.3.4 节）；
+     * MME 为 0，设备不改数据的低位（第 6.8.1.6 节） */
+    data = cfg_get(d, MSI_DATA, 2);
+
+    /* MSI 是设备发起的内存写，Bus Master 为 0 时不能发（第 6.2.2 节） */
+    if (!(cfg_get(d, PCI_COMMAND, 2) & PCI_COMMAND_MASTER))
+        why = "bus master disabled";
+    else if (!(why = irqchip_msi_invalid(addr, data)) &&
+             irqchip_signal_msi(d->bus->vm, addr, data, &why) == VMM_OK) {
+        d->msi_sent++;
+        d->msi_drop_run = 0;
+        return;
+    }
+
+    d->msi_dropped++;
+    if (d->msi_drop_run == 0 || addr != d->msi_drop_addr || data != d->msi_drop_data) {
+        d->msi_drop_addr = addr;
+        d->msi_drop_data = data;
+        d->msi_drop_run  = 0;
+    }
+    d->msi_drop_run++;
+    if ((d->msi_drop_run & (d->msi_drop_run - 1)) == 0)
+        vmm_warn("pci 00:%02x.0 %s: MSI address 0x%llx data 0x%04x not "
+                 "delivered: %s (%llu with this address/data, %llu in total)",
+                 d->slot, d->name, (unsigned long long)addr, data, why,
+                 (unsigned long long)d->msi_drop_run,
+                 (unsigned long long)d->msi_dropped);
 }
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +348,13 @@ void pci_cfg_write(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
         bars_update(d);
     if (d->intx_pin && reg < PCI_COMMAND + 2 && end > PCI_COMMAND)
         intx_line_update(bus, d);
+    /* MSI Enable 变了，INTx 的输出跟着变：打开时撤下线上的请求，关掉时
+     * 还挂着的请求回到线上 */
+    if (d->msi && reg < MSI_CTRL + 2 && end > MSI_CTRL) {
+        msi_note_enable(d);
+        if (d->intx_pin)
+            intx_line_update(bus, d);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -436,6 +521,23 @@ static int bar_setup(struct pci_bus *bus, struct pci_device *d, int i,
     return bar_assign(bus, d, i);
 }
 
+/* MSI capability（第 6.7、6.8.1 节），形状见 pci.h 文件头。复位值：MSI
+ * 关闭、MME 为 0、地址和数据为 0。地址的 bit 1:0 只读为 0（DWORD 对齐，
+ * 第 6.8.1.4 节）。MME 按规范是可写的；软件写进大于 MMC 的值时设备照样
+ * 只用一个向量，数据也不改。 */
+static void msi_setup(struct pci_device *d)
+{
+    cfg_set16(d, PCI_STATUS, (uint16_t)(cfg_get(d, PCI_STATUS, 2) | PCI_STATUS_CAP_LIST));
+    cfg_set8(d, PCI_CAPABILITY_LIST, PCI_MSI_CAP_OFFSET);
+    cfg_set8(d, PCI_MSI_CAP_OFFSET + PCI_CAP_LIST_ID, PCI_CAP_ID_MSI);
+    cfg_set8(d, PCI_MSI_CAP_OFFSET + PCI_CAP_LIST_NEXT, 0);
+    cfg_set16(d, MSI_CTRL, PCI_MSI_FLAGS_64BIT);
+    wmask_set16(d, MSI_CTRL, PCI_MSI_FLAGS_ENABLE | PCI_MSI_FLAGS_QSIZE);
+    wmask_set32(d, MSI_ADDR, ~0x3u);
+    wmask_set32(d, MSI_ADDR_HI, ~0u);
+    wmask_set16(d, MSI_DATA, 0xFFFF);
+}
+
 /* 配置空间头（type 0）。只读字段直接写进 cfg，可写字段在 wmask 里置位。 */
 static int dev_setup(struct pci_bus *bus, struct pci_device *d)
 {
@@ -477,13 +579,21 @@ static int dev_setup(struct pci_bus *bus, struct pci_device *d)
         cmd_mask |= PCI_COMMAND_INTX_DISABLE;
     }
 
+    if (d->msi)
+        msi_setup(d);
+
     /* command 里只有设备真正具备的功能位可写，其余只读为 0
-     * （规范第 6.2.2 节）。没有 DMA 能力的设备 bus master 位也只读。 */
-    if (d->bus_master)
+     * （规范第 6.2.2 节）。没有 DMA 能力的设备 bus master 位也只读；
+     * 发 MSI 也是做 master，同样需要这一位。 */
+    if (d->bus_master || d->msi)
         cmd_mask |= PCI_COMMAND_MASTER;
     wmask_set16(d, PCI_COMMAND, cmd_mask);
     d->intx_level         = false;
     d->dma_blocked_logged = false;
+    d->msi_was_enabled    = false;
+    d->msi_sent           = 0;
+    d->msi_dropped        = 0;
+    d->msi_drop_run       = 0;
 
     /* 固件分配完 BAR 后打开 decode：Linux 沿用固件的分配，前提是 BAR
      * 已经在响应。Bus Master 保持关闭，由驱动 pci_set_master 打开：
@@ -509,9 +619,9 @@ int pci_register_device(struct pci_bus *bus, struct pci_device *dev)
     if (r != VMM_OK)
         return r;
     bus->devs[slot] = dev;
-    vmm_info("pci 00:%02x.0 %s [%04x:%04x] class %06x%s", slot, dev->name,
+    vmm_info("pci 00:%02x.0 %s [%04x:%04x] class %06x%s%s", slot, dev->name,
              dev->vendor_id, dev->device_id, dev->class_code,
-             dev->intx_pin ? "" : ", no INTx");
+             dev->intx_pin ? "" : ", no INTx", dev->msi ? ", MSI capable" : "");
     if (dev->intx_pin)
         vmm_info("pci 00:%02x.0 %s INT%c -> GSI %d", slot, dev->name,
                  'A' + dev->intx_pin - 1, pci_intx_gsi(slot, dev->intx_pin));

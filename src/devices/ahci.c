@@ -101,15 +101,29 @@ static uint32_t port_is(const struct ahci_port *p)
 /* 两级中断（第 10.7 节）：每个端口的 PxIS & PxIE 是一根“虚拟线”，线为 1
  * 时把 IS 里该端口的位置 1。IS 是粘滞的，软件写 1 才清；但线还是 1 时
  * 清掉的位会立刻再被置上，所以每次状态变化后都要重新扫一遍所有端口。
- * INTx 电平是 GHC.IE 与“IS 非零”的与（第 10.7.2.1 节，引脚模式）。 */
-static void update_irq(struct ahci *s)
+ * INTx 电平是 GHC.IE 与“IS 非零”的与（第 10.7.2.1 节，引脚模式）。
+ * MSI 打开时，IS 有位新置上就发一条消息；sw_change 由软件写 IS、打开
+ * GHC.IE 的路径传进来，这两种变化本身就要发一条（规则见 ahci.h）。
+ * INTx 电平照常报给 PCI 层：MSI 打开时它不上线，guest 关掉 MSI 时还挂着
+ * 的请求立刻回到线上。 */
+static void irq_sync(struct ahci *s, bool sw_change)
 {
+    uint32_t before = s->is;
+    bool active;
     int i;
 
     for (i = 0; i < AHCI_NR_PORTS; i++)
         if (port_is(&s->port[i]) & s->port[i].ie)
             s->is |= 1u << i;
-    pci_set_irq(&s->pci, (s->ghc & AHCI_GHC_IE) && s->is);
+    active = (s->ghc & AHCI_GHC_IE) && s->is;
+    pci_set_irq(&s->pci, active);
+    if (active && pci_msi_enabled(&s->pci) && (sw_change || (s->is & ~before)))
+        pci_msi_notify(&s->pci);
+}
+
+static void update_irq(struct ahci *s)
+{
+    irq_sync(s, false);
 }
 
 /* 设备发来的 FIS 写进 FIS 接收区（第 4.2.1 节）。FRE 为 0 时 HBA 不往
@@ -1200,7 +1214,8 @@ uint32_t ahci_reg_read(struct ahci *s, uint32_t off)
 void ahci_reg_write(struct ahci *s, uint32_t off, uint32_t val)
 {
     struct ahci_port *p;
-    uint32_t reg;
+    uint32_t reg, cleared;
+    bool ie_on;
 
     off &= ~3u;
     p = port_at(s, off, &reg);
@@ -1214,12 +1229,14 @@ void ahci_reg_write(struct ahci *s, uint32_t off, uint32_t val)
             hba_reset(s);          /* 同步完成，HR 读回 0 */
             return;
         }
+        ie_on = (val & AHCI_GHC_IE) && !(s->ghc & AHCI_GHC_IE);
         s->ghc = val & AHCI_GHC_IE;
-        update_irq(s);
+        irq_sync(s, ie_on);
         break;
     case AHCI_IS:
+        cleared = s->is & val;
         s->is &= ~val;
-        update_irq(s);
+        irq_sync(s, cleared != 0);
         break;
     default:
         /* CAP、PI、CAP2 是 HwInit：Linux 复位后把读到的值写回去
@@ -1282,6 +1299,7 @@ void ahci_init(struct ahci *s, struct blockdev *blk)
     p->revision   = 1;
     p->intx_pin   = 1;
     p->bus_master = true;
+    p->msi        = true;
     p->bars[AHCI_ABAR] = (struct pci_bar){ .type = PCI_BAR_MEM32, .size = AHCI_ABAR_SIZE,
                                            .opaque = s, .read = abar_read, .write = abar_write };
     for (i = 0; i < AHCI_NR_PORTS; i++) {

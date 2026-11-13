@@ -30,6 +30,28 @@
  * 撤销同样要真的拉低：IOAPIC 的 PCI 引脚是电平触发，线一直高着，guest 每次
  * EOI 后 IOAPIC 都会再投递一次，表现为中断风暴。
  *
+ * MSI（PCI 3.0 第 6.8 节）：设备声明 msi 后，核心在配置空间里生成 MSI
+ * capability，guest 写什么地址和数据、什么时候打开，全部由 wmask 和配置写
+ * 处理，设备不用碰配置空间。打开 MSI Enable 之后设备不得再用 INTx 引脚
+ * （第 6.8.3.3 节），所以 INTx 的输出电平里多了一个条件；设备照样用
+ * pci_set_irq 报告电平，guest 关掉 MSI 的那一刻，还挂着的请求立刻回到
+ * INTx 线上，不会丢。
+ *
+ * 什么时候发一条 MSI 由设备决定，核心只提供 pci_msi_notify“发一条”：电平
+ * 和消息之间没有通用的换算，AHCI 就规定 IS 寄存器的某些变化各发一条
+ * （AHCI 1.3.1 第 10.7.2.1 节），不是简单地在电平上升沿发。
+ *
+ * 发不出去的消息（Bus Master 关着、地址或数据不合法、KVM 没有 vCPU 收下）
+ * 都记日志，带 BDF、地址、数据和原因。换成一条新的地址/数据组合时立刻记，
+ * 同一个组合连续失败按第 1、2、4、8……次记：配置写坏时日志不会刷屏，丢了
+ * 多少条也看得出来，guest 接连写出几种坏配置时每一种都能看到。
+ *
+ * capability 的形状固定为：单个向量（MMC = 0）、64 位地址、没有 per-vector
+ * masking，放在 0x40，是链表里唯一的一项。64 位地址是规范的要求：设备作为
+ * master 支持 64 位寻址时必须实现 Message Upper Address（第 6.8.1.5 节脚注），
+ * 而做 DMA 的设备都是 64 位的。多向量和屏蔽位只有出现真正需要的设备时再加，
+ * 那时 capability 的偏移也要改成由核心分配。
+ *
  * DMA 经 pci_dma_read/pci_dma_write，它们先检查 command 的 Bus Master
  * Enable：规范规定这一位为 0 时设备不能发起总线访问（第 6.2.2 节），驱动
  * 在 probe 里调 pci_set_master 打开它。没打开就 DMA 说明设备模型或驱动
@@ -39,8 +61,9 @@
  * 访问本来就经 exit 分发进来、持着这把锁；I/O 线程上的设备回调先拿 io_lock
  * 再调这里的函数（加锁顺序见 io/event_loop.h）；注册发生在 guest 启动之前。
  *
- * 参考：PCI Local Bus Spec 3.0 第 3.2.2.3.2 节（Type 1 配置机制）、
- * 第 6.1 节（配置空间头）、第 6.2.5 节（BAR）；linux/pci_regs.h；
+ * 参考：PCI Local Bus Spec 3.0（ref/PCI_Local_Bus_3.0.pdf）第 3.2.2.3.2 节
+ * （Type 1 配置机制）、第 6.1 节（配置空间头）、第 6.2.5 节（BAR）、
+ * 第 6.7 节（capability 链表）、第 6.8 节（MSI）；linux/pci_regs.h；
  * Linux arch/x86/pci/direct.c（pci_check_type1）、drivers/pci/probe.c
  * （__pci_read_base 的探测顺序）。
  */
@@ -143,6 +166,7 @@ struct pci_device {
     uint16_t subsys_id;
     uint8_t  intx_pin;             /* 0 = 不用 INTx，1..4 = INTA..INTD */
     bool     bus_master;           /* 会做 DMA：command 的 Bus Master 位可写 */
+    bool     msi;                  /* 有 MSI capability，Bus Master 位也随之可写 */
     struct pci_bar bars[PCI_NUM_BARS];
 
     /* 以下由 PCI 核心维护 */
@@ -152,6 +176,12 @@ struct pci_device {
     uint8_t  wmask[PCI_CFG_SPACE_SIZE];
     bool     intx_level;           /* 设备内部的中断请求电平 */
     bool     dma_blocked_logged;   /* Bus Master 关闭时的 DMA 只记一次日志 */
+    bool     msi_was_enabled;      /* 上次配置写之后的 MSI Enable，用来记切换 */
+    uint64_t msi_sent;             /* 交给 KVM 并被收下的消息数 */
+    uint64_t msi_dropped;          /* 没有送达的消息数 */
+    uint64_t msi_drop_addr;        /* 最近一次没送达的消息，日志节流用 */
+    uint32_t msi_drop_data;
+    uint64_t msi_drop_run;         /* 这个组合连续没送达的次数 */
 };
 
 struct pci_bus {
@@ -182,6 +212,17 @@ void     pci_cfg_write(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
 /* 设备报告自己的中断请求电平。重复设置同一电平没有副作用。
  * 设备没有 INTx（intx_pin == 0）时调用是设备模型的 bug，只记日志。 */
 void pci_set_irq(struct pci_device *dev, bool level);
+
+/* MSI capability 在配置空间里的位置（见文件头） */
+#define PCI_MSI_CAP_OFFSET  0x40
+
+/* guest 是否打开了 MSI。设备没有 MSI capability 时恒为 false。 */
+bool pci_msi_enabled(const struct pci_device *dev);
+
+/* 按当前的地址和数据发一条 MSI。只在 pci_msi_enabled 为真时调用；发不出去
+ * 的原因见文件头，记日志、计入 msi_dropped，不返回错误：设备对一次丢掉的
+ * 中断也做不了什么，它该做的状态更新照常做。 */
+void pci_msi_notify(struct pci_device *dev);
 
 /* 设备发起的 DMA。Bus Master 关闭返回 VMM_ERR_GUEST；地址范围的检查和
  * 失败原因同 mem_read/mem_write。 */
