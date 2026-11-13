@@ -24,8 +24,10 @@ tests/
 ├── lib.sh          shell 断言框架，被各 suite source，不直接执行
 ├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── net_peer.py     host 侧 TCP 对端：HTTP 提供随机数据、接收一次上传并算哈希，listen 好之后才报 ready
+├── mutate.py       源码层 mutant 的运行器：在源码副本里替换一段文字，重新构建单元测试，看它红没红
+├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py）
 ├── TEST_DESIGN.md  验证设计与批准记录
-├── offline/        不需要 /dev/kvm，秒级，可以在任何 Linux 上跑
+├── offline/        不需要 /dev/kvm，可以在任何 Linux 上跑
 │   ├── unit.sh         跑 build/tests/*_test，外加回归输入重放
 │   ├── negctl.sh       negative control：每个 mutant 都必须让测试变红
 │   ├── boot_tables.sh  把 ACPI 表交给 iasl 反汇编，DSDT 再编译回 AML 逐字节比对
@@ -138,22 +140,23 @@ sanitizer 报错是完全可能的（本仓库现在就有这么一例，见 TES
 
 ## negative control
 
-`make test negctl`。一套断言全绿，只说明它在当前实现上没报警，不说明它**有能力**报警。
-这个 suite 把被测函数换成 `unit/*_mutants.c` 里故意写错的完整实现，跑同一套用例，
-要求每一个 mutant 都让测试非零退出——**退出码为 0 才是 FAIL**。
+`make test negctl`。一套断言全绿，只说明它在当前实现上没报警，不说明它**有能力**报警。这个 suite 把被测代码换成故意写错的版本，跑同一套用例，要求每一个 mutant 都因为断言失败而让测试非零退出——**退出码为 0 才是 FAIL**。
+
+mutant 有两类，优先用第一类：
+
+- **接口层**：`unit/*_mutants.c` 里每个 mutant 是一份故意写错的完整对外函数，测试用 `--mutant N` 换上它。它只依赖函数签名，`src/` 内部怎么重构都不影响。
+- **源码层**：`mutants/<里程碑>.py` 里每个 mutant 是一段源码文字的替换，`mutate.py` 把构建要用的文件复制到临时目录、打上替换、用 Makefile 的规则重新构建列出的单元测试再跑。错误点在 static 函数或一条条件表达式里（例如 AHCI 什么时候发 MSI），换不掉整个对外函数时只能这样做。替换按文字定位而不按行号；源码改动让那段文字不再恰好出现一次时报 `STALE`，suite 失败，这时照新源码改写那一项，而不是删掉它。
 
 ```sh
-build/tests/mem_test --list-mutants      # 列出 mutant 及它违反的契约
+build/tests/mem_test --list-mutants      # 接口层：列出 mutant 及它违反的契约
 build/tests/mem_test --mutant 3          # 单独跑一个，看它红在哪条用例
+tests/mutate.py --list                   # 源码层：列出 mutant、要跑的测试、违反的契约
+tests/mutate.py pci-msi/ahci-no-msi-cap  # 单独跑一个；--keep 留下临时目录看补丁
 ```
 
-刻意没有用“改一行源码再撤销”那种做法：那是一次性的，行号会漂，重构一次就失效。
-这里每个 mutant 是一份只依赖函数签名的完整实现，`src/` 内部怎么重构都不影响。
-**加新契约时配一个对应的 mutant**，这份清单才一直有意义。
+`mutate.py` 先在没打补丁的副本上跑一遍同一批测试，这个基线不绿时它直接报错，因为那时每个 mutant 都会“被抓住”，结论没有意义。源码层的构建是这个 suite 的大头，18 个 mutant 并行构建约 20 秒。
 
-这套东西是有回报的：`mem_test` 最初漏掉了 `len-truncated-32` 这个 mutant——
-长度表里没有“低 32 位小、高 32 位非零”的值，任何把 `len` 截成 32 位的实现都能溜过去。
-是 negctl 逼出来的，不是想出来的。
+**加新契约时配一个对应的 mutant**，这份清单才一直有意义。这套东西是有回报的：`mem_test` 最初漏掉了 `len-truncated-32` 这个 mutant——长度表里没有“低 32 位小、高 32 位非零”的值，任何把 `len` 截成 32 位的实现都能溜过去。是 negctl 逼出来的，不是想出来的。
 
 它证明什么、不证明什么，见 `unit/mutants.h` 开头。
 

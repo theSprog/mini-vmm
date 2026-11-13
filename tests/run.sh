@@ -57,7 +57,7 @@ suite_needs_kvm() {
 suite_desc() {
     case "$1" in
     unit)   echo "C 单元测试：内存模型、IO 总线、固件表字段、事件循环、网络后端（ASan+UBSan）" ;;
-    negctl) echo "negative control：每个 mutant 都必须让单元测试变红" ;;
+    negctl) echo "negative control：接口层和源码层（tests/mutate.py）的每个 mutant 都必须让单元测试变红" ;;
     tables) echo "ACPI 表交给 iasl 反汇编（外部 oracle）" ;;
     fuzz)   echo "vmlinux / bzImage 加载器的 libFuzzer 跑批（按时间计费）" ;;
     gshell) echo "e2e 驱动脚本 guest_shell.py 自测（假 guest）" ;;
