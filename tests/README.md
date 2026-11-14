@@ -38,7 +38,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh  arch-distro.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -89,12 +89,15 @@ tests/
 | `pci-msi` | 是 | 是 | Linux ahci 驱动打开 MSI，`/proc/interrupts` 上走 PCI-MSI、每次完成都送达；运行中经 `msi_bus` 和重新绑定驱动回到 INTx（IO-APIC 17）再切回 MSI，读盘内容都与镜像一致；guest 把 MSI 的向量、地址、目标 ID 写坏时 VMM 报出 BDF、地址、数据和原因 |
 | `gdbstub` | 是 | 是 | 没改过的 gdb 按 vmlinux 符号在 `start_kernel`、`kernel_init` 停下，单步前进一条指令的长度，读写寄存器和内核虚拟地址的内存再还原，每个 vCPU 一个线程；Ctrl-C 时 host 的 `/proc/<pid>/task/*/syscall` 显示两个 vCPU 线程都从 `ioctl` 变成停在 `futex` 上；guest 启动时自己的 int3 被交还（VMM 报交还次数不为 0、没有 kernel BUG）；detach 后 guest 跑到关机，`--no-reboot` 下 guest 自己重启时 gdb 收到退出报告；不带 `--no-reboot` 时 guest panic 重启，连接不断，软件断点在新装载的内核里命中 |
 | `system-reset` | 是 | 是 | guest 每次启动打印的 CPU 列表、PCI 设备、磁盘探测汇成的哈希在多次 `reboot -f` 之间相同，复位前写进盘的内容读得回来；4 个 vCPU 都在忙时 sysrq-b，新内核所有 CPU 上线；guest 改过的设备寄存器和配置空间复位后回到上电值；`--no-reboot` 下重启和 panic 都只退出一次 |
+| `arch-distro` | 是 | 否，用 `tools/build_arch_image.sh` 生成的 Arch 镜像 | 官方 linux 包的内核和 initramfs 直启，systemd 自己报告 `running`、`systemctl --failed` 为空，dmesg 没有超时、err/warn 只有已查明与 VMM 无关的几条；e1000 经 DHCP 上网，pacman 从本地仓库装包并校验签名；`systemctl reboot` 后 boot_id 变了、再次 `running`、systemd-fsck 报 clean；`systemctl poweroff` 经 ACPI S5 退出，host 上 `e2fsck -fn` 无错；两次关机各在 30 秒内完成 |
 
 `linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` / `system-reset` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
 
+`arch-distro` 不用 `guest-kernel/` 的内核，而是 `tools/build_arch_image.sh` 生成在 `arch-image/` 里的整套发行版（要联网、几分钟、不需要 root，`ARCH_IMAGE=` 可指向别处），没有时 SKIP；它还需要非特权 user namespace 和 dnsmasq。网络在 `unshare -rn` 里离线完成，结果不随外网和上游版本变化。设 `ARCH_DISTRO_BASELINE=1` 时额外跑 fio 和 iperf3 的固定负载基线（需要 host 装 iperf3），打印每次 I/O、每帧的 exit 数；没设时不跑也不计 SKIP，因为它多三次启动，而且给出的是供对照的数字，不是通过与否的判据。设 `ARCH_DISTRO_ONLINE=1` 时再跑真实外网的 `pacman -Syu`（需要 host 装 passt 包里的 pasta）：脚本在 pasta 建的 namespace 里把 pasta 的 tap 接口 `pst0` 和 VMM 的 `tap0` 挂进同一个 bridge，guest 的 DHCP 由 pasta 应答，拿到和 host 相同的地址，pacman 用镜像自带的 mirrorlist；结果取决于外网和软件源，所以不进默认用例，没设时不跑也不计 SKIP。
+
 `gdbstub` 还要求 PATH 里有 gdb，没有时 gdb 用例 SKIP。检查只用到 vmlinux 的符号表，不需要 DWARF。读 vCPU 线程的 `/proc/<pid>/task/*/syscall` 由 `gdb_session.py` 做而不是放进 gdb 脚本：Yama `ptrace_scope=1` 时只有 VMM 的祖先进程能读它，gdb 是 VMM 的兄弟进程。
 
-要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。
+要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。 完整发行版的串口上是 getty 而不是 shell：`--login USER` 在每次出现 `login:` 时以 USER 登录，再把提示符换成脚本认得的格式、关掉 systemd 给交互 shell 加的 OSC 3008 转义；`--reboot CMD` 用于会让 guest 重启的命令，之后的命令等下一次登录后的提示符再发，因为 `systemctl reboot` 发出后马上回到提示符，下一条命令会送进正在关闭的 shell 里丢掉。
 
 `fuzz` 不在默认集合里：它按墙钟时间计费（默认每 target 300 秒），而 `make test`
 应该是随手就能跑的。要跑就显式写出来。可用 `FUZZ_TIME=` 调整预算。

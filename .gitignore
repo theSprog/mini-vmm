@@ -10,3 +10,4 @@
 /**/*.bin
 /vmlinux
 /guest-kernel
+/arch-image

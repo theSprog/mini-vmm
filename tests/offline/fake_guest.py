@@ -11,6 +11,17 @@ stdin 的字节全部丢弃，对应 guest 串口驱动打开 tty 时清空 RX F
   其他            输出 "sh: X: not found"
 
 --no-prompt 时永远不打印提示符，模拟 guest 卡在启动里。
+
+--login 模拟完整发行版：启动后打印 getty 的 "fakehost login: "，用户名
+是 root 时直接进 shell（空密码），提示符是发行版 bash 的
+'[root@fakehost ~]# '，执行过含 "PS1=" 的行之后换成和 initramfs 一样的
+提示符。用户名不是 root 时打印 "Password: " 然后卡住。额外的命令：
+
+  bootid          输出 "BOOT=N"，N 是第几次启动
+  systemctl reboot
+                  和真 systemd 一样立即回到提示符；之后 --boot 秒内收到的
+                  输入丢掉（旧 shell 正在被关掉），然后重新启动、重新出
+                  登录提示
 """
 
 import argparse
@@ -28,7 +39,11 @@ def main():
     p.add_argument("--rc", type=int, default=0, help="exit code on poweroff")
     p.add_argument("--no-prompt", action="store_true",
                    help="never print a prompt (guest hangs in boot)")
+    p.add_argument("--login", action="store_true",
+                   help="getty login and bash prompt, like a full distro")
     a = p.parse_args()
+    if a.login:
+        return login_guest(a)
 
     out = sys.stdout
     fd = sys.stdin.fileno()
@@ -71,6 +86,63 @@ def main():
             return a.rc
         else:
             out.write(f"sh: {cmd}: not found\n")
+
+
+def discard_input(seconds):
+    fd = sys.stdin.fileno()
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        r, _, _ = select.select([fd], [], [], left)
+        if r and not os.read(fd, 4096):
+            time.sleep(max(end - time.monotonic(), 0))
+            return
+
+
+def login_guest(a):
+    out = sys.stdout
+    boot = 0
+    while True:
+        boot += 1
+        out.write(f"[    0.000000] Linux version 6.6.0 (fake) boot {boot}\n")
+        out.flush()
+        discard_input(a.boot)
+        out.write("\nArch Linux 6.6.0 (ttyS0)\n\nfakehost login: ")
+        out.flush()
+        user = sys.stdin.readline().rstrip("\n")
+        out.write(user + "\n")
+        if user != "root":
+            out.write("Password: ")
+            out.flush()
+            time.sleep(3600)
+            return 0
+        prompt = "[root@fakehost ~]# "
+        while True:
+            out.write(prompt)
+            out.flush()
+            line = sys.stdin.readline()
+            if not line:
+                time.sleep(3600)
+                return 0
+            cmd = line.rstrip("\n")
+            out.write(cmd + "\n")
+            if "PS1=" in cmd:
+                prompt = "[guest ~]# "
+            elif cmd.startswith("echo "):
+                out.write(cmd[5:] + "\n")
+            elif cmd == "bootid":
+                out.write(f"BOOT={boot}\n")
+            elif cmd == "systemctl reboot":
+                out.write(prompt)
+                out.flush()
+                discard_input(a.boot)
+                out.write("[  OK  ] Reached target System Reboot.\n")
+                break
+            elif cmd == "systemctl poweroff":
+                out.write("[vmm] guest requested poweroff via ACPI S5\n")
+                out.flush()
+                return a.rc
+            else:
+                out.write(f"-bash: {cmd}: command not found\n")
 
 
 if __name__ == "__main__":

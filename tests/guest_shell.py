@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""tests/guest_shell.py — 启动 VMM，在 guest 的 busybox shell 里依次执行命令
+"""tests/guest_shell.py — 启动 VMM，在 guest 的 shell 里依次执行命令
 
 用法：
-  guest_shell.py --timeout 60 [--cmd CMD | --host CMD]... --stop CMD -- VMM [VMM 参数...]
+  guest_shell.py --timeout 60 [--login USER] [--cmd CMD | --host CMD | --reboot CMD]... --stop CMD -- VMM [VMM 参数...]
 
 VMM 的 stdin 接一个管道，stdout/stderr 合并后原样转发到本进程的 stdout。
 每条 --cmd 都等 shell 打印出提示符之后才发送；--stop（poweroff -f、
@@ -21,6 +21,21 @@ fd、统计）。环境变量 VMM_PID 是 VMM 的 pid；输出夹在 "[host] $ C
 提示符，下一步仍然等同一个提示符。启动耗时随内核配置、
 vCPU 数、host 负载变化，任何固定延迟都有猜错的时候，猜错时 shell 一直
 等输入，用例以超时失败，看起来和 VMM 卡死一模一样。
+
+--login 用于跑完整发行版的 guest（getty + bash，而不是 initramfs 里直接
+起的 busybox shell）。每次输出里出现 getty 的 "HOST login: " 就发用户名，
+所以 guest 重启后再次出现登录提示时会自动重新登录；用户必须是空密码，
+pam_unix 对空密码不再问 Password。拿到 bash 提示符后发一行 LOGIN_SETUP，
+把 shell 规整成和 busybox 一样：提示符改成同一个格式，后面的步骤因此
+完全不区分两种 guest；关掉 systemd 往 PROMPT_COMMAND 和 PS0 里挂的
+OSC 3008 上下文转义（/etc/profile.d/80-systemd-osc-context.sh），否则每条
+命令前后都夹着一段转义序列；TERM=dumb 和 SYSTEMD_PAGER= 让 systemctl、
+journalctl 不开分页器、不输出颜色，分页器会停在那里等按键。
+
+--reboot（要求 --login）发出一条让 guest 重启的命令（systemctl reboot），
+之后的步骤只认重新登录之后的提示符。不能用 --cmd 代替：systemctl reboot
+只是把请求交给 systemd 就返回，旧 shell 马上又打出提示符，下一条命令会
+发给正在关机的 shell 而丢失。
 
 约束：
 - 提示符的格式来自 tools/build_initramfs.sh 写的 /etc/profile 里的 PS1
@@ -42,6 +57,20 @@ import time
 
 # 与 /etc/profile 的 PS1='[guest \w]# ' 对应；\w 是当前目录，不含 ']' 和换行
 PROMPT = re.compile(rb"\[guest [^\]\r\n]*\]# ")
+
+# getty 的登录提示：agetty 在新的一行打印 "主机名 login: "
+LOGIN = re.compile(rb"\n\S+ login: ")
+
+# 登录后 bash 的第一个提示符，来自发行版 /etc/bash.bashrc 的
+# PS1='[\u@\h \W]\$ '；只用来知道 bash 已经在读输入
+LOGIN_SHELL = re.compile(rb"\]# ")
+
+# PS1 里的 '[guest'' \w]# ' 拆成两段引号：这一行会被 tty 回显，写成连续的
+# '[guest \w]# ' 时回显本身就匹配 PROMPT，下一步会在 bash 执行这一行之前
+# 发出去
+LOGIN_SETUP = ("unset PROMPT_COMMAND PS0; "
+               "export TERM=dumb SYSTEMD_COLORS=0 SYSTEMD_PAGER=; "
+               "PS1='[guest'' \\w]# '")
 
 # include/devices/serial8250.h 的 SERIAL_RX_BUF 是 256 格的环形缓冲区，
 # 留一格区分空和满，最多存 255 字节
@@ -66,6 +95,15 @@ def parse_args(argv):
                    type=lambda c: ("host", c), metavar="CMD",
                    help="shell command to run on the host at a prompt, with "
                         "VMM_PID set; sends nothing to the guest")
+    p.add_argument("--reboot", dest="steps", action="append",
+                   type=lambda c: ("reboot", c), metavar="CMD",
+                   help="command that reboots the guest, e.g. 'systemctl "
+                        "reboot'; later steps wait for the prompt after the "
+                        "next login (requires --login)")
+    p.add_argument("--login", metavar="USER",
+                   help="log in as USER (empty password) whenever a getty "
+                        "'login:' prompt appears, then switch the shell to "
+                        "the standard prompt")
     p.add_argument("--stop", required=True,
                    help="last command, e.g. 'poweroff -f', 'reboot -f', 'exit'; "
                         "after it the VMM is expected to exit by itself")
@@ -76,7 +114,13 @@ def parse_args(argv):
         a.vmm = a.vmm[1:]
     if not a.vmm:
         p.error("missing VMM command line after --")
-    for c in [c for kind, c in a.steps if kind == "cmd"] + [a.stop]:
+    if not a.login and any(kind == "reboot" for kind, _ in a.steps):
+        p.error("--reboot requires --login: the prompt after the reboot "
+                "comes from a new login")
+    lines = [c for kind, c in a.steps if kind != "host"] + [a.stop]
+    if a.login:
+        lines.append(a.login)
+    for c in lines:
         if len(c.encode()) + 1 > RX_FIFO_BYTES:
             p.error(f"command longer than {RX_FIFO_BYTES - 1} bytes would "
                     f"overflow the guest RX FIFO: {c[:40]!r}...")
@@ -141,10 +185,41 @@ def main(argv):
     sent = 0            # 已完成的步骤数
     fd = proc.stdout.fileno()
     stdin_ok = True
+    login_from = 0      # 下一个登录提示只在这之后找
+    login_at = None     # 已发用户名、等 bash 提示符时，从这里找
+    relogin = False     # 发过 --reboot，下一步要等重新登录
+
+    def send(line):
+        nonlocal stdin_ok
+        try:
+            proc.stdin.write(line.encode() + b"\n")
+            proc.stdin.flush()
+        except BrokenPipeError:
+            stdin_ok = False
 
     while True:
+        # 登录：先于步骤处理。登录完成前 PROMPT 不会出现，步骤自然停着
+        while a.login and stdin_ok:
+            if login_at is None:
+                m = LOGIN.search(out, login_from)
+                if not m:
+                    break
+                send(a.login)
+                login_at = login_from = m.end()
+            else:
+                m = LOGIN_SHELL.search(out, login_at)
+                if not m:
+                    break
+                send(LOGIN_SETUP)
+                login_at = None
+                login_from = m.end()
+                if relogin:
+                    # 之前出现的提示符都属于重启前的 shell
+                    scan_from = max(scan_from, login_from)
+                    relogin = False
+
         # 能发就发：上一条命令之后出现了新的提示符
-        while sent < len(steps) and stdin_ok:
+        while sent < len(steps) and stdin_ok and not relogin:
             m = PROMPT.search(out, scan_from)
             if not m:
                 break
@@ -154,19 +229,22 @@ def main(argv):
                 sent += 1
                 continue
             scan_from = m.end()
-            try:
-                proc.stdin.write(c.encode() + b"\n")
-                proc.stdin.flush()
-            except BrokenPipeError:
-                stdin_ok = False
+            send(c)
+            if not stdin_ok:
                 break
             sent += 1
+            relogin = kind == "reboot"
 
         left = deadline - time.monotonic()
         if left <= 0:
-            what = (f"waiting for prompt before {labels[sent]}"
-                    if sent < len(steps) else
-                    f"waiting for the VMM to exit after {labels[-1]}")
+            if login_at is not None:
+                what = f"waiting for the shell after logging in as {a.login!r}"
+            elif relogin:
+                what = f"waiting for the login after {labels[sent - 1]}"
+            elif sent < len(steps):
+                what = f"waiting for prompt before {labels[sent]}"
+            else:
+                what = f"waiting for the VMM to exit after {labels[-1]}"
             note(f"timeout after {a.timeout:g}s while {what}")
             kill(proc)
             return TIMEOUT_RC

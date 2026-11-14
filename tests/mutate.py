@@ -92,7 +92,8 @@ NOTE
   would let a mutant escape untested); otherwise the script stops with
   exit code 1.
   E2e suites run one at a time and need /dev/kvm, the guest kernel (VMLINUX
-  and BZIMAGE, defaulting to the ones in guest-kernel/) and whatever else
+  and BZIMAGE, defaulting to the ones in guest-kernel/; ARCH_IMAGE defaults
+  to arch-image/) and whatever else
   the suite needs, such as gdb for gdbstub. One mutant takes as long as one
   `make test <suite>` run, longer when the mutant makes a guest hang until
   the suite's timeout.
@@ -216,14 +217,16 @@ def anchor_only(m: Mutant) -> Result | None:
 
 
 def e2e_env() -> dict[str, str]:
-    # 副本里没有 guest-kernel/，lib.sh 的默认值找不到内核，这里按同样的
-    # 规则指到工作区里的产物
+    # 副本里没有 guest-kernel/ 和 arch-image/，suite 的默认值找不到内核和
+    # 发行版镜像，这里按同样的规则指到工作区里的产物
     env = dict(os.environ)
     kdir = ROOT / "guest-kernel"
     for var, rel in (("VMLINUX", "vmlinux"),
                      ("BZIMAGE", "arch/x86/boot/bzImage")):
         if not env.get(var) and (kdir / rel).is_file():
             env[var] = str(kdir / rel)
+    if not env.get("ARCH_IMAGE") and (ROOT / "arch-image").is_dir():
+        env["ARCH_IMAGE"] = str(ROOT / "arch-image")
     return env
 
 

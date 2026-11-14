@@ -27,7 +27,7 @@
 | 4 | emu-net ✓ · emu-blk ✓ |
 | 5 | pci-msi ✓ |
 | 6 | system-reset ✓ |
-| 7 | arch-distro |
+| 7 | arch-distro ✓ |
 | 8 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
 | 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
@@ -172,16 +172,18 @@ guest 请求复位时，VMM 在同一个进程里把整机带回上电状态再�
 
 VMM 要能像 QEMU 一样承载一个未经裁剪的发行版。Arch 官方内核是一份和 BusyBox 测试内核完全不同的配置，能顺带检验“VMM 不假设 guest 内核配置”这条原则。
 
-- [ ] 磁盘镜像由仓库脚本用 `pacstrap` 生成，同一份脚本重跑得到等价的镜像
-- [ ] 用 Arch 官方 `linux` 包的 vmlinuz 和 initramfs 直启，不经 bootloader，rootfs 在 emu-blk 的磁盘上
-- [ ] systemd 启动到串口 login 提示符，登录后 `systemctl is-system-running` 为 `running`；出现失败的 unit 时，每一个都要查明原因，属于 VMM 的问题就修掉
-- [ ] guest dmesg 里没有设备探测超时
-- [ ] 经 e1000 拿到网络配置，`pacman -Syu` 和安装软件包成功
-- [ ] 在 `--smp 4`、2 GiB 以上内存下稳定运行
-- [ ] `systemctl poweroff` 和 `systemctl reboot` 都正常完成；关机后再次启动，文件系统不需要 fsck 修复
-- [ ] 在 Arch guest 里用 fio 和 iperf3 跑固定负载，用 exit-stats 记录 emu-blk 每次 IO、emu-net 每个包的 exit 次数，作为后面 VirtIO、vhost 对比的基线
+- [x] 磁盘镜像由仓库脚本用 `pacstrap` 生成，同一份脚本重跑得到等价的镜像
+- [x] 用 Arch 官方 `linux` 包的 vmlinuz 和 initramfs 直启，不经 bootloader，rootfs 在 emu-blk 的磁盘上
+- [x] systemd 启动到串口 login 提示符，登录后 `systemctl is-system-running` 为 `running`；出现失败的 unit 时，每一个都要查明原因，属于 VMM 的问题就修掉
+- [x] guest dmesg 里没有设备探测超时
+- [x] 经 e1000 拿到网络配置，`pacman -Syu` 和安装软件包成功
+- [x] 在 `--smp 4`、2 GiB 以上内存下稳定运行
+- [x] `systemctl poweroff` 和 `systemctl reboot` 都正常完成；关机后再次启动，文件系统不需要 fsck 修复
+- [x] 在 Arch guest 里用 fio 和 iperf3 跑固定负载，用 exit-stats 记录 emu-blk 每次 IO、emu-net 每个包的 exit 次数，作为后面 VirtIO、vhost 对比的基线
 
-mkinitcpio 的 autodetect hook 按构建机上已加载的驱动挑选模块，在 host 上 chroot 生成 initramfs 时会漏掉 `ahci`、`e1000`，要在 `MODULES` 里显式列出或者使用 fallback 镜像。
+`pacman -Syu` 的自动验收用 host 上的本地仓库（同一快照的包和签名，guest 照样按 archlinux-keyring 校验），因为外网会断、上游版本每天在变，测试结果不能随它们变化。真实外网的安装放在 `ARCH_DISTRO_ONLINE=1` 开启的用例里，guest 经 pasta 接到 host 网络。
+
+mkinitcpio 的 autodetect hook 按构建机（host）的 sysfs 挑选模块，在 host 上生成的 initramfs 装的是 host 的驱动，不一定有 guest 挂根要用的。当前 Arch 内核把 `ahci`、`sd_mod`、`ext4` 编进了内核，不受影响；`tools/build_arch_image.sh` 仍在 `MODULES` 里显式列出它们，防止 Arch 以后把它们改成模块。`e1000` 是模块，switch_root 之后由根文件系统里的 udev 加载，不需要进 initramfs。
 
 ---
 

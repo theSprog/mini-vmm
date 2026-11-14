@@ -91,6 +91,56 @@ expect_rc 1
 expect_has "[guest_shell] VMM output ended before cmd 1/1 'echo MARK-A' was sent"
 end_case
 
+head1 "--login 和 --reboot"
+
+run_case "--login: log in at the getty prompt, then commands use the standard prompt" \
+    python3 "$GS" --timeout 20 --login root --cmd 'echo MARK-A' --cmd bootid \
+        --stop 'systemctl poweroff' -- python3 "$FAKE" --login --boot 1
+expect_rc 0
+expect_line "MARK-A"
+expect_line "BOOT=1"
+expect_has "guest requested poweroff via ACPI S5"
+expect_not "command not found"
+end_case
+
+# 对照：systemctl reboot 立刻回到提示符，用 --cmd 发时下一条命令进了
+# 正在关闭的旧 shell，丢失；重启后的 stop 也就提前发了
+run_case "control: reboot sent with --cmd loses the next command" \
+    python3 "$GS" --timeout 20 --login root --cmd 'systemctl reboot' \
+        --cmd 'echo MARK-B' --stop 'systemctl poweroff' \
+        -- python3 "$FAKE" --login --boot 1
+expect_rc 0
+if printf '%s\n' "$CUR_OUT" | grep -qxF "MARK-B"; then
+    printf '   %sFAIL%s MARK-B ran; the fake guest did not drop it\n' "$C_RED" "$C_RST"
+    CUR_BAD=1
+fi
+end_case
+
+run_case "--reboot: later steps wait for the login after the reboot" \
+    python3 "$GS" --timeout 20 --login root --cmd bootid \
+        --reboot 'systemctl reboot' --cmd bootid --cmd 'echo MARK-B' \
+        --stop 'systemctl poweroff' -- python3 "$FAKE" --login --boot 1
+expect_rc 0
+expect_line "BOOT=1"
+expect_line "BOOT=2"
+expect_line "MARK-B"
+expect_has "guest requested poweroff via ACPI S5"
+end_case
+
+run_case "--reboot without --login is rejected" \
+    python3 "$GS" --timeout 20 --reboot 'systemctl reboot' --stop 'exit' \
+        -- python3 "$FAKE"
+expect_rc 2
+expect_has "--reboot requires --login"
+end_case
+
+run_case "login asks for a password: 124 and the stuck step is named" \
+    python3 "$GS" --timeout 2 --login nobody --cmd 'echo MARK-A' \
+        --stop 'systemctl poweroff' -- python3 "$FAKE" --login
+expect_rc 124
+expect_has "[guest_shell] timeout after 2s while waiting for the shell after logging in as 'nobody'"
+end_case
+
 run_case "command that overflows the guest RX buffer is rejected" \
     python3 "$GS" --timeout 20 --cmd "echo $(printf 'x%.0s' $(seq 260))" \
         --stop 'poweroff -f' -- python3 "$FAKE"
