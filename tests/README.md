@@ -25,7 +25,7 @@ tests/
 ├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── net_peer.py     host 侧 TCP 对端：HTTP 提供随机数据、接收一次上传并算哈希，listen 好之后才报 ready
 ├── mutate.py       源码层 mutant 的运行器：在源码副本里替换一段文字，重新构建单元测试，看它红没红
-├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py）
+├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py、system-reset.py）
 ├── gdb_session.py  gdbstub e2e 的协调者：起 VMM 和 gdb，从 host 侧探测 vCPU 线程停在哪，gdb 退出后经串口关机
 ├── gdb_checks.py   gdbstub e2e 里由 gdb -x 执行的检查脚本，每项打一行 GDBCHECK ok/FAIL
 ├── TEST_DESIGN.md  验证设计与批准记录
@@ -153,12 +153,14 @@ mutant 有两类，优先用第一类：
 
 - **接口层**：`unit/*_mutants.c` 里每个 mutant 是一份故意写错的完整对外函数，测试用 `--mutant N` 换上它。它只依赖函数签名，`src/` 内部怎么重构都不影响。
 - **源码层**：`mutants/<里程碑>.py` 里每个 mutant 是一段源码文字的替换，`mutate.py` 把构建要用的文件复制到临时目录、打上替换、用 Makefile 的规则重新构建列出的单元测试再跑。错误点在 static 函数或一条条件表达式里（例如 AHCI 什么时候发 MSI），换不掉整个对外函数时只能这样做。替换按文字定位而不按行号；源码改动让那段文字不再恰好出现一次时报 `STALE`，suite 失败，这时照新源码改写那一项，而不是删掉它。
+- **源码层的 e2e mutant**：条目写 `suite=` 而不是 `tests=`，`mutate.py` 在副本里构建 `build/vmm` 再跑那个 e2e suite，要求至少一个用例 FAIL。用于只有让 guest 真跑起来才看得到的错误（例如整机复位漏恢复 AP 的状态）。每个要跑一整个 suite，negctl 里只检查它们的文字有没有过期，要跑时点名：`tests/mutate.py system-reset`。e2e suite 一次只跑一个：几个 `--smp 4` 的 guest 抢 CPU 时，用例的超时会被当成 FAIL，mutant 看起来被抓住了，结论却不可信。基线要求 suite 全部 PASS 且没有 SKIP，否则被 SKIP 的用例根本没跑，mutant 逃掉也看不出来。
 
 ```sh
 build/tests/mem_test --list-mutants      # 接口层：列出 mutant 及它违反的契约
 build/tests/mem_test --mutant 3          # 单独跑一个，看它红在哪条用例
 tests/mutate.py --list                   # 源码层：列出 mutant、要跑的测试、违反的契约
 tests/mutate.py pci-msi/ahci-no-msi-cap  # 单独跑一个；--keep 留下临时目录看补丁
+tests/mutate.py system-reset             # 点名的 set 连 e2e mutant 一起跑，需要 /dev/kvm 和 guest 内核
 ```
 
 `mutate.py` 先在没打补丁的副本上跑一遍同一批测试，这个基线不绿时它直接报错，因为那时每个 mutant 都会“被抓住”，结论没有意义。源码层的构建是这个 suite 的大头，18 个 mutant 并行构建约 20 秒。

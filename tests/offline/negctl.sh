@@ -13,6 +13,8 @@
 #           一段文字后重新构建单元测试。用于错误点在 static 函数或一条条件
 #           表达式里、换不掉整个对外函数的情形。按文字定位而不按行号，源码
 #           改动让那段文字不再唯一出现时报 STALE，同样算 FAIL。
+#           带 suite= 的 e2e mutant 要跑整个 e2e suite，这里只检查它的
+#           文字是否过期，跑它们用 tests/mutate.py <里程碑>。
 #
 # 用法：./tests/offline/negctl.sh
 
