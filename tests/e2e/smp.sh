@@ -83,6 +83,20 @@ expect_not "stopped with error"
 expect_not "SHUTDOWN"
 end_case
 
+# 信号掩码会被子进程继承，有的启动器（pasta 就是一个）阻塞了 SIGUSR1 再
+# exec 子进程。VMM 只装处理函数而不解除阻塞时，踢 vCPU 的 SIGUSR1 一直
+# 挂在 pending 里，HLT 中的 AP 不会醒，VMM 挂住直到 timeout。
+# timeout 放在最外层，因为它自己会改信号掩码
+run_case "父进程阻塞 SIGUSR1 时，$SMP vCPU 照样在 reset 后全部退出" \
+    timeout 60 python3 -c 'import os, signal, sys
+signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+os.execv(sys.argv[1], sys.argv[1:])' \
+        "$VMM" --mode linux --no-reboot --smp "$SMP" --mem "$MEM" \
+        --initrd "$INITRD" --append "rdinit=/nonexistent" "$VMLINUX"
+expect_rc 0
+expect_has "guest requested reset via i8042"
+end_case
+
 CUR_NAME="$SMP vCPU initramfs：nproc + 拓扑 + poweroff"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0

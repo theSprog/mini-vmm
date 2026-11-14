@@ -299,7 +299,8 @@ static void *vcpu_thread(void *arg)
 int vm_run(struct vmm_vm *vm)
 {
     struct sigaction sa;
-    int i, started = 0, r = VMM_OK;
+    sigset_t kick;
+    int i, started = 0, err, r = VMM_OK;
 
     /* 不带 SA_RESTART，保证 KVM_RUN 返回 EINTR */
     memset(&sa, 0, sizeof(sa));
@@ -307,6 +308,17 @@ int vm_run(struct vmm_vm *vm)
     sigemptyset(&sa.sa_mask);
     if (sigaction(SIGUSR1, &sa, NULL) < 0) {
         vmm_err("sigaction(SIGUSR1) failed");
+        return VMM_ERR_SYS;
+    }
+    /* 信号掩码从父进程继承，启动器（例如 pasta）可能阻塞了 SIGUSR1。被阻塞
+     * 的信号只挂在 pending 里，不会让 HLT 中的 vCPU 离开 KVM_RUN，停机时
+     * vm_request_stop() 就踢不动它们。下面创建的 vCPU 线程继承本线程的
+     * 掩码，所以在这里解除阻塞。 */
+    sigemptyset(&kick);
+    sigaddset(&kick, SIGUSR1);
+    err = pthread_sigmask(SIG_UNBLOCK, &kick, NULL);
+    if (err != 0) {
+        vmm_err("pthread_sigmask(SIG_UNBLOCK, SIGUSR1): %s", strerror(err));
         return VMM_ERR_SYS;
     }
 
