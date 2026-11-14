@@ -38,6 +38,14 @@ N_FAIL=0
 N_SKIP=0
 FAILED_CASES=""
 
+# 失败用例的完整输出另存一份：终端上的输出常被调用方过滤或截断，现场丢了
+# 就只能重跑碰运气，偶发失败尤其如此。目录按 suite 分，只保留最近一次运行：
+# 本次第一个失败时清空，整个 suite 通过时在 summary 里删除，所以目录里有
+# 文件就说明最近一次运行有失败。不在 source 时清空，因为有的 suite 会在
+# namespace 里把自己再执行一次，那次 source 会删掉同一次运行刚写下的现场
+FAIL_DIR="$ROOT/build/test-failures/$(basename "$0" .sh)"
+FAIL_SEQ=0
+
 # 当前 case 的上下文
 CUR_NAME=""
 CUR_OUT=""
@@ -167,9 +175,24 @@ end_case() {
     else
         printf '   %s--- 实际输出 ---%s\n' "$C_YEL" "$C_RST"
         printf '%s\n' "$CUR_OUT" | sed 's/^/   | /'
+        save_failure
         N_FAIL=$((N_FAIL + 1))
         FAILED_CASES="$FAILED_CASES\n  - $CUR_NAME"
     fi
+}
+
+# 原样写入（保留 \r 和终端转义序列），用例名和退出码放在开头
+save_failure() {
+    local f
+
+    if [ "$FAIL_SEQ" -eq 0 ]; then
+        rm -rf "$FAIL_DIR"
+        mkdir -p "$FAIL_DIR" || return 0
+    fi
+    FAIL_SEQ=$((FAIL_SEQ + 1))
+    f="$(printf '%s/%02d.txt' "$FAIL_DIR" "$FAIL_SEQ")"
+    { printf 'case: %s\nrc: %s\n\n' "$CUR_NAME" "$CUR_RC"; printf '%s\n' "$CUR_OUT"; } > "$f" &&
+        printf '   %sfull output saved to %s%s\n' "$C_YEL" "$f" "$C_RST"
 }
 
 skip_case() {
@@ -195,8 +218,10 @@ summary() {
     if [ "$N_FAIL" -ne 0 ]; then
         printf '%s失败的用例:%s' "$C_RED" "$C_RST"
         printf "$FAILED_CASES\n"
+        printf 'full outputs of failed cases: %s\n' "$FAIL_DIR"
         return 1
     fi
+    rm -rf "$FAIL_DIR"
     printf '%s全部通过%s\n' "$C_GRN" "$C_RST"
     return 0
 }
