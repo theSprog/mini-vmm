@@ -572,11 +572,17 @@ static int pm_write(void *opaque, uint64_t off, uint32_t size,
     return VMM_OK;
 }
 
+void acpi_pm_reset(void *opaque)
+{
+    (void)opaque;
+    memset(&g_pm, 0, sizeof(g_pm));
+}
+
 int acpi_pm_attach(struct vmm_vm *vm)
 {
     struct vmm_io_dev dev;
 
-    memset(&g_pm, 0, sizeof(g_pm));
+    acpi_pm_reset(NULL);
     memset(&dev, 0, sizeof(dev));
     dev.name   = "acpi-pm1a";
     dev.base   = ACPI_PM1A_EVT_PORT;

@@ -42,14 +42,14 @@ suite_script() {
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub) echo "e2e/$1.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub) return 0 ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -74,11 +74,12 @@ suite_desc() {
     emu-blk)        echo "--drive 磁盘后端，AHCI 控制器的探测与端口枚举" ;;
     pci-msi)        echo "AHCI 的 MSI：PCI-MSI、运行中回退 INTx、非法消息的诊断" ;;
     gdbstub)        echo "真实 gdb 调试 guest 内核：断点、单步、寄存器与内存、整机暂停" ;;
+    system-reset)   echo "整机复位：连续 reboot、sysrq-b 时 AP 全部重新上线，设备回到上电值，--no-reboot" ;;
     esac
 }
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
-E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub"
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset"
 ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
 DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
 

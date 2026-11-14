@@ -65,9 +65,9 @@ head1 "stdin 不能提供输入时 guest 照常运行"
 
 # run_case 把 stdin 接到 /dev/null，epoll 不能监听它（EPERM）。要明确说出
 # 输入被关掉了，而不是悄悄没有输入。rdinit=/nonexistent 让内核 panic，
-# panic=-1 立即经 i8042 reset 退出，整个过程不需要输入。
+# panic=-1 立即经 i8042 请求复位，--no-reboot 让 VMM 退出，整个过程不需要输入。
 run_case "stdin is /dev/null: input disabled with a reason, guest still boots" \
-    timeout 60 "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" \
+    timeout 60 "$VMM" --mode linux --no-reboot --mem "$MEM" --initrd "$INITRD" \
         --append "rdinit=/nonexistent" "$VMLINUX"
 expect_rc 0
 expect_has "console: stdin cannot be polled (regular file or /dev/null), guest input is disabled"
@@ -77,7 +77,7 @@ end_case
 # 管道写端一开始就关掉：I/O 线程读到 EOF 后必须摘掉 stdin，否则水平触发
 # 会让它一直报可读、一直读到 0，I/O 线程空转。EOF 日志恰好一条就是判据。
 run_case "stdin EOF: handler removes stdin once, io thread stops cleanly" \
-    sh -c 'true | timeout 60 "$@"' _ "$VMM" -v --mode linux --mem "$MEM" \
+    sh -c 'true | timeout 60 "$@"' _ "$VMM" -v --mode linux --no-reboot --mem "$MEM" \
         --initrd "$INITRD" --append "rdinit=/nonexistent" "$VMLINUX"
 expect_rc 0
 n_eof="$(printf '%s\n' "$CUR_OUT" | grep -ac 'console: stdin EOF')"

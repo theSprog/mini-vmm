@@ -1309,6 +1309,21 @@ void ahci_init(struct ahci *s, struct blockdev *blk)
     hba_reset(s);
 }
 
+/* 整机复位等同于上电：HBA 复位保留的 PxCLB/PxFB（第 10.4.3 节）在上电时
+ * 也是 0，先清掉，否则下一次启动的驱动设置它们之前，残留的地址指向上一次
+ * 启动的内存 */
+static void ahci_power_on_reset(void *dev)
+{
+    struct ahci *s = dev;
+    int i;
+
+    for (i = 0; i < AHCI_NR_PORTS; i++) {
+        s->port[i].clb = s->port[i].clbu = 0;
+        s->port[i].fb = s->port[i].fbu = 0;
+    }
+    hba_reset(s);
+}
+
 static const char *const ahci_props[] = { "driver", "drive", NULL };
 
 static int ahci_create(const struct opts *o, void **dev)
@@ -1348,4 +1363,5 @@ const struct vmm_device_type ahci_device_type = {
     .props  = ahci_props,
     .create = ahci_create,
     .attach = ahci_attach,
+    .reset  = ahci_power_on_reset,
 };

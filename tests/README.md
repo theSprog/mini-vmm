@@ -38,7 +38,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -87,9 +87,10 @@ tests/
 | `emu-net` | 是 | 是 | `--netdev` 参数和引用关系的报错早于创建 VM；在 `unshare -rn` 建的 namespace 里经 TAP 跑 Linux e1000 驱动：探测与链路、双向 ping、双向 TCP 哈希一致、两端 TCP 校验和错误为 0、20 万个 UDP 包的洪泛除 host 内核在 TAP 上丢的之外一个不少、且后端因环满暂停过（guest 用 48 项的接收环）、INTx 计数与 ICR 读次数和包数对得上、`--trace-mmio` 记录 |
 | `emu-blk` | 是 | 是 | `--drive` 参数和引用关系的报错早于创建 VM；Linux ahci 驱动绑定 AHCI 控制器，端口 0 链路建立、其余 5 个端口报告无设备，中断经 INTx 送达；IDENTIFY 出的型号和容量；guest 读 host 用 `mke2fs -d` 做的镜像、整盘和文件的 sha256 与 host 一致；guest mkfs 后写的文件由 host 用 `debugfs` 取出核对、`e2fsck` 无错；卸载时 flush 到达后端；NCQ 深度 32、文件系统读写经 PxSACT 发出，`libata.force=noncq` 时走 READ/WRITE DMA；host 截短镜像造出读错误，Linux 经日志 10h 定位出错的 tag 并恢复；`root=/dev/sda` 从盘启动 |
 | `pci-msi` | 是 | 是 | Linux ahci 驱动打开 MSI，`/proc/interrupts` 上走 PCI-MSI、每次完成都送达；运行中经 `msi_bus` 和重新绑定驱动回到 INTx（IO-APIC 17）再切回 MSI，读盘内容都与镜像一致；guest 把 MSI 的向量、地址、目标 ID 写坏时 VMM 报出 BDF、地址、数据和原因 |
-| `gdbstub` | 是 | 是 | 没改过的 gdb 按 vmlinux 符号在 `start_kernel`、`kernel_init` 停下，单步前进一条指令的长度，读写寄存器和内核虚拟地址的内存再还原，每个 vCPU 一个线程；Ctrl-C 时 host 的 `/proc/<pid>/task/*/syscall` 显示两个 vCPU 线程都从 `ioctl` 变成停在 `futex` 上；guest 启动时自己的 int3 被交还（VMM 报交还次数不为 0、没有 kernel BUG）；detach 后 guest 跑到关机，guest 自己重启时 gdb 收到退出报告 |
+| `gdbstub` | 是 | 是 | 没改过的 gdb 按 vmlinux 符号在 `start_kernel`、`kernel_init` 停下，单步前进一条指令的长度，读写寄存器和内核虚拟地址的内存再还原，每个 vCPU 一个线程；Ctrl-C 时 host 的 `/proc/<pid>/task/*/syscall` 显示两个 vCPU 线程都从 `ioctl` 变成停在 `futex` 上；guest 启动时自己的 int3 被交还（VMM 报交还次数不为 0、没有 kernel BUG）；detach 后 guest 跑到关机，`--no-reboot` 下 guest 自己重启时 gdb 收到退出报告；不带 `--no-reboot` 时 guest panic 重启，连接不断，软件断点在新装载的内核里命中 |
+| `system-reset` | 是 | 是 | guest 每次启动打印的 CPU 列表、PCI 设备、磁盘探测汇成的哈希在多次 `reboot -f` 之间相同，复位前写进盘的内容读得回来；4 个 vCPU 都在忙时 sysrq-b，新内核所有 CPU 上线；guest 改过的设备寄存器和配置空间复位后回到上电值；`--no-reboot` 下重启和 panic 都只退出一次 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` / `system-reset` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
 
 `gdbstub` 还要求 PATH 里有 gdb，没有时 gdb 用例 SKIP。检查只用到 vmlinux 的符号表，不需要 DWARF。读 vCPU 线程的 `/proc/<pid>/task/*/syscall` 由 `gdb_session.py` 做而不是放进 gdb 脚本：Yama `ptrace_scope=1` 时只有 VMM 的祖先进程能读它，gdb 是 VMM 的兄弟进程。
 

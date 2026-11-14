@@ -49,6 +49,7 @@ SRCS := \
 	src/kvm_stats.c \
 	src/exit_stats.c \
 	src/smp.c \
+	src/reset.c \
 	src/gdb/rsp.c \
 	src/gdb/x86.c \
 	src/gdb/gdbstub.c

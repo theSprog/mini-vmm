@@ -89,17 +89,34 @@ expect_has "gdbstub: gdb detached, guest resumed"
 expect_has "guest requested poweroff via ACPI S5"
 end_case
 
-# rdinit=/nonexistent：内核找不到 init 而 panic，经 i8042 reset 结束。gdb 一直
-# 在 continue 里等停止应答，stub 报告 W
+# rdinit=/nonexistent：内核找不到 init 而 panic，经 i8042 请求复位，--no-reboot
+# 让 VMM 退出。gdb 一直在 continue 里等停止应答，stub 报告 W
 run_case "guest 自己结束时 gdb 收到退出报告" \
     env GDBCHECK_SCENARIO=exit python3 "$SESSION" --timeout 60 \
         --script "$CHECKS" --symbols "$VMLINUX" \
-        -- "$VMM" --mode linux --smp "$SMP" --mem "$MEM" --gdb 0 \
+        -- "$VMM" --mode linux --smp "$SMP" --mem "$MEM" --gdb 0 --no-reboot \
               --initrd "$INITRD" --append "rdinit=/nonexistent" "$VMLINUX"
 expect_rc 0
 expect_has "GDBCHECK ok connect"
 expect_has "GDBCHECK ok exit-reported"
 expect_has "guest requested reset via i8042"
+end_case
+
+# 不带 --no-reboot：panic 后整机复位，gdb 连接保持，第一次启动里插的软件
+# 断点在下一次启动里再次命中
+run_case "gdb 连接跨越整机复位，软件断点在下一次启动里命中" \
+    env GDBCHECK_SCENARIO=reset python3 "$SESSION" --timeout 90 \
+        --script "$CHECKS" --symbols "$VMLINUX" \
+        -- "$VMM" --mode linux --smp "$SMP" --mem "$MEM" --gdb 0 \
+              --initrd "$INITRD" --append "rdinit=/nonexistent" "$VMLINUX"
+expect_has "GDBCHECK ok hbreak-start_kernel"
+expect_has "GDBCHECK ok break-rest_init"
+expect_has "GDBCHECK ok break-after-reset"
+expect_has "GDBCHECK ok image-reloaded"
+expect_has "GDBCHECK done, 0 failed"
+expect_has "reset: guest reset #1 done"
+expect_not "guest reset #2"
+expect_has "gdbstub: gdb killed the guest"
 end_case
 }
 

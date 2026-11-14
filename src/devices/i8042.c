@@ -195,9 +195,7 @@ static void kbd_write(uint8_t v)
 
 static int request_reset(void)
 {
-    vmm_info("guest requested reset via i8042");
-    g_kbc.vm->exit_code = 0;
-    return VMM_ERR_EXIT;
+    return vm_request_reset(g_kbc.vm, "i8042");
 }
 
 static int kbc_command(uint8_t cmd)
@@ -321,16 +319,27 @@ static int i8042_write(void *opaque, uint64_t off, uint32_t size,
     return kbc_command(v);
 }
 
+void i8042_reset(void *opaque)
+{
+    (void)opaque;
+    g_kbc.status_cmd  = 0;
+    g_kbc.pending_cmd = 0;
+    g_kbc.kbd_pending = 0;
+    g_kbc.head = g_kbc.count = 0;
+    /* BIOS 交接时的典型值：键盘中断开、扫描码翻译开、AUX 关 */
+    g_kbc.ctr  = CTR_KBDINT | CTR_SYSFLAG | CTR_AUXDIS | CTR_XLATE;
+    g_kbc.outp = OUTP_RESET_N | OUTP_A20;
+    set_irq(0);
+}
+
 int i8042_attach(struct vmm_vm *vm)
 {
     struct vmm_io_dev dev;
     int r;
 
     memset(&g_kbc, 0, sizeof(g_kbc));
-    g_kbc.vm   = vm;
-    /* BIOS 交接时的典型值：键盘中断开、扫描码翻译开、AUX 关 */
-    g_kbc.ctr  = CTR_KBDINT | CTR_SYSFLAG | CTR_AUXDIS | CTR_XLATE;
-    g_kbc.outp = OUTP_RESET_N | OUTP_A20;
+    g_kbc.vm = vm;
+    i8042_reset(NULL);
 
     /* 0x60 和 0x64 中间隔着 0x61（PIT gate，由 KVM 内核处理），
      * 所以分两个单字节设备注册，不能占 [0x60, 0x65) 整段。 */

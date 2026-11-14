@@ -34,6 +34,9 @@ struct vmm_device_type {
      * d->net / d->blk 拿后端 */
     int  (*attach)(const struct vmm_device *d, struct vmm_vm *vm,
                    struct pci_bus *bus);
+    /* 整机复位（reset.h）时调用，参数是 d->dev。attach 成功后由
+     * vmm_device_attach 登记；NULL 表示设备没有需要复位的状态 */
+    void (*reset)(void *dev);
 };
 
 struct vmm_device {

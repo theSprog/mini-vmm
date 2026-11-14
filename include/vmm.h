@@ -16,6 +16,7 @@
 
 #include "memory.h"
 #include "devices/device.h"
+#include "reset.h"
 
 /* ------------------------------------------------------------------ */
 /* 常量与错误码                                                        */
@@ -201,6 +202,9 @@ struct vmm_config {
 
     /* --gdb 的 TCP 端口，0 表示由内核分配，-1 表示不启用 gdbstub */
     int         gdb_port;
+
+    /* --no-reboot：guest 请求复位时 VMM 退出，而不是复位后再启动 */
+    bool        no_reboot;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -281,6 +285,14 @@ struct vmm_vm {
     volatile bool   running;
     volatile bool   user_stop;         /* Ctrl-A x 触发的停机 */
     int             exit_code;
+
+    /* 整机复位，见 reset.h。reset_requested 由请求复位的 vCPU 置位，
+     * vm_reset 完成时清零；gdbstub 据此区分"VM 在复位"和"VM 结束了" */
+    struct vmm_reset_handler reset_handlers[VMM_MAX_RESET_HANDLERS];
+    int             nr_reset_handlers;
+    struct vm_power_on *power_on;      /* vm_power_on_save 存下的 KVM 状态 */
+    volatile bool   reset_requested;
+    unsigned int    reset_count;
 };
 
 /* 生命周期 */

@@ -2,7 +2,7 @@
 
 由 tests/gdb_session.py 启动，环境变量：
   GDBSTUB_PORT        stub 的端口
-  GDBCHECK_SCENARIO   full（默认）或 exit
+  GDBCHECK_SCENARIO   full（默认）、exit 或 reset
   GDBCHECK_VCPUS      VMM 的 vCPU 数
 
 每项检查打一行 "GDBCHECK ok NAME" 或 "GDBCHECK FAIL NAME: 细节"，
@@ -187,6 +187,27 @@ def scenario_exit():
     check("exit-reported", exit_code == 0, "exit event code %r" % (exit_code,))
 
 
+def scenario_reset():
+    # guest 用 rdinit=/nonexistent 启动、不带 --no-reboot：每次启动都 panic 后
+    # 整机复位。软件断点在第一次启动里插入，要在复位后的下一次启动里再次命中
+    if not stop_at("start_kernel", "hbreak"):
+        return
+    ex("delete")
+    if not stop_at("rest_init", "break"):
+        return
+    # 第一次启动已经走到 panic 时 panic_cpu 不再是 -1；下一次启动停在
+    # rest_init 时它又是 -1，说明内核数据段确实被重新装载，停下的是新的一次
+    # 启动，而不是同一次启动里的又一次调用
+    out = ex("continue")
+    want = u64("&rest_init")
+    got = pc()
+    check("break-after-reset", got == want,
+          "pc 0x%x, rest_init is 0x%x; gdb said: %s" % (got, want, out.strip()))
+    cpu = int(gdb.parse_and_eval("panic_cpu.counter"))
+    check("image-reloaded", cpu == -1, "panic_cpu.counter is %d" % cpu)
+    ex("kill")
+
+
 def main():
     try:
         connect()
@@ -194,8 +215,11 @@ def main():
     except gdb.error as e:
         check("connect", False, str(e))
         return
-    if os.environ.get("GDBCHECK_SCENARIO", "full") == "exit":
+    scenario = os.environ.get("GDBCHECK_SCENARIO", "full")
+    if scenario == "exit":
         scenario_exit()
+    elif scenario == "reset":
+        scenario_reset()
     else:
         scenario_full(int(os.environ.get("GDBCHECK_VCPUS", "1")))
     print("GDBCHECK done, %d failed" % failed, flush=True)

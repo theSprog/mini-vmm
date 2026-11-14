@@ -49,4 +49,19 @@ int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v);
 /* vm_request_stop() 调用：VM 要结束了，唤醒暂停中的 vCPU 和 gdbstub 线程 */
 void gdbstub_vm_stopping(struct gdbstub *g);
 
+/* 整机复位（reset.h）时 gdb 连接、断点表、每个 vCPU 的放行状态都保留，
+ * vm_reset 在 vCPU 线程全部 join 之后调用这两个函数：
+ *   before  在重新装载镜像之前，把软件断点的原字节写回 guest 内存；
+ *   after   装载之后重新读出原字节、写入 int3，再唤醒 gdbstub 线程处理
+ *           复位期间推迟的停止事件。
+ * 两步不能合成一步：装载不一定覆盖断点所在的页（例如模块的代码），没被
+ * 覆盖的地方还是 int3，只看装载后的内存分不清它是我们写的还是镜像本来
+ * 的字节。
+ * 软件断点能跨越复位命中的前提是断点字节由 VMM 装载：vmlinux（ELF）的
+ * 各段直接装到物理地址上，满足；bzImage 的内核由 guest 里的解压器在运行时
+ * 写出，int3 会被解压结果覆盖，这时用 hbreak（硬件断点比较线性地址，不在
+ * 内存里）。 */
+void gdbstub_reset_before(struct gdbstub *g);
+void gdbstub_reset_after(struct gdbstub *g);
+
 #endif /* GDB_GDBSTUB_H */

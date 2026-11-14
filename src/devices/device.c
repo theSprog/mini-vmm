@@ -86,5 +86,9 @@ out:
 int vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
                       struct pci_bus *bus)
 {
-    return d->type->attach(d, vm, bus);
+    int r = d->type->attach(d, vm, bus);
+
+    if (r == VMM_OK && d->type->reset)
+        r = vmm_register_reset(vm, d->type->name, d->type->reset, d->dev);
+    return r;
 }

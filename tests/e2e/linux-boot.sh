@@ -72,10 +72,10 @@ head1 "vmlinux 直启"
 
 # rdinit=/nonexistent：initramfs 照常提供，但内核在里面找不到 init，
 # 转去挂载 root=，没有 root= 就以 VFS panic 结束；panic=-1 触发 reboot，
-# reboot=k 走 i8042 reset，VMM 据此正常退出。这一条把整条启动路径
+# reboot=k 走 i8042 请求复位，--no-reboot 让 VMM 据此正常退出。这一条把整条启动路径
 # 和"guest 能让 VMM 退出"一起验了。
 run_case "内核启动到 VFS panic 并经 i8042 reset 退出" \
-    timeout 60 "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" \
+    timeout 60 "$VMM" --mode linux --no-reboot --mem "$MEM" --initrd "$INITRD" \
         --append "rdinit=/nonexistent" "$VMLINUX"
 expect_rc 0
 expect_has "kernel format: vmlinux (ELF)"
@@ -166,7 +166,7 @@ expect_not "Kernel panic"
 end_case
 
 run_case "bzImage: VFS panic 并经 i8042 reset 退出" \
-    timeout 60 "$VMM" --mode linux --smp 2 --mem "$MEM" --initrd "$INITRD" \
+    timeout 60 "$VMM" --mode linux --no-reboot --smp 2 --mem "$MEM" --initrd "$INITRD" \
         --append "rdinit=/nonexistent" "$BZIMAGE"
 expect_rc 0
 expect_has "kernel format: bzImage"

@@ -66,7 +66,7 @@ fi
 # 必须被 vm_request_stop() 踢出 KVM_RUN，否则 VMM 挂住直到 timeout。
 # rdinit=/nonexistent 让内核在 initramfs 里找不到 init，从而 VFS panic
 run_case "$SMP vCPU 启动到 VFS panic 并经 i8042 reset 全部退出" \
-    timeout 60 "$VMM" --mode linux --smp "$SMP" --mem "$MEM" \
+    timeout 60 "$VMM" --mode linux --no-reboot --smp "$SMP" --mem "$MEM" \
         --initrd "$INITRD" --append "rdinit=/nonexistent" "$VMLINUX"
 expect_rc 0
 expect_has "MP table @ GPA 0x9fc00: $SMP CPU(s), IOAPIC id $SMP"

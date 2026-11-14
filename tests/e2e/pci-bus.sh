@@ -129,12 +129,12 @@ end_case
 
 head1 "acpi=off 启动：中断路由改由 MP table 给出"
 
-# acpi=off 时没有 ACPI S5，用 i8042 复位退出
+# acpi=off 时没有 ACPI S5，用 i8042 复位加 --no-reboot 退出
 boot \
     --cmd "dmesg | grep -aE 'PCI->APIC|INT A'" \
     --cmd "echo 1 > $D/enable; echo IRQ-AFTER-\$(cat $D/irq)" \
     --stop 'reboot -f' \
-    -- "$VMM" --mode linux --mem "$MEM" --device pci-test --append acpi=off \
+    -- "$VMM" --mode linux --no-reboot --mem "$MEM" --device pci-test --append acpi=off \
           --initrd "$INITRD" "$VMLINUX"
 
 check_case "MP table 的 PCI 中断项与 _PRT 一致：同样是 GSI 17"

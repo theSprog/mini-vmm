@@ -48,6 +48,7 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
 
 int  mem_init(struct vmm_vm *vm, uint64_t sz)   { (void)vm; (void)sz; return VMM_OK; }
 void mem_destroy(struct vmm_vm *vm)             { (void)vm; }
+void vm_power_on_free(struct vmm_vm *vm)        { (void)vm; }
 
 int  kvm_open(void)                             { return -1; }
 int  kvm_get_api_version(int f)                 { (void)f; return 12; }
@@ -194,7 +195,7 @@ static struct vmm_io_dev mkdev(const char *name, uint64_t base, uint64_t len,
     return d;
 }
 
-static void vm_reset(void)
+static void test_vm_init(void)
 {
     memset(&g_vm, 0, sizeof(g_vm));
     g_vm.kvm_fd = g_vm.vm_fd = -1;
@@ -252,7 +253,7 @@ static void case_register(void)
     int r, i;
 
     T_CASE("vmm_register_pio：重叠检测与紧邻允许");
-    vm_reset();
+    test_vm_init();
 
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     CHECK_U64(vmm_register_pio(&g_vm, &d), VMM_OK, "首次注册应当成功");
@@ -276,7 +277,7 @@ static void case_register(void)
     CHECK_U64(g_vm.nr_pio_devs, 3, "现在应当有三个 PIO 设备");
 
     T_CASE("PIO/MMIO 设备表满时拒绝注册");
-    vm_reset();
+    test_vm_init();
     for (i = 0; i < VMM_MAX_PIO_DEVS; i++) {
         d = mkdev("fill", 0x1000 + (uint64_t)i * 16, 16, &g_dev_a);
         r = vmm_register_pio(&g_vm, &d);
@@ -304,7 +305,7 @@ static void case_lookup(void)
     struct vmm_io_dev d;
 
     T_CASE("vmm_lookup_pio / vmm_lookup_mmio 的区间边界");
-    vm_reset();
+    test_vm_init();
 
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     CHECK_U64(vmm_register_pio(&g_vm, &d), VMM_OK, "注册 a");
@@ -341,7 +342,7 @@ static void case_unhandled_pio(void)
     int r;
 
     T_CASE("未注册端口：读回全 0xFF，写被丢弃");
-    vm_reset();
+    test_vm_init();
 
     /* 判据来自 arch/x86/kernel/i8237.c 的 i8237A_init_ops()：
      *   if (dma_inb(DMA_PAGE_0) == 0xFF) return -ENODEV;
@@ -384,7 +385,7 @@ static void case_dispatch_offset(void)
     int r;
 
     T_CASE("分发给设备时 offset 相对 base，size 原样传递");
-    vm_reset();
+    test_vm_init();
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
 
@@ -408,7 +409,7 @@ static void case_dispatch_offset(void)
     check_guards(1, 1, "dispatch IN");
 
     /* base 为 0 的设备：offset 就是端口号本身 */
-    vm_reset();
+    test_vm_init();
     d = mkdev("z", 0, 4, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
     io_setup(3, 1, 1, 1);
@@ -424,7 +425,7 @@ static void case_dispatch_string(void)
     int i, r;
 
     T_CASE("串操作 count>1：逐次回调，每次前进 size 字节");
-    vm_reset();
+    test_vm_init();
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
 
@@ -482,7 +483,7 @@ static void case_callback_return(void)
     int r;
 
     T_CASE("回调返回值：VMM_ERR_EXIT 立即中止串操作并原样上报");
-    vm_reset();
+    test_vm_init();
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
 
@@ -508,7 +509,7 @@ static void case_callback_return(void)
     CHECK_U64(g_dev_a.n_calls, 1, "出错后不得继续后续访问");
 
     T_CASE("read/write 回调为 NULL 时不得崩溃");
-    vm_reset();
+    test_vm_init();
     d = mkdev("nocb", 0x3f8, 8, &g_dev_a);
     d.read = NULL;
     d.write = NULL;
@@ -526,7 +527,7 @@ static void case_mmio(void)
     int i, r;
 
     T_CASE("MMIO 分发：offset、len 与未注册地址的返回值");
-    vm_reset();
+    test_vm_init();
     d = mkdev("m", 0xd0000000ULL, 0x200, &g_dev_a);
     vmm_register_mmio(&g_vm, &d);
 
@@ -573,7 +574,7 @@ static void case_stats(void)
     uint8_t *data;
 
     T_CASE("exit 统计：按 exit_reason、按设备、按方向");
-    vm_reset();
+    test_vm_init();
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
     d = mkdev("b", 0x60, 1, &g_dev_b);
@@ -645,7 +646,7 @@ static void case_characterize_overrun(void)
      *
      * 这一条不是契约断言，是把现状钉下来：语义该怎么定见
      * TEST_DESIGN.md 的 open question O1，定了之后本用例要改写。 */
-    vm_reset();
+    test_vm_init();
     d = mkdev("a", 0x3f8, 8, &g_dev_a);
     vmm_register_pio(&g_vm, &d);
 
@@ -662,7 +663,7 @@ static void case_characterize_overrun(void)
     run->mmio.phys_addr = 0xd00001feULL;  /* 设备末端前 2 字节 */
     run->mmio.len       = 8;
     run->mmio.is_write  = 0;
-    vm_reset();
+    test_vm_init();
     d = mkdev("m", 0xd0000000ULL, 0x200, &g_dev_a);
     vmm_register_mmio(&g_vm, &d);
     run->exit_reason    = KVM_EXIT_MMIO;

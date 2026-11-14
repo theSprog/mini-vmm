@@ -59,6 +59,9 @@ struct serial8250 {
 
 int  serial8250_init(struct serial8250 *s, int out_fd);
 
+/* 整机复位回调（reset.h），opaque 是 struct serial8250 * */
+void serial8250_reset(void *opaque);
+
 /* 注册到 PIO 总线 [base, base+8) */
 int  serial8250_attach(struct vmm_vm *vm, struct serial8250 *s,
                        uint16_t base, int irq);

@@ -47,5 +47,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa);
 
 /* PM1a + 扩展睡眠寄存器设备：guest 经任一路径请求 S5（poweroff）时让 VMM 退出 */
 int acpi_pm_attach(struct vmm_vm *vm);
+/* 整机复位回调（reset.h）：PM1 寄存器回到 0 */
+void acpi_pm_reset(void *opaque);
 
 #endif /* BOOT_ACPI_H */

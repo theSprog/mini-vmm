@@ -12,7 +12,8 @@
 - `--smp N` 多核（上限 32），CPUID 拓扑按 vCPU 改写
 - 后端 fd 由一个 epoll I/O 线程负责，vCPU 线程只跑 `KVM_RUN`；串口输入经它进入 guest
 - `--exit-stats FILE` 在 VM 停下后按 exit 类型、按设备报告 exit 次数，并列出 KVM 自己的计数器
-- 三种退出方式：`poweroff -f`（ACPI S5）、panic 后重启（i8042 reset）、`Ctrl-A x`
+- 整机复位：guest 重启（`reboot`、sysrq-b、panic 后按 `panic=-1` 重启，都经 i8042 reset 到达 VMM）时，VMM 在原进程里把 vCPU、irqchip 和设备恢复到上电状态并重新装载内核，磁盘镜像和 TAP 保持打开，gdb 连接也保留；`--no-reboot` 把重启改成退出，测试里靠重启结束 guest 的用例都带着它
+- 退出方式：`poweroff -f`（ACPI S5）、`Ctrl-A x`、`--no-reboot` 下的重启
 - guest RAM 可以超过 3 GiB：低段 `[0, 3 GiB)` 加 4 GiB 以上的高段，中间 1 GiB 留给 MMIO
 - PCI 总线：0xCF8/0xCFC 配置访问、host bridge、BAR 预分配与按 COMMAND/BAR 改写实时路由，DSDT 里的 PCI0 给出地址窗口和 `_PRT`，MP table 带同样的 INTx 路由；`--device pci-test` 挂一个演示用的测试设备
 - 全模拟网卡 e1000（82540EM）：`--netdev tap,id=n0,ifname=tap0 --device e1000,netdev=n0`，Linux 自带的 e1000 驱动直接可用，支持校验和 offload 与 TSO
@@ -64,6 +65,7 @@ VMM 只在 127.0.0.1 上监听，`--gdb 0` 由内核分配端口，实际端口�
 - 内核刚启动、还没切到自己的页表时，`break` 报 `Cannot insert breakpoint`：软件断点要把 int3 写进内存，得先把内核虚拟地址翻译成 GPA，这时翻译不了。用 `hbreak`，硬件断点比较的是线性地址，不需要翻译。
 - `tools/build_guest_kernel.sh` 构建的内核带 DWARF 和 `vmlinux-gdb.py`，上面的 `add-auto-load-safe-path` 让 gdb 加载它，`lx-dmesg`、`lx-ps` 等命令可用。
 - 没有硬件 watchpoint：VMM 对 Z2–Z4 回空包，gdb 手册说这时 `watch` 退回软件 watchpoint，单步执行、慢得多，而且只看当前线程的改动，换句话说多 vCPU 的内核里基本不可用。数据断点要另外编码 DR7 的 R/W、LEN 位并处理 DR6 的命中归属，这个里程碑的验收只要求指令断点。
+- guest 重启时 gdb 连接不断，断点表和每个 vCPU 的放行状态都保留：gdb 已经 continue 的话，复位后 guest 直接接着跑，断点照样命中。软件断点在复位时先撤掉、内核重新装载后按新内容重新写 int3，所以对 vmlinux 有效；bzImage 的内核是 guest 里的解压器运行时写到内存的，会盖掉提前写好的 int3，断在解压后内核里的位置要用 `hbreak`。
 - host 内核低于 5.16 时 KVM 没有 `KVM_GUESTDBG_BLOCKIRQ`，VMM 启动时会警告，开着中断单步可能走进中断处理函数。
 
 ## 观测：`--trace-pio` 与 `--trace-mmio`

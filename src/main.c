@@ -36,8 +36,9 @@
 
 /* Linux 模式默认内核参数。
  *   earlyprintk  在 8250 驱动加载之前就能看到输出，内核早期崩溃时救命
- *   reboot=k     reboot 走 i8042 reset，VMM 据此退出
- *   panic=-1     panic 后立刻 reboot，从而让 VMM 退出而不是挂住
+ *   reboot=k     reboot 走 i8042 reset，VMM 据此整机复位（--no-reboot 时退出）
+ *   panic=-1     panic 后立刻 reboot，而不是挂住；配合 --no-reboot，panic 让
+ *                VMM 退出，测试据此拿到失败现场，而不是无限重启
  *   noapictimer? 不加：内核态 LAPIC 的 timer 完全可用 */
 #define DEFAULT_LINUX_CMDLINE \
     "console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1"
@@ -136,6 +137,9 @@ void vmm_usage(const char *prog)
 "  --gdb PORT             Serve the GDB remote protocol on 127.0.0.1:PORT\n"
 "                           (0 = any free port, printed in the log); the guest\n"
 "                           stays paused until gdb connects\n"
+"  --no-reboot            linux: exit when the guest requests a reset\n"
+"                           (reboot, panic with panic=-1) instead of\n"
+"                           resetting the machine and booting again\n"
 "  --device DRIVER[,PROP=VALUE...]\n"
 "                         linux: add a PCI device, repeatable; devices take\n"
 "                           slots 1, 2, ... in command line order.\n"
@@ -310,6 +314,8 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
                 return VMM_ERR_INVAL;
             }
             cfg->gdb_port = (int)n;
+        } else if (!strcmp(a, "--no-reboot")) {
+            cfg->no_reboot = true;
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];
@@ -423,6 +429,10 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         vmm_err("--drive requires --mode linux");
         return VMM_ERR_INVAL;
     }
+    if (cfg->no_reboot && cfg->mode != VMM_BOOT_LINUX) {
+        vmm_err("--no-reboot requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
     /* --netdev、--drive 可以写在引用它们的 --device 之后，所以引用要等
      * 全部解析完。两边都检查完再返回，一次报出所有引用错误 */
     r = netdev_link(cfg->devices, cfg->nr_devices,
@@ -486,51 +496,23 @@ static int check_payload_overlap(const struct boot_mem_layout *l,
 
 /* Linux 直启：vmlinux + boot_params + initrd，然后按 64 位启动协议
  * 摆好 vCPU。串口中断接到内核态 PIC/IOAPIC 的 GSI 4。 */
-static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
-                      const struct vmm_config *cfg, struct serial8250 *com1,
-                      struct event_loop *loop)
+
+/* PCI 总线在 attach 时建好，每次上电装载镜像时生成 MP table 要用 */
+static struct pci_bus g_pci;
+
+/* 每次上电都要做的部分：把内核、initrd、固件表、页表装进 guest 内存，
+ * 设好 BSP 的入口寄存器。第一次启动和每次整机复位（reset.h 的 reload
+ * 回调）都走这里：guest 运行时会改写这些内存，复位后必须重新装载。
+ * opaque 是 struct vmm_vm *。 */
+static int linux_load_images(void *opaque)
 {
-    static struct pci_bus pci;
+    struct vmm_vm *vm = opaque;
+    const struct vmm_config *cfg = &vm->cfg;
     struct boot_mem_layout layout;
     struct kernel_image kimg;
     struct zp_config zc;
     uint64_t rsdp;
-    int i, r;
-
-    com1->irq_set    = irqchip_irq_cb;
-    com1->irq_opaque = vm;
-
-    r = i8042_attach(vm);
-    if (r != VMM_OK)
-        return r;
-    r = rtc_attach(vm);
-    if (r != VMM_OK)
-        return r;
-    r = acpi_pm_attach(vm);
-    if (r != VMM_OK)
-        return r;
-
-    /* PCI 设备要在生成 MP table 之前注册完：MP table 按已插设备列中断项 */
-    r = pci_bus_init(&pci, vm);
-    if (r != VMM_OK)
-        return r;
-    /* 磁盘控制器 attach 时要按镜像容量生成设备信息，所以镜像先打开 */
-    for (i = 0; i < cfg->nr_drives; i++) {
-        r = blockdev_open(cfg->drives[i]);
-        if (r != VMM_OK)
-            return r;
-    }
-    for (i = 0; i < cfg->nr_devices; i++) {
-        r = vmm_device_attach(&cfg->devices[i], vm, &pci);
-        if (r != VMM_OK)
-            return r;
-    }
-    /* 网卡 attach 时登记了收帧回调，之后才能打开后端开始收帧 */
-    for (i = 0; i < cfg->nr_netdevs; i++) {
-        r = netdev_open(cfg->netdevs[i], loop);
-        if (r != VMM_OK)
-            return r;
-    }
+    int r;
 
     /* vmlinux 还是 bzImage 由文件头决定，见 boot/kernel_loader.h */
     r = kernel_load(vm, cfg->payload_path, &kimg);
@@ -546,7 +528,7 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     }
 
     /* 中断拓扑同时用两种格式描述，guest 内核开了哪个就用哪个 */
-    r = mptable_setup(vm, vm->nr_vcpus, &pci);
+    r = mptable_setup(vm, vm->nr_vcpus, &g_pci);
     if (r != VMM_OK)
         return r;
     r = acpi_setup(vm, vm->nr_vcpus, &rsdp);
@@ -583,10 +565,63 @@ static int boot_linux(struct vmm_vm *vm, struct vmm_vcpu *vcpu,
     if (r != VMM_OK)
         return r;
 
-    r = boot_setup_linux64(vcpu, &layout, kimg.entry_gpa, ZP_BOOT_PARAMS_GPA);
+    return boot_setup_linux64(&vm->vcpus[0], &layout, kimg.entry_gpa,
+                              ZP_BOOT_PARAMS_GPA);
+}
+
+/* 只做一次的部分：挂设备、打开磁盘和网络后端、启动控制台，再做第一次
+ * 装载。设备的复位回调在这里按挂载顺序登记，PCI 总线先于它上面的设备。 */
+static int boot_linux(struct vmm_vm *vm, const struct vmm_config *cfg,
+                      struct serial8250 *com1, struct event_loop *loop)
+{
+    int i, r;
+
+    com1->irq_set    = irqchip_irq_cb;
+    com1->irq_opaque = vm;
+
+    r = i8042_attach(vm);
+    if (r == VMM_OK)
+        r = vmm_register_reset(vm, "i8042", i8042_reset, NULL);
+    if (r != VMM_OK)
+        return r;
+    /* RTC 不登记复位回调：CMOS RAM 由电池供电，复位不改变它的内容；这个
+     * 模型不产生中断，也就没有中断允许位之类要在复位时清掉的状态 */
+    r = rtc_attach(vm);
+    if (r != VMM_OK)
+        return r;
+    r = acpi_pm_attach(vm);
+    if (r == VMM_OK)
+        r = vmm_register_reset(vm, "acpi-pm", acpi_pm_reset, NULL);
     if (r != VMM_OK)
         return r;
 
+    /* PCI 设备要在生成 MP table 之前注册完：MP table 按已插设备列中断项 */
+    r = pci_bus_init(&g_pci, vm);
+    if (r == VMM_OK)
+        r = vmm_register_reset(vm, "pci", pci_bus_reset, &g_pci);
+    if (r != VMM_OK)
+        return r;
+    /* 磁盘控制器 attach 时要按镜像容量生成设备信息，所以镜像先打开 */
+    for (i = 0; i < cfg->nr_drives; i++) {
+        r = blockdev_open(cfg->drives[i]);
+        if (r != VMM_OK)
+            return r;
+    }
+    for (i = 0; i < cfg->nr_devices; i++) {
+        r = vmm_device_attach(&cfg->devices[i], vm, &g_pci);
+        if (r != VMM_OK)
+            return r;
+    }
+    /* 网卡 attach 时登记了收帧回调，之后才能打开后端开始收帧 */
+    for (i = 0; i < cfg->nr_netdevs; i++) {
+        r = netdev_open(cfg->netdevs[i], loop);
+        if (r != VMM_OK)
+            return r;
+    }
+
+    r = linux_load_images(vm);
+    if (r != VMM_OK)
+        return r;
     return console_start(vm, com1, loop);
 }
 
@@ -661,11 +696,18 @@ int main(int argc, char **argv)
     /* COM1：所有模式都挂上，串口载荷和 Linux guest 的主输出通道 */
     serial8250_init(&com1, STDOUT_FILENO);
     r = serial8250_attach(&vm, &com1, SERIAL_COM1_BASE, SERIAL_COM1_IRQ);
+    if (r == VMM_OK)
+        r = vmm_register_reset(&vm, "serial8250", serial8250_reset, &com1);
     if (r != VMM_OK)
         goto out;
 
     if (cfg.mode == VMM_BOOT_LINUX) {
-        r = boot_linux(&vm, vcpu, &cfg, &com1, &loop);
+        r = boot_linux(&vm, &cfg, &com1, &loop);
+        if (r != VMM_OK)
+            goto out;
+        /* 只有 Linux 模式有复位来源（i8042）。在第一次 KVM_RUN 之前存，
+         * 存下的才是上电状态 */
+        r = vm_power_on_save(&vm);
         if (r != VMM_OK)
             goto out;
         goto run;
@@ -724,7 +766,17 @@ run:
     }
     vmm_info("--- entering guest ---");
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    r = vm_run(&vm);
+    /* guest 请求复位时 vm_run 照常返回（vCPU 线程都已 join），复位后重新
+     * 运行。I/O 线程和控制台在复位期间继续工作，vm_reset 持 io_lock 把它们
+     * 挡在设备外面 */
+    for (;;) {
+        r = vm_run(&vm);
+        if (r != VMM_OK || !vm.reset_requested)
+            break;
+        r = vm_reset(&vm, linux_load_images, &vm);
+        if (r != VMM_OK)
+            break;
+    }
     clock_gettime(CLOCK_MONOTONIC, &t1);
     /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
     evl_stop(&loop);

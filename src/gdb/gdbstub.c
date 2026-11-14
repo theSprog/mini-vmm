@@ -207,6 +207,35 @@ void gdbstub_vm_stopping(struct gdbstub *g)
     wake_thread(g);
 }
 
+void gdbstub_reset_before(struct gdbstub *g)
+{
+    void *hva;
+    int i;
+
+    pthread_mutex_lock(&g->lock);
+    for (i = 0; i < g->bps.nr_sw; i++)
+        if (gpa_to_hva(g->vm, g->bps.sw[i].gpa, 1, &hva) == GPA_OK)
+            *(uint8_t *)hva = g->bps.sw[i].orig;
+    pthread_mutex_unlock(&g->lock);
+}
+
+void gdbstub_reset_after(struct gdbstub *g)
+{
+    uint8_t *hva;
+    int i;
+
+    pthread_mutex_lock(&g->lock);
+    for (i = 0; i < g->bps.nr_sw; i++) {
+        if (gpa_to_hva(g->vm, g->bps.sw[i].gpa, 1, (void **)&hva) != GPA_OK)
+            continue;
+        g->bps.sw[i].orig = *hva;
+        *hva = GDB_X86_INT3;
+    }
+    pthread_cond_broadcast(&g->cv);
+    pthread_mutex_unlock(&g->lock);
+    wake_thread(g);
+}
+
 /* 按断点表和单步标记给每个暂停中的 vCPU 设 guest debug，再放行 act 里
  * 不是 NONE 的 vCPU。调用时所有 vCPU 都已停稳。 */
 static void resume_locked(struct gdbstub *g, const enum rsp_action *act)
@@ -547,7 +576,14 @@ static bool handle_wake(struct gdbstub *g)
         pthread_mutex_unlock(&g->lock);
         return true;
     }
-    ending = !g->vm->running;
+    /* 复位中的 VM 也是 running == false，靠 reset_requested 区分；复位期间
+     * 的停止事件留到 gdbstub_reset_after() 再唤醒时报告，那时 vCPU 线程已经
+     * 重新起来，gdb 读到的是复位后的状态 */
+    if (__atomic_load_n(&g->vm->reset_requested, __ATOMIC_SEQ_CST)) {
+        pthread_mutex_unlock(&g->lock);
+        return false;
+    }
+    ending = !__atomic_load_n(&g->vm->running, __ATOMIC_SEQ_CST);
     report = g->stopping && !ending;
     if (report) {
         wait_all_stopped_locked(g);

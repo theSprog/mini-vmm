@@ -174,6 +174,9 @@ struct pci_device {
     int      slot;
     uint8_t  cfg[PCI_CFG_SPACE_SIZE];
     uint8_t  wmask[PCI_CFG_SPACE_SIZE];
+    /* 注册完成时的配置空间，也就是"固件交给 OS"时的样子（BAR 已分配、
+     * decode 已打开），整机复位时拷回 cfg */
+    uint8_t  cfg_power_on[PCI_CFG_SPACE_SIZE];
     bool     intx_level;           /* 设备内部的中断请求电平 */
     bool     dma_blocked_logged;   /* Bus Master 关闭时的 DMA 只记一次日志 */
     bool     msi_was_enabled;      /* 上次配置写之后的 MSI Enable，用来记切换 */
@@ -196,6 +199,11 @@ struct pci_bus {
 
 /* 注册 conf1 两个端口，把 host bridge 放进 slot 0 */
 int  pci_bus_init(struct pci_bus *bus, struct vmm_vm *vm);
+
+/* 整机复位回调（reset.h），opaque 是 struct pci_bus *。配置空间回到
+ * pci_register_device 完成时的内容，BAR decode 随之更新，INTx 全部撤销。
+ * 在挂在总线上的设备自己的复位回调之前调用。 */
+void pci_bus_reset(void *opaque);
 
 /* 把设备放进下一个空 slot：生成配置空间，为每个 BAR 占一个 I/O 表项，
  * 分配地址并打开 decode。dev 的生命周期必须覆盖整个 VM 运行期。 */

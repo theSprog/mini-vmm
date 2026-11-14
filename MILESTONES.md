@@ -26,14 +26,15 @@
 | 3 | pci-bus ✓ |
 | 4 | emu-net ✓ · emu-blk ✓ |
 | 5 | pci-msi ✓ |
-| 6 | arch-distro |
-| 7 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
-| 8 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
-| 9 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
-| 10 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
-| 11 | virtio-mmio · virtqueue-packed · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
-| 12 | virtio-fs · sriov-pf-driver · guest-vfio · live-migration |
-| 13 | vfio-pci · postcopy |
+| 6 | system-reset ✓ |
+| 7 | arch-distro |
+| 8 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
+| 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
+| 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
+| 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
+| 12 | virtio-mmio · virtqueue-packed · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
+| 13 | virtio-fs · sriov-pf-driver · guest-vfio · live-migration |
+| 14 | vfio-pci · postcopy |
 
 层级表由 `tools/check_milestones.py --write` 生成，增删里程碑或改依赖后重新生成；`make test milestones` 会检查依赖有没有写错、表有没有过时。层级只说明“能不能开始”，不是推荐顺序。推荐顺序是文档顺序：先打通到 arch-distro，然后按章节往下走。
 
@@ -154,9 +155,20 @@
 - [x] guest 关闭 MSI 后回到 INTx，设备照常工作
 - [x] MSI 地址和数据非法时有诊断输出，不会静默丢弃中断
 
+### system-reset — 整机复位
+
+依赖: smp, emu-net, emu-blk, pci-msi · 参考: `linux/kvm.h`（`KVM_GET/SET_REGS`、`SREGS`、`XSAVE`、`XCRS`、`MSRS`、`LAPIC`、`MP_STATE`、`VCPU_EVENTS`、`DEBUGREGS`、`IRQCHIP`、`PIT2`，`KVM_IRQ_LINE`）、host 内核 `arch/x86/kvm/ioapic.c` 与 `i8259.c`、8042 datasheet
+
+guest 请求复位时，VMM 在同一个进程里把整机带回上电状态再启动 guest，相当于按下真机的 reset 键。要做到这一点，必须先说清"上电状态"由哪几部分组成：vCPU 和内核态中断控制器的状态、中断线电平、用户态设备的寄存器、装载进内存的启动镜像。snapshot 里程碑保存和恢复的也是这几部分，用的是同一组 ioctl。
+
+- [x] guest 经 i8042 请求复位后，所有 vCPU、内核态 PIC/IOAPIC/PIT、中断线电平和用户态设备都回到上电状态，内核和 initrd 重新装载后 guest 再次启动；磁盘镜像和 TAP 在复位前后保持打开
+- [x] BusyBox guest 在 `--smp 4` 下连续 `reboot -f` 多次，每次都重新进入 shell，所有 AP 都重新上线，每次启动的设备探测结果一致
+- [x] `--no-reboot` 时复位请求让 VMM 退出，guest panic（`panic=-1`）不会无限重启
+- [x] gdb 连接跨越复位保持，复位前设下的软件断点在下一次启动时仍然命中
+
 ### arch-distro — 启动完整的 Arch Linux
 
-依赖: emu-net, pci-msi, smp, exit-stats
+依赖: emu-net, pci-msi, smp, exit-stats, system-reset
 
 VMM 要能像 QEMU 一样承载一个未经裁剪的发行版。Arch 官方内核是一份和 BusyBox 测试内核完全不同的配置，能顺带检验“VMM 不假设 guest 内核配置”这条原则。
 

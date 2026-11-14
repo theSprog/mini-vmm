@@ -65,6 +65,7 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
 
 int  mem_init(struct vmm_vm *vm, uint64_t sz)   { (void)vm; (void)sz; return VMM_OK; }
 void mem_destroy(struct vmm_vm *vm)             { (void)vm; }
+void vm_power_on_free(struct vmm_vm *vm)        { (void)vm; }
 
 int  kvm_open(void)                             { return -1; }
 int  kvm_get_api_version(int f)                 { (void)f; return 12; }
@@ -165,7 +166,7 @@ static struct vmm_vcpu  g_vcpu;
 static struct pci_bus   g_bus;
 static struct pci_test  g_dev;
 
-static void vm_reset(void)
+static void test_vm_init(void)
 {
     memset(&g_vm, 0, sizeof(g_vm));
     g_vm.kvm_fd = g_vm.vm_fd = -1;
@@ -255,7 +256,7 @@ static uint64_t linux_bar_size(int slot, int bar)
 
 static void setup(void)
 {
-    vm_reset();
+    test_vm_init();
     g_irq_log[0] = 0;
     CHECK_U64(pci_bus_init(&g_bus, &g_vm), VMM_OK, "pci_bus_init");
     CHECK_U64(pci_test_attach(&g_dev, &g_bus), VMM_OK, "pci_test_attach");
@@ -508,7 +509,7 @@ static void case_register_errors(void)
     int i, r;
 
     T_CASE("注册：非法 BAR 大小、窗口耗尽、slot 耗尽都要报错");
-    vm_reset();
+    test_vm_init();
     CHECK_U64(pci_bus_init(&g_bus, &g_vm), VMM_OK, "pci_bus_init");
 
     memset(devs, 0, sizeof(devs));
@@ -524,7 +525,7 @@ static void case_register_errors(void)
     CHECK(g_bus.devs[1] == NULL, "rejected device must not occupy a slot");
 
     /* 256 MiB 的 BAR：窗口 [0xC0000000, 0xFEC00000) 放得下 3 个 */
-    vm_reset();
+    test_vm_init();
     pci_bus_init(&g_bus, &g_vm);
     for (i = 0; i < 4; i++) {
         devs[i].name = "big";
@@ -536,7 +537,7 @@ static void case_register_errors(void)
                   "256 MiB BAR #%d (window ends at 0xFEC00000)", i);
     }
 
-    vm_reset();
+    test_vm_init();
     pci_bus_init(&g_bus, &g_vm);
     memset(devs, 0, sizeof(devs));
     for (i = 1; i <= PCI_MAX_SLOTS; i++) {

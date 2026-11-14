@@ -11,5 +11,7 @@
 struct vmm_vm;
 
 int i8042_attach(struct vmm_vm *vm);
+/* 整机复位回调（reset.h）：控制器回到 BIOS 交接时的状态，输出缓冲清空 */
+void i8042_reset(void *opaque);
 
 #endif /* DEVICES_I8042_H */

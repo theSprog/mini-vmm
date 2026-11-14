@@ -749,6 +749,7 @@ void vm_destroy(struct vmm_vm *vm)
         v->fd = -1;
     }
 
+    vm_power_on_free(vm);
     mem_destroy(vm);
 
     if (vm->vm_fd >= 0)

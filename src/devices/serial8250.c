@@ -255,17 +255,37 @@ static int serial_write(void *opaque, uint64_t off, uint32_t size,
     return VMM_OK;
 }
 
+/* 寄存器的上电值。接收 FIFO 一并清空：复位前敲进来、还没被读走的字节
+ * 不该出现在下一次启动的 shell 里 */
+static void serial_power_on(struct serial8250 *s)
+{
+    s->ier = s->fcr = s->lcr = s->mcr = s->scr = s->dll = s->dlm = 0;
+    s->iir = UART_IIR_NO_INT;
+    s->lsr = UART_LSR_THRE | UART_LSR_TEMT;
+    /* modem 线常态：DCD/DSR/CTS 有效，像一根接好的线 */
+    s->msr = UART_MSR_DCD | UART_MSR_DSR | UART_MSR_CTS;
+    s->rx_head = s->rx_tail = 0;
+    s->thri_pending = false;
+}
+
 int serial8250_init(struct serial8250 *s, int out_fd)
 {
     memset(s, 0, sizeof(*s));
     s->out_fd = out_fd;
-    s->iir    = UART_IIR_NO_INT;
-    s->lsr    = UART_LSR_THRE | UART_LSR_TEMT;
-    /* modem 线常态：DCD/DSR/CTS 有效，像一根接好的线 */
-    s->msr    = UART_MSR_DCD | UART_MSR_DSR | UART_MSR_CTS;
     s->irq    = -1;
+    serial_power_on(s);
     pthread_mutex_init(&s->lock, NULL);
     return VMM_OK;
+}
+
+void serial8250_reset(void *opaque)
+{
+    struct serial8250 *s = opaque;
+
+    pthread_mutex_lock(&s->lock);
+    serial_power_on(s);
+    update_irq(s);
+    pthread_mutex_unlock(&s->lock);
 }
 
 int serial8250_attach(struct vmm_vm *vm, struct serial8250 *s,

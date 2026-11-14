@@ -139,7 +139,7 @@ CUR_NAME="reboot -f 走 i8042 的 0xFE 脉冲"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
 CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 90 --stop 'reboot -f' \
-    -- "$VMM" --mode linux --mem "$MEM" --trace-pio "$TRACE" \
+    -- "$VMM" --mode linux --no-reboot --mem "$MEM" --trace-pio "$TRACE" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 # trace 的最后一行就是触发退出的那次写，见 vm.c 里 pio_trace() 的位置

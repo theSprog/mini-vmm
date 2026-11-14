@@ -600,7 +600,37 @@ static int dev_setup(struct pci_bus *bus, struct pci_device *d)
      * 驱动接管之前设备不该能写 guest 内存。 */
     cfg_set16(d, PCI_COMMAND, cmd_mask & (PCI_COMMAND_IO | PCI_COMMAND_MEMORY));
     bars_update(d);
+    memcpy(d->cfg_power_on, d->cfg, sizeof(d->cfg));
     return VMM_OK;
+}
+
+/* 整机复位时没有固件重新枚举总线，配置空间直接回到注册完成时的样子，
+ * guest 看到的仍是"固件已经分配好"的状态。MSI 统计计数跨越复位保留，和
+ * --exit-stats 一样统计的是整个进程的运行。 */
+void pci_bus_reset(void *opaque)
+{
+    struct pci_bus *bus = opaque;
+    int s, line;
+
+    bus->conf1_addr = 0;
+    for (s = 0; s < PCI_MAX_SLOTS; s++) {
+        struct pci_device *d = bus->devs[s];
+
+        if (!d)
+            continue;
+        memcpy(d->cfg, d->cfg_power_on, sizeof(d->cfg));
+        d->intx_level         = false;
+        d->dma_blocked_logged = false;
+        d->msi_was_enabled    = false;
+        d->msi_drop_run       = 0;
+        bars_update(d);
+    }
+    for (line = 0; line < PCI_INTX_LINES; line++) {
+        if (bus->intx_line[line]) {
+            bus->intx_line[line] = false;
+            irqchip_set_irq(bus->vm, PCI_INTX_GSI_BASE + line, 0);
+        }
+    }
 }
 
 int pci_register_device(struct pci_bus *bus, struct pci_device *dev)

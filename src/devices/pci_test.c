@@ -90,6 +90,13 @@ static int pci_test_dev_attach(const struct vmm_device *d, struct vmm_vm *vm,
     return pci_test_attach(d->dev, bus);
 }
 
+static void pci_test_reset(void *dev)
+{
+    struct pci_test *t = dev;
+
+    t->scratch = 0;
+}
+
 static const char *const pci_test_props[] = { "driver", NULL };
 
 const struct vmm_device_type pci_test_device_type = {
@@ -98,4 +105,5 @@ const struct vmm_device_type pci_test_device_type = {
     .props  = pci_test_props,
     .create = pci_test_create,
     .attach = pci_test_dev_attach,
+    .reset  = pci_test_reset,
 };

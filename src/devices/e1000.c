@@ -1193,6 +1193,13 @@ static int e1000_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pc
     return pci_register_device(bus, p);
 }
 
+/* 整机复位等同于上电：CTRL.RST 的效果加上 PCI 配置空间复位（后者由 PCI
+ * 总线的复位回调完成）。EEPROM 是非易失的，内容不变。 */
+static void e1000_power_on_reset(void *dev)
+{
+    e1000_reset(dev);
+}
+
 static const char *const e1000_props[] = { "driver", "netdev", "mac", NULL };
 
 const struct vmm_device_type e1000_device_type = {
@@ -1201,4 +1208,5 @@ const struct vmm_device_type e1000_device_type = {
     .props  = e1000_props,
     .create = e1000_create,
     .attach = e1000_attach,
+    .reset  = e1000_power_on_reset,
 };

@@ -90,7 +90,7 @@ end_case
 
 manual_guide() {
 guide "看 guest 把哪些早期结构放进了高段" \
-"./build/vmm --mode linux --mem $MEM --initrd $INITRD \\
+"./build/vmm --mode linux --no-reboot --mem $MEM --initrd $INITRD \\
     --append rdinit=/nonexistent \$VMLINUX 2>&1 | grep -a NODE_DATA" \
 "NODE_DATA(0) allocated [mem 0x17ffc1000-0x17fffffff] 之类：memblock 自顶向下分配，
 最早的分配就落在高段末尾，说明内核启动时已经在读写 4GiB 以上的 memslot"
