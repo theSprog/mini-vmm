@@ -48,7 +48,10 @@ SRCS := \
 	src/io/event_loop.c \
 	src/kvm_stats.c \
 	src/exit_stats.c \
-	src/smp.c
+	src/smp.c \
+	src/gdb/rsp.c \
+	src/gdb/x86.c \
+	src/gdb/gdbstub.c
 
 OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
@@ -143,7 +146,7 @@ clean:
 
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
-               event-loop exit-stats pci-bus emu-net emu-blk pci-msi
+               event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -180,7 +183,8 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/blockdev_test \
              $(BUILD)/tests/e1000_test \
              $(BUILD)/tests/ahci_test \
-             $(BUILD)/tests/aml_test
+             $(BUILD)/tests/aml_test \
+             $(BUILD)/tests/gdb_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
 # 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
@@ -261,6 +265,10 @@ $(BUILD)/tests/ahci_test: tests/unit/ahci_test.c src/devices/ahci.c src/block/bl
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/aml_test: tests/unit/aml_test.c src/boot/aml.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/gdb_test: tests/unit/gdb_test.c src/gdb/rsp.c src/gdb/x86.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 

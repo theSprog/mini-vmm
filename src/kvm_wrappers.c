@@ -116,6 +116,31 @@ int kvm_set_regs(int vcpu_fd, const struct kvm_regs *regs)
     return KVM_IOCTL(vcpu_fd, KVM_SET_REGS, regs) < 0 ? VMM_ERR_SYS : VMM_OK;
 }
 
+int kvm_get_fpu(int vcpu_fd, struct kvm_fpu *fpu)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_GET_FPU, fpu) < 0 ? VMM_ERR_SYS : VMM_OK;
+}
+
+int kvm_set_guest_debug(int vcpu_fd, const struct kvm_guest_debug *dbg)
+{
+    return KVM_IOCTL(vcpu_fd, KVM_SET_GUEST_DEBUG, dbg) < 0 ? VMM_ERR_SYS
+                                                           : VMM_OK;
+}
+
+int kvm_translate(int vcpu_fd, uint64_t gva, uint64_t *gpa)
+{
+    struct kvm_translation tr;
+
+    memset(&tr, 0, sizeof(tr));
+    tr.linear_address = gva;
+    if (KVM_IOCTL(vcpu_fd, KVM_TRANSLATE, &tr) < 0)
+        return VMM_ERR_SYS;
+    if (!tr.valid)
+        return VMM_ERR_GUEST;
+    *gpa = tr.physical_address;
+    return VMM_OK;
+}
+
 int kvm_get_sregs(int vcpu_fd, struct kvm_sregs *sregs)
 {
     return KVM_IOCTL(vcpu_fd, KVM_GET_SREGS, sregs) < 0 ? VMM_ERR_SYS : VMM_OK;

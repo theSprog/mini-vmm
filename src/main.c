@@ -25,6 +25,7 @@
 #include "smp.h"
 #include "io/event_loop.h"
 #include "exit_stats.h"
+#include "gdb/gdbstub.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -98,6 +99,7 @@ void vmm_config_default(struct vmm_config *cfg)
     cfg->dump_on_exit = false;
     cfg->dump_gpa     = 0x500000;
     cfg->dump_len     = 32;
+    cfg->gdb_port     = -1;
 }
 
 void vmm_usage(const char *prog)
@@ -131,6 +133,9 @@ void vmm_usage(const char *prog)
 "  --exit-stats FILE      When the guest stops, write VM exit counts to FILE\n"
 "                           ('-' = stderr): user-space exits per reason and\n"
 "                           per device, plus KVM's own counters\n"
+"  --gdb PORT             Serve the GDB remote protocol on 127.0.0.1:PORT\n"
+"                           (0 = any free port, printed in the log); the guest\n"
+"                           stays paused until gdb connects\n"
 "  --device DRIVER[,PROP=VALUE...]\n"
 "                         linux: add a PCI device, repeatable; devices take\n"
 "                           slots 1, 2, ... in command line order.\n"
@@ -294,6 +299,17 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         } else if (!strcmp(a, "--trace-mmio")) {
             NEED_ARG();
             cfg->trace_mmio_path = argv[i];
+        } else if (!strcmp(a, "--gdb")) {
+            char *end;
+            long n;
+
+            NEED_ARG();
+            n = strtol(argv[i], &end, 10);
+            if (end == argv[i] || *end || n < 0 || n > 65535) {
+                vmm_err("--gdb must be a TCP port in 0..65535: %s", argv[i]);
+                return VMM_ERR_INVAL;
+            }
+            cfg->gdb_port = (int)n;
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];
@@ -701,6 +717,11 @@ run:
     r = evl_start(&loop);
     if (r != VMM_OK)
         goto out;
+    if (cfg.gdb_port >= 0) {
+        r = gdbstub_init(&vm, (uint16_t)cfg.gdb_port);
+        if (r != VMM_OK)
+            goto out;
+    }
     vmm_info("--- entering guest ---");
     clock_gettime(CLOCK_MONOTONIC, &t0);
     r = vm_run(&vm);
@@ -730,6 +751,8 @@ run:
     }
 
 out:
+    /* 先于 vm_destroy：gdbstub 线程可能还在用 vCPU fd 和 guest 内存 */
+    gdbstub_destroy(&vm);
     evl_destroy(&loop);
     for (i = 0; i < cfg.nr_netdevs; i++)
         netdev_close(cfg.netdevs[i]);

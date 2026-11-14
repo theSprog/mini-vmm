@@ -18,6 +18,7 @@
 #include "smp.h"
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
+#include "gdb/gdbstub.h"
 
 /* ------------------------------------------------------------------ */
 /* CPUID 拓扑                                                          */
@@ -272,6 +273,10 @@ void vm_request_stop(struct vmm_vm *vm)
             !pthread_equal(v->thread, pthread_self()))
             pthread_kill(v->thread, SIGUSR1);
     }
+    /* 被 gdb 暂停的 vCPU 不在 KVM_RUN 里，信号叫不醒它，要广播 gdbstub 的
+     * 条件变量。必须在所有 should_stop 置位之后调用，见 park_locked() */
+    if (vm->gdb)
+        gdbstub_vm_stopping(vm->gdb);
 }
 
 static void *vcpu_thread(void *arg)

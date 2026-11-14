@@ -22,7 +22,7 @@
 |---|---|
 | 0 | kvm-basics ✓ |
 | 1 | linux-boot ✓ |
-| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub |
+| 2 | legacy-devices ✓ · smp ✓ · guest-memory ✓ · event-loop ✓ · exit-stats ✓ · gdbstub ✓ |
 | 3 | pci-bus ✓ |
 | 4 | emu-net ✓ · emu-blk ✓ |
 | 5 | pci-msi ✓ |
@@ -108,9 +108,9 @@
 
 依赖: linux-boot · 参考: GDB Remote Serial Protocol、`linux/kvm.h`（`KVM_SET_GUEST_DEBUG`、`KVM_TRANSLATE`）
 
-- [ ] gdb 经 TCP 连接 VMM，加载 vmlinux 符号后能在 `start_kernel` 停下
-- [ ] 软件断点、硬件断点、单步、继续都正确；停下时所有 vCPU 一起停
-- [ ] 读写寄存器和内存（GVA 经页表翻译到 GPA）正确，每个 vCPU 在 gdb 里是一个线程
+- [x] gdb 经 TCP 连接 VMM，加载 vmlinux 符号后能在 `start_kernel` 停下
+- [x] 软件断点、硬件断点、单步、继续都正确；停下时所有 vCPU 一起停
+- [x] 读写寄存器和内存（GVA 经页表翻译到 GPA）正确，每个 vCPU 在 gdb 里是一个线程
 
 放在 arch-distro 之前，是为了让后面排查发行版启动问题时有单步和断点可用。
 

@@ -65,6 +65,9 @@ int  kvm_get_mp_state(int f, uint32_t *st)      { (void)f; (void)st; return VMM_
 const char *kvm_mp_state_str(uint32_t st)       { (void)st; return "?"; }
 const struct arch_cpu_ops *arch_probe(void)     { return NULL; }
 int  irqchip_create(struct vmm_vm *vm)          { (void)vm; return VMM_OK; }
+/* vm.c 的运行循环引用 gdbstub；这里不跑 vCPU，桩函数不会被调用 */
+void gdbstub_vcpu_interrupted(struct vmm_vcpu *v) { (void)v; }
+int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v)  { (void)v; return VMM_ERR_GUEST; }
 
 #include "mutants.h"
 

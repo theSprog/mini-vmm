@@ -134,8 +134,10 @@ while IFS= read -r line; do
 done < "$FRAGMENT"
 [ "$bad" -eq 0 ] || die "Kconfig did not accept the fragment as written (unmet dependencies?)"
 
-log "build: make -j$jobs vmlinux bzImage"
-make -s -C "$src" O="$out" -j"$jobs" vmlinux bzImage >&2
+# scripts_gdb 不在 vmlinux/bzImage 的依赖里（只挂在 all 上），单独列出才会
+# 在构建目录里生成 gdb 自动加载的 vmlinux-gdb.py
+log "build: make -j$jobs vmlinux bzImage scripts_gdb"
+make -s -C "$src" O="$out" -j"$jobs" vmlinux bzImage scripts_gdb >&2
 
 release="$(make -s -C "$src" O="$out" kernelrelease)"
 log "done: Linux $release"

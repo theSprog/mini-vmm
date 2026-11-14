@@ -25,7 +25,9 @@ tests/
 ├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── net_peer.py     host 侧 TCP 对端：HTTP 提供随机数据、接收一次上传并算哈希，listen 好之后才报 ready
 ├── mutate.py       源码层 mutant 的运行器：在源码副本里替换一段文字，重新构建单元测试，看它红没红
-├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py）
+├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py）
+├── gdb_session.py  gdbstub e2e 的协调者：起 VMM 和 gdb，从 host 侧探测 vCPU 线程停在哪，gdb 退出后经串口关机
+├── gdb_checks.py   gdbstub e2e 里由 gdb -x 执行的检查脚本，每项打一行 GDBCHECK ok/FAIL
 ├── TEST_DESIGN.md  验证设计与批准记录
 ├── offline/        不需要 /dev/kvm，可以在任何 Linux 上跑
 │   ├── unit.sh         跑 build/tests/*_test，外加回归输入重放
@@ -36,7 +38,7 @@ tests/
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -53,6 +55,7 @@ tests/
 │   ├── blockdev_test.c     --drive 解析与引用规则；镜像加锁、多段读写、越界与溢出、只读盘、部分传输与 EINTR
 │   ├── e1000_test.c        e1000 设备模型：EEPROM 位操作、PHY、中断原因、TX 校验和与 TSO、RX 过滤与描述符环
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
+│   ├── gdb_test.c          gdb 远程协议：组包与转义、ack 与重发、g/p/P 的寄存器布局、m/M、Z/z 与 int3 隐藏、vCont 与停止应答、target.xml；x86 断点表、DR7、KVM_SET_GUEST_DEBUG 控制字、KVM_EXIT_DEBUG 归类、寄存器换算
 │   ├── event_loop_test.c   I/O 线程的派发、同批删除、停机契约
 │   └── kvm_stats_test.c    KVM_GET_STATS_FD 文件解析：乱序布局、不对齐、损坏文件
 └── fuzz/           libFuzzer target
@@ -84,8 +87,11 @@ tests/
 | `emu-net` | 是 | 是 | `--netdev` 参数和引用关系的报错早于创建 VM；在 `unshare -rn` 建的 namespace 里经 TAP 跑 Linux e1000 驱动：探测与链路、双向 ping、双向 TCP 哈希一致、两端 TCP 校验和错误为 0、20 万个 UDP 包的洪泛除 host 内核在 TAP 上丢的之外一个不少、且后端因环满暂停过（guest 用 48 项的接收环）、INTx 计数与 ICR 读次数和包数对得上、`--trace-mmio` 记录 |
 | `emu-blk` | 是 | 是 | `--drive` 参数和引用关系的报错早于创建 VM；Linux ahci 驱动绑定 AHCI 控制器，端口 0 链路建立、其余 5 个端口报告无设备，中断经 INTx 送达；IDENTIFY 出的型号和容量；guest 读 host 用 `mke2fs -d` 做的镜像、整盘和文件的 sha256 与 host 一致；guest mkfs 后写的文件由 host 用 `debugfs` 取出核对、`e2fsck` 无错；卸载时 flush 到达后端；NCQ 深度 32、文件系统读写经 PxSACT 发出，`libata.force=noncq` 时走 READ/WRITE DMA；host 截短镜像造出读错误，Linux 经日志 10h 定位出错的 tag 并恢复；`root=/dev/sda` 从盘启动 |
 | `pci-msi` | 是 | 是 | Linux ahci 驱动打开 MSI，`/proc/interrupts` 上走 PCI-MSI、每次完成都送达；运行中经 `msi_bus` 和重新绑定驱动回到 INTx（IO-APIC 17）再切回 MSI，读盘内容都与镜像一致；guest 把 MSI 的向量、地址、目标 ID 写坏时 VMM 报出 BDF、地址、数据和原因 |
+| `gdbstub` | 是 | 是 | 没改过的 gdb 按 vmlinux 符号在 `start_kernel`、`kernel_init` 停下，单步前进一条指令的长度，读写寄存器和内核虚拟地址的内存再还原，每个 vCPU 一个线程；Ctrl-C 时 host 的 `/proc/<pid>/task/*/syscall` 显示两个 vCPU 线程都从 `ioctl` 变成停在 `futex` 上；guest 启动时自己的 int3 被交还（VMM 报交还次数不为 0、没有 kernel BUG）；detach 后 guest 跑到关机，guest 自己重启时 gdb 收到退出报告 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
+
+`gdbstub` 还要求 PATH 里有 gdb，没有时 gdb 用例 SKIP。检查只用到 vmlinux 的符号表，不需要 DWARF。读 vCPU 线程的 `/proc/<pid>/task/*/syscall` 由 `gdb_session.py` 做而不是放进 gdb 脚本：Yama `ptrace_scope=1` 时只有 VMM 的祖先进程能读它，gdb 是 VMM 的兄弟进程。
 
 要在 guest shell 里执行命令的用例都通过 `tests/guest_shell.py`：每条命令等提示符出现后才发送，结束命令发出后等 VMM 自己退出。不能按固定延迟发送，因为 guest 串口驱动打开 tty 时会清空 RX 缓冲区，shell 起来之前送进去的字节全部丢失，而启动耗时随内核配置、vCPU 数和 host 负载变化。提示符格式和单条命令长度的约束见脚本头注释。需要在 guest 跑起来时观察 VMM 进程本身（线程、fd）的用例用 `--host`，它在提示符处于 host 上执行一条命令，`VMM_PID` 是 VMM 的 pid。
 

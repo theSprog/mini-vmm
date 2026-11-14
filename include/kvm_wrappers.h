@@ -35,6 +35,11 @@ int  kvm_set_regs(int vcpu_fd, const struct kvm_regs *regs);
 int  kvm_get_sregs(int vcpu_fd, struct kvm_sregs *sregs);
 int  kvm_set_sregs(int vcpu_fd, const struct kvm_sregs *sregs);
 int  kvm_run(int vcpu_fd);                        /* 处理 EINTR 重试 */
+int  kvm_get_fpu(int vcpu_fd, struct kvm_fpu *fpu);
+int  kvm_set_guest_debug(int vcpu_fd, const struct kvm_guest_debug *dbg);
+/* KVM_TRANSLATE：按 vCPU 当前的页表把线性地址翻译成 GPA。
+ * 翻译失败（页不存在）返回 VMM_ERR_GUEST，ioctl 本身失败返回 VMM_ERR_SYS。 */
+int  kvm_translate(int vcpu_fd, uint64_t gva, uint64_t *gpa);
 
 /* CPUID 透传：把 host 支持的 CPUID 叶子设给 vCPU。长模式起就需要，
  * 因为长模式要求 guest 能看到 CPUID.80000001h:EDX.LM。

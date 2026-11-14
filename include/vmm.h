@@ -68,6 +68,7 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
 struct vmm_vm;
 struct vmm_vcpu;
 struct arch_cpu_ops;
+struct gdbstub;
 
 /* ------------------------------------------------------------------ */
 /* IO 总线（PIO / MMIO 统一抽象）                                       */
@@ -197,6 +198,9 @@ struct vmm_config {
     /* --drive 给出的磁盘后端，道理同 netdevs，见 block/blockdev.h */
     struct blockdev *drives[VMM_MAX_DEVICES];
     int         nr_drives;
+
+    /* --gdb 的 TCP 端口，0 表示由内核分配，-1 表示不启用 gdbstub */
+    int         gdb_port;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -269,6 +273,10 @@ struct vmm_vm {
     pthread_mutex_t   io_lock;
 
     struct vmm_config cfg;
+
+    /* --gdb 时非 NULL，见 gdb/gdbstub.h。vCPU 运行循环和 vm_request_stop()
+     * 据此进入 gdbstub 的暂停逻辑 */
+    struct gdbstub *gdb;
 
     volatile bool   running;
     volatile bool   user_stop;         /* Ctrl-A x 触发的停机 */

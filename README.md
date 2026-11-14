@@ -18,6 +18,7 @@
 - 全模拟网卡 e1000（82540EM）：`--netdev tap,id=n0,ifname=tap0 --device e1000,netdev=n0`，Linux 自带的 e1000 驱动直接可用，支持校验和 offload 与 TSO
 - 全模拟 AHCI 磁盘控制器：`--drive id=d0,file=disk.img --device ahci,drive=d0`，后端是 raw 镜像，Linux 自带的 ahci 驱动直接可用，支持 NCQ（深度 32），能读写、能 `root=/dev/sda` 从盘启动
 - MSI：PCI 设备可以带单向量 MSI capability，AHCI 用上它，guest 关掉 MSI 时回到 INTx；guest 写进去的非法消息由 VMM 报出原因
+- `--gdb PORT`：用 gdb 调试 guest 内核，软件断点、硬件断点、单步、Ctrl-C，每个 vCPU 是 gdb 里的一个线程
 
 限制：MSI 只有单向量、每次都由 VMM 经 `KVM_SIGNAL_MSI` 注入，没有 MSI-X 和 irqfd；e1000 只用 INTx；磁盘 I/O 在 vCPU 线程上同步执行，NCQ 命令在设备里实际一次只有一条；PCI 只有总线 0，没有 PCIe 扩展配置空间。
 
@@ -47,6 +48,23 @@ make test-list                         # 列出所有 suite
 ```
 
 e2e suite 以里程碑 ID 命名，需要 `/dev/kvm`；需要 guest 内核的用例读 `VMLINUX=`（bzImage 用例另读 `BZIMAGE=`），没设时取 `guest-kernel/` 里的产物，那里也没有时 SKIP。测试的组织方式和判据见 [`tests/README.md`](tests/README.md)。
+
+## 调试：`--gdb`
+
+```sh
+./build/vmm --mode linux --mem 512M --smp 2 --gdb 1234 \
+    --initrd build/initramfs.cpio.gz guest-kernel/vmlinux
+
+gdb -iex 'add-auto-load-safe-path guest-kernel' guest-kernel/vmlinux \
+    -ex 'target remote :1234' -ex 'hbreak start_kernel' -ex 'continue'
+```
+
+VMM 只在 127.0.0.1 上监听，`--gdb 0` 由内核分配端口，实际端口打在日志里。guest 从第一条指令起就停着，等 gdb 连上并 continue。gdb 停下时所有 vCPU 一起停；detach（或 gdb 退出）后 guest 继续跑。
+
+- 内核刚启动、还没切到自己的页表时，`break` 报 `Cannot insert breakpoint`：软件断点要把 int3 写进内存，得先把内核虚拟地址翻译成 GPA，这时翻译不了。用 `hbreak`，硬件断点比较的是线性地址，不需要翻译。
+- `tools/build_guest_kernel.sh` 构建的内核带 DWARF 和 `vmlinux-gdb.py`，上面的 `add-auto-load-safe-path` 让 gdb 加载它，`lx-dmesg`、`lx-ps` 等命令可用。
+- 没有硬件 watchpoint：VMM 对 Z2–Z4 回空包，gdb 手册说这时 `watch` 退回软件 watchpoint，单步执行、慢得多，而且只看当前线程的改动，换句话说多 vCPU 的内核里基本不可用。数据断点要另外编码 DR7 的 R/W、LEN 位并处理 DR6 的命中归属，这个里程碑的验收只要求指令断点。
+- host 内核低于 5.16 时 KVM 没有 `KVM_GUESTDBG_BLOCKIRQ`，VMM 启动时会警告，开着中断单步可能走进中断处理函数。
 
 ## 观测：`--trace-pio` 与 `--trace-mmio`
 

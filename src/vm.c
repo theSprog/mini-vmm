@@ -13,6 +13,7 @@
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
 #include "devices/irqchip.h"
+#include "gdb/gdbstub.h"
 
 /* ------------------------------------------------------------------ */
 /* IO 总线                                                             */
@@ -521,6 +522,16 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
         vcpu_dump_state(vcpu);
         return VMM_ERR_GUEST;
 
+    case KVM_EXIT_DEBUG:
+        /* 只有 gdbstub 打开 guest debug 后才会出现 */
+        if (vcpu->vm->gdb)
+            return gdbstub_vcpu_debug_exit(vcpu);
+        vmm_err("vCPU %d: KVM_EXIT_DEBUG without gdbstub: exception %u "
+                "pc 0x%llx", vcpu->id, run->debug.arch.exception,
+                (unsigned long long)run->debug.arch.pc);
+        vcpu_dump_state(vcpu);
+        return VMM_ERR_GUEST;
+
     case KVM_EXIT_SYSTEM_EVENT:
         vmm_info("vCPU %d: SYSTEM_EVENT type=%u", vcpu->id,
                  run->system_event.type);
@@ -559,6 +570,10 @@ int vcpu_run_loop(struct vmm_vcpu *vcpu)
                     vmm_dbg("vCPU %d: KVM_RUN interrupted, mp_state=%u (%s)",
                             vcpu->id, st, kvm_mp_state_str(st));
             }
+            /* gdb 要求暂停时停在这里。这一刻挂起的 IO 已经被 KVM 完成，
+             * 寄存器是一致的，见 gdb/gdbstub.h */
+            if (vcpu->vm->gdb)
+                gdbstub_vcpu_interrupted(vcpu);
             continue;
         }
         if (r != VMM_OK)
