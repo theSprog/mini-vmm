@@ -434,11 +434,13 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 
 ### bochs-display — 全模拟显示设备
 
-依赖: pci-bus, monitor · 参考: Bochs VBE（DISPI）接口说明、Linux `drivers/gpu/drm/tiny/bochs.c`
+依赖: pci-bus, monitor · 参考: Bochs VBE（DISPI）接口说明、Linux `drivers/gpu/drm/tiny/bochs.c`、RFC 6143（RFB 协议）
+
+画面经 VNC（RFB 协议）输出，VMM 是 RFB 服务器，RFB socket 挂在 event-loop 上。选 VNC 而不是 host 本地窗口有两个理由：WSL2 上的本地窗口要经过 WSLg 的 weston compositor，weston 卡死后只有重启 WSL 才能恢复，guest 也随之丢失；测试可以用自带的 RFB 客户端读取画面、发送输入，本地窗口做不到自动化验证。
 
 - [ ] framebuffer 位于 BAR，DISPI 寄存器可经 MMIO 访问，guest bochs DRM 驱动绑定并设置分辨率
-- [ ] 显示输出后端和设备模型分离，能把 guest 画面输出到 host 窗口，也能用 monitor 命令截图成图像文件
-- [ ] guest fbcon 的画面和截图内容一致
+- [ ] 显示输出后端和设备模型分离：标准 VNC 客户端（例如 TigerVNC）能连上并看到 guest 画面，monitor 命令能截图成图像文件
+- [ ] guest fbcon 的画面、截图和测试用 RFB 客户端收到的画面三者一致
 
 ---
 
@@ -514,10 +516,13 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 
 ### virtio-input — 输入设备
 
-依赖: virtio-pci, monitor · 参考: OASIS VirtIO Spec（Input Device）、`linux/virtio_input.h`
+依赖: virtio-pci, monitor, bochs-display · 参考: OASIS VirtIO Spec（Input Device）、`linux/virtio_input.h`、`linux/input-event-codes.h`、RFC 6143（KeyEvent、PointerEvent）、RFB 协议社区版文档（QEMU Extended Key Event）
 
-- [ ] 提供键盘和鼠标两个设备，guest `evtest` 能看到正确的设备能力描述
-- [ ] 来自 host 窗口或 monitor 命令的按键、移动事件送达 guest
+指点设备做成绝对坐标设备（tablet），因为 VNC 客户端发来的就是画面上的绝对坐标；相对移动的鼠标要求客户端把光标锁在窗口里，guest 光标和客户端光标还会错位。标准 RFB 的 KeyEvent 携带的是 X keysym，表示字符而不是物理键位，换算成 evdev 键码依赖键盘布局；QEMU Extended Key Event 直接携带扫描码，没有这个问题，所以两条路径都要支持。
+
+- [ ] 提供键盘和 tablet 两个设备，guest `evtest` 能看到正确的设备能力描述
+- [ ] VNC 客户端的按键、指针移动和点击送达 guest：客户端支持 QEMU Extended Key Event 时按扫描码转换，否则按 keysym 转换，两条路径都有测试
+- [ ] monitor 命令注入的按键和指针事件送达 guest
 
 ### virtio-vsock — guest 与 host 的 socket 通信
 
@@ -531,17 +536,17 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 依赖: virtio-pci, bochs-display · 参考: OASIS VirtIO Spec（GPU Device）、`linux/virtio_gpu.h`
 
 - [ ] 支持 2D 资源创建、attach backing、transfer、flush，guest 的 framebuffer console 能显示
-- [ ] 复用 bochs-display 的显示输出后端，窗口和截图都与 guest 画面一致
+- [ ] 复用 bochs-display 的显示输出后端，VNC 和截图都与 guest 画面一致；VNC 只发送 `RESOURCE_FLUSH` 给出的变化区域
 
 ### virtio-gpu-3d — virgl 3D 加速
 
 依赖: virtio-gpu · 参考: OASIS VirtIO Spec（GPU Device：3D 命令、capset、fence）、`linux/virtio_gpu.h`、virglrenderer 的 `virglrenderer.h`
 
-2D 模式下 guest 自己渲染，VMM 只搬像素；3D 模式下 guest 的 Mesa 把 GL 调用编码成 virgl 命令流，经 virtqueue 交给 VMM，由 host 的 virglrenderer 翻译成 host 的 GL 调用。要学的是图形命令怎样跨越虚拟机边界：context 和资源的生命周期、命令提交和 fence 同步。命令流本身的翻译交给 virglrenderer，不自己实现，因为那是图形 API 的工作，不涉及虚拟化机制。virglrenderer 需要 host 提供 EGL；没有 DRM render node 的 host（例如 WSL2 上只有 `/dev/dxg`）只能经窗口系统（Wayland/X）创建 EGL context，这一点影响显示后端的接口。
+2D 模式下 guest 自己渲染，VMM 只搬像素；3D 模式下 guest 的 Mesa 把 GL 调用编码成 virgl 命令流，经 virtqueue 交给 VMM，由 host 的 virglrenderer 翻译成 host 的 GL 调用。要学的是图形命令怎样跨越虚拟机边界：context 和资源的生命周期、命令提交和 fence 同步。命令流本身的翻译交给 virglrenderer，不自己实现，因为那是图形 API 的工作，不涉及虚拟化机制。virglrenderer 用 EGL 的 surfaceless 平台创建 GL context，不依赖窗口系统和 DRM render node，所以在只有 `/dev/dxg` 的 WSL2 上也能经 Mesa 的 D3D12 驱动使用 host GPU；画好的帧从 GPU 读回内存后交给 VNC 和截图。host 装了 `nvidia-utils` 时有个坑：libglvnd 按 `egl_vendor.d` 下的文件名顺序先加载 NVIDIA 的 EGL（`10_nvidia.json`），WSL2 里没有 NVIDIA 内核驱动，`eglInitialize` 会卡住，要用 `__EGL_VENDOR_LIBRARY_FILENAMES` 指定只加载 Mesa 的 `50_mesa.json`。
 
 - [ ] 声明 `VIRTIO_GPU_F_VIRGL`，capset 查询返回 virglrenderer 提供的内容，guest `eglinfo` 的 renderer 为 `virgl (<host 渲染器>)`
 - [ ] context 创建与销毁、资源与 context 的绑定、`SUBMIT_3D` 命令流交给 virglrenderer，fence 完成后才回写 used ring
-- [ ] guest 用 GL 渲染的画面经 scanout 显示，monitor 截图与之一致；host 没有可用的 GL 时测试报 SKIP 并说明缺什么
+- [ ] guest 用 GL 渲染的画面经 scanout 显示，VNC 和 monitor 截图与之一致；测试在没有窗口系统（不设 `DISPLAY` 和 `WAYLAND_DISPLAY`）时运行，host 没有可用的 GL 时报 SKIP 并说明缺什么
 
 ### virtio-balloon — 内存气球
 
