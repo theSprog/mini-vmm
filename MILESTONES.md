@@ -32,7 +32,7 @@
 | 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
-| 12 | virtio-mmio · virtqueue-packed · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
+| 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
 | 13 | virtio-fs · sriov-pf-driver · guest-vfio · live-migration |
 | 14 | vfio-pci · postcopy |
 
@@ -532,6 +532,16 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 
 - [ ] 支持 2D 资源创建、attach backing、transfer、flush，guest 的 framebuffer console 能显示
 - [ ] 复用 bochs-display 的显示输出后端，窗口和截图都与 guest 画面一致
+
+### virtio-gpu-3d — virgl 3D 加速
+
+依赖: virtio-gpu · 参考: OASIS VirtIO Spec（GPU Device：3D 命令、capset、fence）、`linux/virtio_gpu.h`、virglrenderer 的 `virglrenderer.h`
+
+2D 模式下 guest 自己渲染，VMM 只搬像素；3D 模式下 guest 的 Mesa 把 GL 调用编码成 virgl 命令流，经 virtqueue 交给 VMM，由 host 的 virglrenderer 翻译成 host 的 GL 调用。要学的是图形命令怎样跨越虚拟机边界：context 和资源的生命周期、命令提交和 fence 同步。命令流本身的翻译交给 virglrenderer，不自己实现，因为那是图形 API 的工作，不涉及虚拟化机制。virglrenderer 需要 host 提供 EGL；没有 DRM render node 的 host（例如 WSL2 上只有 `/dev/dxg`）只能经窗口系统（Wayland/X）创建 EGL context，这一点影响显示后端的接口。
+
+- [ ] 声明 `VIRTIO_GPU_F_VIRGL`，capset 查询返回 virglrenderer 提供的内容，guest `eglinfo` 的 renderer 为 `virgl (<host 渲染器>)`
+- [ ] context 创建与销毁、资源与 context 的绑定、`SUBMIT_3D` 命令流交给 virglrenderer，fence 完成后才回写 used ring
+- [ ] guest 用 GL 渲染的画面经 scanout 显示，monitor 截图与之一致；host 没有可用的 GL 时测试报 SKIP 并说明缺什么
 
 ### virtio-balloon — 内存气球
 
