@@ -48,6 +48,21 @@ TREE_VERSION="tree v2.3.2"
 # uptime 秒）。正常是一两秒；systemd 停 unit、给残留进程发 SIGTERM 后的
 # 等待上限都是 90 秒，超过 30 秒说明有一步是等到超时才过去的
 SHUTDOWN_MAX=30
+# 关机命令前加 exec：bash 被 systemctl 取代，systemctl 把关机任务排进队列
+# 就返回，串口上的登录会话随之结束，关机时不再有停在 readline 里的 bash。
+# 理由是 bash 5.3 / readline 8.3 有一个丢失唤醒的竞态：关机时 login 和
+# session scope 先后给 bash 发 SIGHUP，readline 在 rl_getc() 循环开头把记下
+# 的 SIGHUP 转交给 bash 的处理函数，后者只记下 terminating_signal；真正让
+# bash 退出的检查（rl_signal_event_hook）只在 pselect 返回 EINTR 后才调用。
+# 最后一个 SIGHUP 落在“循环开头”和“进入 pselect”之间时，bash 就带着这个
+# 标志睡下去，login 等它退出，systemd 等满 90 秒的停止超时才 SIGKILL，关机
+# 时间超过 SHUTDOWN_MAX。串口终端慢，readline 在这段窗口里写终端，所以
+# 窗口较宽，几十次重启就会撞上一次。shell 只是测试脚手架，它活到关机
+# 那一刻不验证 VMM 的任何行为。readline 开发分支已把循环开头处理过信号的
+# 情况也接到 rl_signal_event_hook 上；guest 镜像换到带这处修复的 bash/readline
+# 后可以去掉 exec，循环重启上百次看关机时间来重新判断
+REBOOT_CMD="exec systemctl reboot"
+POWEROFF_CMD="exec systemctl poweroff"
 
 # 基线负载（ARCH_DISTRO_BASELINE=1 时运行）。fio 用 O_DIRECT 读整块盘，
 # 每个 4 KiB 读请求都落到 AHCI 上，不经过页缓存也不需要先铺数据文件；
@@ -175,14 +190,14 @@ in_netns_distro() {
         --cmd "$LOCAL_CONF"
         --cmd "pacman --config /tmp/local.conf -Syu --noconfirm tree; echo PACMAN-RC-\$?"
         --cmd "tree --version | sed 's/^/INSTALLED /'"
-        --reboot "echo UPTIME1-\$(cut -d' ' -f1 /proc/uptime); systemctl reboot"
+        --reboot "echo UPTIME1-\$(cut -d' ' -f1 /proc/uptime); $REBOOT_CMD"
     )
     boot_checks 2
     BOOT_STEPS+=(--cmd "tree --version | sed 's/^/AFTER-REBOOT /'")
 
     vmm_args "$disk" "$uuid"
     python3 "$GUEST_SHELL" --timeout 300 --login root "${BOOT_STEPS[@]}" \
-        --stop "echo UPTIME2-\$(cut -d' ' -f1 /proc/uptime); systemctl poweroff" -- \
+        --stop "echo UPTIME2-\$(cut -d' ' -f1 /proc/uptime); $POWEROFF_CMD" -- \
         "${VMM_ARGS[@]}"
     echo "GUEST-RC-$?"
     echo "DHCP-LOG:"
@@ -213,7 +228,7 @@ in_netns_baseline() {
         esac
         vmm_args "$disk" "$uuid" --exit-stats "$work/bl-$run.stats"
         python3 "$GUEST_SHELL" --timeout 300 --login root "${BOOT_STEPS[@]}" \
-            --stop "systemctl poweroff" -- "${VMM_ARGS[@]}" > "$work/bl-$run.out" 2>&1
+            --stop "$POWEROFF_CMD" -- "${VMM_ARGS[@]}" > "$work/bl-$run.out" 2>&1
         echo "BL-$run-RC-$?"
         rm -f "$disk"
     done
@@ -243,7 +258,7 @@ in_pasta_online() {
         --cmd "grep -h '^Server' /etc/pacman.d/mirrorlist | sed 's/^/MIRROR /'" \
         --cmd "$ONLINE_PACMAN; echo PACMAN-RC-\$?" \
         --cmd "tree --version | sed 's/^/INSTALLED /'" \
-        --stop "systemctl poweroff" -- "${VMM_ARGS[@]}"
+        --stop "$POWEROFF_CMD" -- "${VMM_ARGS[@]}"
     echo "GUEST-RC-$?"
 }
 
