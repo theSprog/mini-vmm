@@ -50,7 +50,11 @@ static inline int t_finish(void)
     return t_fails ? 1 : 0;
 }
 
-#define T_MAIN_BEGIN()  do { t_init(argv[0]); (void)argc; } while (0)
+/* stdout 接管道时默认全缓冲。LeakSanitizer 在退出阶段报告泄漏后直接结束
+ * 进程，缓冲里还没写出的断言输出（包括 FAIL 行）会丢掉，negctl 只能看到
+ * 泄漏报告，判不出是断言挡住的。行缓冲让每一行在打印时就写出去 */
+#define T_MAIN_BEGIN()  do { setvbuf(stdout, NULL, _IOLBF, 0);          \
+                             t_init(argv[0]); (void)argc; } while (0)
 #define T_CASE(name)    t_case(name)
 #define T_SUMMARY()     t_finish()
 

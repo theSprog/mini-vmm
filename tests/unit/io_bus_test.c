@@ -56,6 +56,7 @@ int  kvm_check_extension(int f, int c)          { (void)f; (void)c; return 1; }
 int  kvm_get_vcpu_mmap_size(int f)              { (void)f; return 4096; }
 int  kvm_create_vm(int f)                       { (void)f; return -1; }
 int  kvm_create_vcpu(int f, int id)             { (void)f; (void)id; return -1; }
+int  kvm_get_stats_fd(int f)                   { (void)f; return -1; }
 struct kvm_run *kvm_mmap_run(int f, size_t s)   { (void)f; (void)s; return NULL; }
 int  kvm_get_regs(int f, struct kvm_regs *r)    { (void)f; (void)r; return VMM_ERR_SYS; }
 int  kvm_set_regs(int f, const struct kvm_regs *r)   { (void)f; (void)r; return VMM_OK; }
@@ -69,6 +70,8 @@ int  irqchip_create(struct vmm_vm *vm)          { (void)vm; return VMM_OK; }
 /* vm.c 的运行循环引用 gdbstub；这里不跑 vCPU，桩函数不会被调用 */
 void gdbstub_vcpu_interrupted(struct vmm_vcpu *v) { (void)v; }
 int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v)  { (void)v; return VMM_ERR_GUEST; }
+/* vm.c 的运行循环在 KVM_RUN 被打断后执行 vCPU 工作队列（smp.c），同样不会被调用 */
+void vcpu_run_work(struct vmm_vcpu *v) { (void)v; }
 
 #include "mutants.h"
 

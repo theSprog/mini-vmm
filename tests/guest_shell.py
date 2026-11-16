@@ -2,7 +2,7 @@
 """tests/guest_shell.py — 启动 VMM，在 guest 的 shell 里依次执行命令
 
 用法：
-  guest_shell.py --timeout 60 [--login USER] [--cmd CMD | --host CMD | --reboot CMD]... --stop CMD -- VMM [VMM 参数...]
+  guest_shell.py --timeout 60 [--login USER] [--cmd CMD | --host CMD | --reboot CMD]... (--stop CMD | --stop-host CMD) -- VMM [VMM 参数...]
 
 VMM 的 stdin 接一个管道，stdout/stderr 合并后原样转发到本进程的 stdout。
 每条 --cmd 都等 shell 打印出提示符之后才发送；--stop（poweroff -f、
@@ -21,6 +21,10 @@ fd、统计）。环境变量 VMM_PID 是 VMM 的 pid；输出夹在 "[host] $ C
 提示符，下一步仍然等同一个提示符。启动耗时随内核配置、
 vCPU 数、host 负载变化，任何固定延迟都有猜错的时候，猜错时 shell 一直
 等输入，用例以超时失败，看起来和 VMM 卡死一模一样。
+
+--stop-host 把最后一步换成一条 host 命令，用于由 host 让 VMM 退出的
+场景（例如 monitor 的 quit）。它和 --host 一样等提示符出现后执行，之后
+不再往 guest 发任何东西，等 VMM 进程自己退出。
 
 --login 用于跑完整发行版的 guest（getty + bash，而不是 initramfs 里直接
 起的 busybox shell）。每次输出里出现 getty 的 "HOST login: " 就发用户名，
@@ -104,9 +108,14 @@ def parse_args(argv):
                    help="log in as USER (empty password) whenever a getty "
                         "'login:' prompt appears, then switch the shell to "
                         "the standard prompt")
-    p.add_argument("--stop", required=True,
-                   help="last command, e.g. 'poweroff -f', 'reboot -f', 'exit'; "
-                        "after it the VMM is expected to exit by itself")
+    last = p.add_mutually_exclusive_group(required=True)
+    last.add_argument("--stop",
+                      help="last command, e.g. 'poweroff -f', 'reboot -f', "
+                           "'exit'; after it the VMM is expected to exit by "
+                           "itself")
+    last.add_argument("--stop-host", metavar="CMD",
+                      help="last step is a host command (like --host) that "
+                           "makes the VMM exit, e.g. a monitor 'quit'")
     p.add_argument("vmm", nargs=argparse.REMAINDER,
                    help="-- followed by the VMM command line")
     a = p.parse_args(argv)
@@ -117,7 +126,9 @@ def parse_args(argv):
     if not a.login and any(kind == "reboot" for kind, _ in a.steps):
         p.error("--reboot requires --login: the prompt after the reboot "
                 "comes from a new login")
-    lines = [c for kind, c in a.steps if kind != "host"] + [a.stop]
+    lines = [c for kind, c in a.steps if kind != "host"]
+    if a.stop is not None:
+        lines.append(a.stop)
     if a.login:
         lines.append(a.login)
     for c in lines:
@@ -165,10 +176,15 @@ def kill(proc):
 
 def main(argv):
     a = parse_args(argv)
-    steps = a.steps + [("cmd", a.stop)]
+    if a.stop is not None:
+        steps = a.steps + [("cmd", a.stop)]
+        last = f"stop {a.stop!r}"
+    else:
+        steps = a.steps + [("host", a.stop_host)]
+        last = f"stop-host {a.stop_host!r}"
     labels = [f"{kind} {i + 1}/{len(a.steps)} {c!r}"
               for i, (kind, c) in enumerate(a.steps)]
-    labels.append(f"stop {a.stop!r}")
+    labels.append(last)
 
     try:
         proc = subprocess.Popen(a.vmm, stdin=subprocess.PIPE,

@@ -28,7 +28,7 @@
 | 5 | pci-msi ✓ |
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
-| 8 | monitor · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
+| 8 | monitor ✓ · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
 | 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
@@ -193,9 +193,9 @@ mkinitcpio 的 autodetect hook 按构建机（host）的 sysfs 挑选模块，�
 
 依赖: event-loop
 
-- [ ] VMM 在 unix socket 上提供按行的文本命令，能查询运行状态、vCPU 信息和 exit-stats，能让 VMM 退出
-- [ ] 未知命令和参数错误返回明确的错误信息，不影响 guest 运行
-- [ ] 命令注册接口和具体命令分离，后面的热插拔、迁移、balloon 等里程碑直接往上加命令
+- [x] VMM 在 unix socket 上提供按行的文本命令，能查询运行状态、vCPU 信息和 exit-stats，能让 VMM 退出
+- [x] 未知命令和参数错误返回明确的错误信息，不影响 guest 运行
+- [x] 命令注册接口和具体命令分离，后面的热插拔、迁移、balloon 等里程碑直接往上加命令
 
 ### acpi-events — ACPI 事件通知
 

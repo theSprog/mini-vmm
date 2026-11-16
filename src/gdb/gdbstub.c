@@ -101,7 +101,8 @@ static bool all_stopped_locked(struct gdbstub *g)
     int i;
 
     for (i = 0; i < g->vm->nr_vcpus; i++)
-        if (!g->parked[i] && !g->vm->vcpus[i].should_stop)
+        if (!g->parked[i] &&
+            !__atomic_load_n(&g->vm->vcpus[i].should_stop, __ATOMIC_SEQ_CST))
             return false;
     return true;
 }
@@ -115,13 +116,16 @@ static void wait_all_stopped_locked(struct gdbstub *g)
 static void park_locked(struct gdbstub *g, struct vmm_vcpu *v)
 {
     g->parked[v->id] = true;
+    __atomic_store_n(&v->state, VCPU_PAUSED, __ATOMIC_RELAXED);
     pthread_cond_broadcast(&g->cv);
-    while (!g->run[v->id] && !v->should_stop)
+    while (!g->run[v->id] &&
+           !__atomic_load_n(&v->should_stop, __ATOMIC_SEQ_CST))
         pthread_cond_wait(&g->cv, &g->lock);
     g->parked[v->id] = false;
+    __atomic_store_n(&v->state, VCPU_VMM, __ATOMIC_RELAXED);
     /* 只有被放行时才清 immediate_exit：VM 要结束时它必须保持为 1，
      * 见 vm_request_stop() */
-    if (!v->should_stop)
+    if (!__atomic_load_n(&v->should_stop, __ATOMIC_SEQ_CST))
         __atomic_store_n(&v->run->immediate_exit, 0, __ATOMIC_SEQ_CST);
 }
 

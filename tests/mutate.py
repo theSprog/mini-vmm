@@ -231,7 +231,10 @@ def e2e_env() -> dict[str, str]:
 
 
 def build_vmm(tree: Path) -> tuple[int, str]:
-    b = subprocess.run(["make", "-s", "build/vmm"], cwd=tree,
+    # e2e suite 除了 build/vmm 还会启动 build/ 下的裸 payload（serial64.bin
+    # 等），make test 的前提里也有它们
+    b = subprocess.run(["make", "-s", "build/vmm", "build/payload16.bin",
+                        "build/payload64.bin", "build/serial64.bin"], cwd=tree,
                        capture_output=True, text=True)
     return b.returncode, b.stdout + b.stderr
 

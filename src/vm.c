@@ -14,6 +14,7 @@
 #include "arch/arch.h"
 #include "devices/irqchip.h"
 #include "gdb/gdbstub.h"
+#include "smp.h"
 
 /* ------------------------------------------------------------------ */
 /* IO 总线                                                             */
@@ -171,52 +172,72 @@ const char *kvm_exit_reason_str(uint32_t r)
     }
 }
 
-static void dump_seg(const char *name, const struct kvm_segment *s)
+static void dump_seg(FILE *out, const char *name, const struct kvm_segment *s)
 {
-    fprintf(stderr, "  %-3s sel=%04x base=%016llx limit=%08x "
+    fprintf(out, "  %-3s sel=%04x base=%016llx limit=%08x "
                     "type=%x s=%u dpl=%u p=%u l=%u db=%u g=%u\n",
             name, s->selector, (unsigned long long)s->base, s->limit,
             s->type, s->s, s->dpl, s->present, s->l, s->db, s->g);
 }
 
-void vcpu_dump_state(struct vmm_vcpu *vcpu)
+void vcpu_print_state(FILE *out, struct vmm_vcpu *vcpu)
 {
     struct kvm_regs r;
     struct kvm_sregs s;
 
     if (kvm_get_regs(vcpu->fd, &r) != VMM_OK ||
         kvm_get_sregs(vcpu->fd, &s) != VMM_OK) {
-        fprintf(stderr, "cannot read vCPU %d state\n", vcpu->id);
+        fprintf(out, "cannot read vCPU %d state\n", vcpu->id);
         return;
     }
 
-    fprintf(stderr, "=== vCPU %d state ===\n", vcpu->id);
-    fprintf(stderr, "  rip=%016llx rflags=%016llx\n",
+    fprintf(out, "=== vCPU %d state ===\n", vcpu->id);
+    fprintf(out, "  rip=%016llx rflags=%016llx\n",
             (unsigned long long)r.rip, (unsigned long long)r.rflags);
-    fprintf(stderr, "  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n",
+    fprintf(out, "  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n",
             (unsigned long long)r.rax, (unsigned long long)r.rbx,
             (unsigned long long)r.rcx, (unsigned long long)r.rdx);
-    fprintf(stderr, "  rsi=%016llx rdi=%016llx rsp=%016llx rbp=%016llx\n",
+    fprintf(out, "  rsi=%016llx rdi=%016llx rsp=%016llx rbp=%016llx\n",
             (unsigned long long)r.rsi, (unsigned long long)r.rdi,
             (unsigned long long)r.rsp, (unsigned long long)r.rbp);
-    fprintf(stderr, "  cr0=%016llx cr2=%016llx cr3=%016llx cr4=%016llx\n",
+    fprintf(out, "  cr0=%016llx cr2=%016llx cr3=%016llx cr4=%016llx\n",
             (unsigned long long)s.cr0, (unsigned long long)s.cr2,
             (unsigned long long)s.cr3, (unsigned long long)s.cr4);
-    fprintf(stderr, "  efer=%016llx  (LME=%d LMA=%d)  apic_base=%016llx\n",
+    fprintf(out, "  efer=%016llx  (LME=%d LMA=%d)  apic_base=%016llx\n",
             (unsigned long long)s.efer,
             !!(s.efer & (1ULL << 8)), !!(s.efer & (1ULL << 10)),
             (unsigned long long)s.apic_base);
-    dump_seg("cs", &s.cs);
-    dump_seg("ss", &s.ss);
-    dump_seg("ds", &s.ds);
-    fprintf(stderr, "  gdt base=%016llx limit=%04x  idt base=%016llx limit=%04x\n",
+    dump_seg(out, "cs", &s.cs);
+    dump_seg(out, "ss", &s.ss);
+    dump_seg(out, "ds", &s.ds);
+    fprintf(out, "  gdt base=%016llx limit=%04x  idt base=%016llx limit=%04x\n",
             (unsigned long long)s.gdt.base, s.gdt.limit,
             (unsigned long long)s.idt.base, s.idt.limit);
-    fprintf(stderr, "  exits=%llu (io=%llu mmio=%llu hlt=%llu)\n",
+    fprintf(out, "  exits=%llu (io=%llu mmio=%llu hlt=%llu)\n",
             (unsigned long long)vcpu_exit_total(vcpu),
-            (unsigned long long)vcpu->exits[KVM_EXIT_IO],
-            (unsigned long long)vcpu->exits[KVM_EXIT_MMIO],
-            (unsigned long long)vcpu->exits[KVM_EXIT_HLT]);
+            (unsigned long long)vcpu_exit_count(vcpu, KVM_EXIT_IO),
+            (unsigned long long)vcpu_exit_count(vcpu, KVM_EXIT_MMIO),
+            (unsigned long long)vcpu_exit_count(vcpu, KVM_EXIT_HLT));
+}
+
+void vcpu_dump_state(struct vmm_vcpu *vcpu)
+{
+    vcpu_print_state(stderr, vcpu);
+}
+
+void vcpu_count_exit(struct vmm_vcpu *vcpu, uint32_t reason)
+{
+    int slot = reason < VMM_EXIT_REASON_SLOTS - 1 ? (int)reason
+                                                  : VMM_EXIT_REASON_SLOTS - 1;
+    uint64_t n = __atomic_load_n(&vcpu->exits[slot], __ATOMIC_RELAXED);
+
+    __atomic_store_n(&vcpu->exits[slot], n + 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&vcpu->last_exit, reason, __ATOMIC_RELAXED);
+}
+
+uint64_t vcpu_exit_count(const struct vmm_vcpu *vcpu, int slot)
+{
+    return __atomic_load_n(&vcpu->exits[slot], __ATOMIC_RELAXED);
 }
 
 uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu)
@@ -225,7 +246,7 @@ uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu)
     int i;
 
     for (i = 0; i < VMM_EXIT_REASON_SLOTS; i++)
-        sum += vcpu->exits[i];
+        sum += vcpu_exit_count(vcpu, i);
     return sum;
 }
 
@@ -472,8 +493,7 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
 {
     struct kvm_run *run = vcpu->run;
 
-    vcpu->exits[run->exit_reason < VMM_EXIT_REASON_SLOTS - 1
-                ? run->exit_reason : VMM_EXIT_REASON_SLOTS - 1]++;
+    vcpu_count_exit(vcpu, run->exit_reason);
 
     switch (run->exit_reason) {
     case KVM_EXIT_IO: {
@@ -550,12 +570,21 @@ int vcpu_run_loop(struct vmm_vcpu *vcpu)
 {
     int r;
 
-    while (!vcpu->should_stop) {
+    while (!__atomic_load_n(&vcpu->should_stop, __ATOMIC_SEQ_CST)) {
+        __atomic_store_n(&vcpu->state, VCPU_GUEST, __ATOMIC_RELAXED);
         r = kvm_run(vcpu->fd);
+        __atomic_store_n(&vcpu->state, VCPU_VMM, __ATOMIC_RELAXED);
         /* 被打断时 kvm_run 页里的 exit_reason 不一定有效（immediate_exit
          * 路径下 KVM 不会改写它，还是上一次的值），不能交给
          * vcpu_handle_exit，否则会把上一次的 IO 再执行一遍 */
         if (r == VMM_ERR_INTR) {
+            /* 被踢出来的原因要么是停机，要么是有工作（或 gdb 要暂停）。
+             * 先清 immediate_exit 再看工作队列，顺序的理由见 smp.c 的
+             * vcpu_kick()；停机时不清，正在退出的线程不能再睡进 KVM_RUN */
+            if (!__atomic_load_n(&vcpu->should_stop, __ATOMIC_SEQ_CST))
+                __atomic_store_n(&vcpu->run->immediate_exit, 0,
+                                 __ATOMIC_SEQ_CST);
+            vcpu_run_work(vcpu);
             /* AP 唤醒（EAGAIN）和停机（EINTR）都走这条路，每个 vCPU 整个
              * 生命周期里只会走几次，所以在这里查一次 mp_state 的代价可以
              * 忽略，而它是判断 AP 卡在哪一步的决定性证据：
@@ -605,9 +634,19 @@ int vm_create_vcpu(struct vmm_vm *vm, int id)
     v->vm = vm;
     v->id = id;
 
+    v->stats_fd = -1;
+    pthread_mutex_init(&v->work_lock, NULL);
+    v->work_tail = &v->work_head;
+
     v->fd = kvm_create_vcpu(vm->vm_fd, id);
     if (v->fd < 0)
         return VMM_ERR_SYS;
+
+    /* 统计 fd 只有 --exit-stats 和 monitor 用。必须在 vCPU 线程启动前打开，
+     * 理由见 struct vmm_vcpu.stats_fd；没人用时不打开，host 内核不支持时
+     * 也就不会在每次启动都报一条 ioctl 错误 */
+    if (vm->cfg.exit_stats_path || vm->cfg.monitor_path)
+        v->stats_fd = kvm_get_stats_fd(v->fd);
 
     v->run_size = vm->vcpu_mmap_size;
     v->run = kvm_mmap_run(v->fd, v->run_size);
@@ -636,7 +675,7 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     int r, i;
 
     memset(vm, 0, sizeof(*vm));
-    vm->kvm_fd = vm->vm_fd = -1;
+    vm->kvm_fd = vm->vm_fd = vm->stats_fd = -1;
     vm->cfg = *cfg;
     pthread_mutex_init(&vm->io_lock, NULL);
     trace_open_all(vm);
@@ -699,6 +738,8 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     vm->vm_fd = kvm_create_vm(vm->kvm_fd);
     if (vm->vm_fd < 0)
         goto fail;
+    if (cfg->exit_stats_path || cfg->monitor_path)
+        vm->stats_fd = kvm_get_stats_fd(vm->vm_fd);
 
     /* 5. 厂商相关的 VM 级准备（Intel 的 TSS/identity map 在这里） */
     if (vm->arch->prepare_vm) {
@@ -745,9 +786,16 @@ void vm_destroy(struct vmm_vm *vm)
             munmap(v->run, v->run_size);
         if (v->fd > 0)
             close(v->fd);
+        if (v->stats_fd > 0)
+            close(v->stats_fd);
+        if (i < vm->nr_vcpus)
+            pthread_mutex_destroy(&v->work_lock);
         v->run = NULL;
-        v->fd = -1;
+        v->fd = v->stats_fd = -1;
     }
+    if (vm->stats_fd > 0)
+        close(vm->stats_fd);
+    vm->stats_fd = -1;
 
     vm_power_on_free(vm);
     mem_destroy(vm);

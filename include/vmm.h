@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <time.h>
 #include <pthread.h>
 #include <linux/kvm.h>
 
@@ -205,6 +207,9 @@ struct vmm_config {
 
     /* --no-reboot：guest 请求复位时 VMM 退出，而不是复位后再启动 */
     bool        no_reboot;
+
+    /* --monitor 的 unix socket 路径，NULL 表示不启用，见 monitor.h */
+    const char *monitor_path;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -215,6 +220,16 @@ void vmm_usage(const char *prog);
 /* vCPU                                                                */
 /* ------------------------------------------------------------------ */
 
+/* vCPU 线程此刻在做什么，monitor 的 info cpus 显示。只有本 vCPU 线程写 */
+enum vcpu_state {
+    VCPU_STOPPED = 0,   /* 线程没有运行（尚未启动、已退出、复位期间） */
+    VCPU_GUEST,         /* 在 KVM_RUN 里：执行 guest 代码，或在 KVM 内部处理 HLT 等 */
+    VCPU_VMM,           /* 在用户态处理 exit 或执行 vcpu_work */
+    VCPU_PAUSED,        /* 被 gdbstub 暂停 */
+};
+
+struct vcpu_work;
+
 struct vmm_vcpu {
     struct vmm_vm  *vm;
     int             id;         /* vCPU index，等于 APIC id */
@@ -224,16 +239,40 @@ struct vmm_vcpu {
 
     pthread_t       thread;     /* 每个 vCPU 一个线程，见 smp.c */
     bool            thread_started;
-    volatile bool   should_stop;
+    /* 用 __atomic 读写：请求停机的线程和 vCPU 线程之间的顺序要求见
+     * smp.c 的 vm_request_stop() */
+    bool            should_stop;
     int             result;     /* vcpu_run_loop 的返回值 */
 
     /* 回到用户态的 exit 按 kvm_run->exit_reason 计数，下标就是
-     * KVM_EXIT_* 的值，最后一格收容超出范围的值。只有本 vCPU 线程写，
-     * VM 停下、线程 join 之后才读（--exit-stats），所以不需要锁。
-     * KVM_RUN 被信号打断（EINTR）不算：那时 exit_reason 无效，见
-     * vcpu_run_loop()。 */
+     * KVM_EXIT_* 的值，最后一格收容超出范围的值。KVM_RUN 被信号打断
+     * （EINTR）不算：那时 exit_reason 无效，见 vcpu_run_loop()。
+     * 只有本 vCPU 线程写，monitor 在 I/O 线程上随时读，所以读写都用
+     * relaxed 原子操作（vcpu_count_exit / vcpu_exit_total）。只有一个写者，
+     * 写的一侧是“原子读、加一、原子写”，x86 上就是普通的 load 和 store，
+     * 不需要带 lock 前缀的读改写，exit 路径不会因此变慢。各格之间不保证
+     * 是同一时刻的快照。 */
     uint64_t        exits[VMM_EXIT_REASON_SLOTS];
+    uint32_t        last_exit;  /* 最近一次 exit_reason，同样 relaxed 原子 */
+    int             state;      /* enum vcpu_state，relaxed 原子 */
+    int             tid;        /* vCPU 线程的 host 线程号，线程启动时写 */
+
+    /* KVM_GET_STATS_FD 的 fd，创建 vCPU 时打开、vm_destroy 时关闭，
+     * 打不开（host 内核早于 5.14）时为 -1。拿 fd 的 ioctl 要持 vcpu->mutex，
+     * vCPU 在 KVM_RUN 里（包括 guest HLT 时）一直占着这把锁，运行中从别的
+     * 线程调会一直阻塞；读这个 fd 不拿锁（host 内核 virt/kvm/kvm_main.c 的
+     * kvm_vcpu_stats_read），所以在 vCPU 线程启动前打开好，之后随时可读 */
+    int             stats_fd;
+
+    /* 交给本 vCPU 线程执行的工作，见 smp.h 的 vcpu_queue_work() */
+    pthread_mutex_t   work_lock;
+    struct vcpu_work *work_head, **work_tail;
+    bool              work_open;    /* 线程在运行、接受新工作 */
 };
+
+/* exit 计数的读写，理由见 struct vmm_vcpu.exits */
+void     vcpu_count_exit(struct vmm_vcpu *vcpu, uint32_t reason);
+uint64_t vcpu_exit_count(const struct vmm_vcpu *vcpu, int slot);
 
 uint64_t vcpu_exit_total(const struct vmm_vcpu *vcpu);
 
@@ -284,7 +323,13 @@ struct vmm_vm {
 
     volatile bool   running;
     volatile bool   user_stop;         /* Ctrl-A x 触发的停机 */
+    /* monitor quit 置位，之后不再清零。vm_reset 会清掉每个 vCPU 的
+     * should_stop，quit 恰好落在复位过程中时，停机请求会被这次清零抹掉，
+     * main 的复位循环在复位前后都检查这个标志，见 main.c */
+    bool            quit_requested;
     int             exit_code;
+    struct timespec started;           /* 第一次进入 guest 的时刻（CLOCK_MONOTONIC） */
+    int             stats_fd;          /* VM 级 KVM_GET_STATS_FD，打不开时为 -1 */
 
     /* 整机复位，见 reset.h。reset_requested 由请求复位的 vCPU 置位，
      * vm_reset 完成时清零；gdbstub 据此区分"VM 在复位"和"VM 结束了" */
@@ -292,7 +337,7 @@ struct vmm_vm {
     int             nr_reset_handlers;
     struct vm_power_on *power_on;      /* vm_power_on_save 存下的 KVM 状态 */
     volatile bool   reset_requested;
-    unsigned int    reset_count;
+    unsigned int    reset_count;       /* relaxed 原子：monitor 在别的线程读 */
 };
 
 /* 生命周期 */
@@ -306,7 +351,11 @@ int  vcpu_run_loop(struct vmm_vcpu *vcpu);
 /* 单次 exit 的分发，独立出来便于事件循环复用 */
 int  vcpu_handle_exit(struct vmm_vcpu *vcpu);
 
-/* 调试辅助：把 regs/sregs 打出来，KVM_EXIT_SHUTDOWN / 内部错误时必用 */
+/* 调试辅助：把 regs/sregs 打出来，KVM_EXIT_SHUTDOWN / 内部错误时必用。
+ * 读寄存器的 ioctl 要持 vcpu->mutex，所以只能在 vCPU 自己的线程上调用，
+ * 或者在 vCPU 线程停下之后调用；monitor 经 vcpu_queue_work() 满足这一点。
+ * vcpu_dump_state 写到 stderr。 */
+void vcpu_print_state(FILE *out, struct vmm_vcpu *vcpu);
 void vcpu_dump_state(struct vmm_vcpu *vcpu);
 const char *kvm_exit_reason_str(uint32_t reason);
 

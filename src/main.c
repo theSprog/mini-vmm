@@ -25,6 +25,8 @@
 #include "smp.h"
 #include "io/event_loop.h"
 #include "exit_stats.h"
+#include "monitor.h"
+#include "monitor_cmds.h"
 #include "gdb/gdbstub.h"
 #include <time.h>
 #include <unistd.h>
@@ -137,6 +139,11 @@ void vmm_usage(const char *prog)
 "  --gdb PORT             Serve the GDB remote protocol on 127.0.0.1:PORT\n"
 "                           (0 = any free port, printed in the log); the guest\n"
 "                           stays paused until gdb connects\n"
+"  --monitor PATH         Accept HMP-style text commands on a unix socket at\n"
+"                           PATH (info status/cpus/registers/exit-stats, cpu,\n"
+"                           quit; 'help' lists them). Replies end with a line\n"
+"                           'OK' or 'ERR <reason>'; body lines start with two\n"
+"                           spaces. Try: socat READLINE UNIX-CONNECT:PATH\n"
 "  --no-reboot            linux: exit when the guest requests a reset\n"
 "                           (reboot, panic with panic=-1) instead of\n"
 "                           resetting the machine and booting again\n"
@@ -314,6 +321,9 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
                 return VMM_ERR_INVAL;
             }
             cfg->gdb_port = (int)n;
+        } else if (!strcmp(a, "--monitor")) {
+            NEED_ARG();
+            cfg->monitor_path = argv[i];
         } else if (!strcmp(a, "--no-reboot")) {
             cfg->no_reboot = true;
         } else if (!strcmp(a, "--exit-stats")) {
@@ -634,6 +644,8 @@ int main(int argc, char **argv)
     struct vmm_io_dev dev;
     static struct serial8250 com1;
     static struct event_loop loop;
+    static struct monitor mon;
+    bool mon_inited = false;
     FILE *stats_out = NULL;
     struct timespec t0, t1;
     size_t payload_len = 0;
@@ -756,6 +768,20 @@ int main(int argc, char **argv)
     }
 
 run:
+    /* monitor 的 socket 和完成通知 eventfd 要在 evl_start 之前注册（处理器表
+     * 只在单线程阶段由主线程写） */
+    if (cfg.monitor_path) {
+        r = monitor_init(&mon);
+        if (r != VMM_OK)
+            goto out;
+        mon_inited = true;
+        r = monitor_cmds_register(&mon, &vm);
+        if (r == VMM_OK)
+            r = monitor_listen(&mon, cfg.monitor_path, &loop);
+        if (r != VMM_OK)
+            goto out;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &vm.started);
     r = evl_start(&loop);
     if (r != VMM_OK)
         goto out;
@@ -773,10 +799,18 @@ run:
         r = vm_run(&vm);
         if (r != VMM_OK || !vm.reset_requested)
             break;
+        /* quit 可能和 guest 的复位请求同时发生，也可能落在 vm_reset 的
+         * 过程中；vm_reset 会清掉 should_stop，所以复位前后都要看一次 */
+        if (__atomic_load_n(&vm.quit_requested, __ATOMIC_SEQ_CST))
+            break;
         r = vm_reset(&vm, linux_load_images, &vm);
-        if (r != VMM_OK)
+        if (r != VMM_OK || __atomic_load_n(&vm.quit_requested, __ATOMIC_SEQ_CST))
             break;
     }
+    /* 因 quit 放弃复位时，gdbstub 要看到 running 和 reset_requested 都为
+     * false 才认为 VM 结束了 */
+    if (vm.reset_requested && __atomic_load_n(&vm.quit_requested, __ATOMIC_SEQ_CST))
+        __atomic_store_n(&vm.reset_requested, false, __ATOMIC_SEQ_CST);
     clock_gettime(CLOCK_MONOTONIC, &t1);
     /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
     evl_stop(&loop);
@@ -803,6 +837,11 @@ run:
     }
 
 out:
+    /* monitor 的回调在 I/O 线程上运行，先停 I/O 线程再关 monitor。
+     * 正常路径上 I/O 线程已经停了，evl_stop 在未启动或已停止时直接返回 */
+    evl_stop(&loop);
+    if (mon_inited)
+        monitor_close(&mon);
     /* 先于 vm_destroy：gdbstub 线程可能还在用 vCPU fd 和 guest 内存 */
     gdbstub_destroy(&vm);
     evl_destroy(&loop);

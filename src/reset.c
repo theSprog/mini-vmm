@@ -320,10 +320,11 @@ int vm_reset(struct vmm_vm *vm, vmm_reload_fn reload, void *opaque)
         for (i = 0; i < vm->nr_vcpus; i++) {
             struct vmm_vcpu *v = &vm->vcpus[i];
 
-            v->should_stop = false;
+            __atomic_store_n(&v->should_stop, false, __ATOMIC_SEQ_CST);
             __atomic_store_n(&v->run->immediate_exit, 0, __ATOMIC_SEQ_CST);
         }
-        vm->reset_count++;
+        __atomic_store_n(&vm->reset_count, vm->reset_count + 1,
+                         __ATOMIC_RELAXED);
         /* running 先于 reset_requested 改变：gdbstub 线程看到两者同时为
          * false 才认为 VM 结束了，这个顺序保证它在复位过程中的任何时刻
          * 都不会误判 */

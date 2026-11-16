@@ -62,7 +62,7 @@ static void report_reasons(FILE *out, struct vmm_vm *vm)
         uint64_t any = 0;
 
         for (i = 0; i < vm->nr_vcpus; i++)
-            any |= v[i] = vm->vcpus[i].exits[r];
+            any |= v[i] = vcpu_exit_count(&vm->vcpus[i], r);
         if (!any)
             continue;
         if (r == VMM_EXIT_REASON_SLOTS - 1)
@@ -91,6 +91,8 @@ static void report_devices(FILE *out, struct vmm_vm *vm)
 {
     int i;
 
+    /* 计数在 exit 分发路径上持 io_lock 更新，运行中生成报告时同样持锁 */
+    pthread_mutex_lock(&vm->io_lock);
     fprintf(out, "\nuser-space exits by device (string I/O counts once per exit)\n");
     row_label(out, "device");
     fprintf(out, " %-6s %*s %*s\n", "space", NUM_W, "reads", NUM_W, "writes");
@@ -100,13 +102,13 @@ static void report_devices(FILE *out, struct vmm_vm *vm)
         row_dev(out, vm->mmio_devs[i].name, "MMIO", &vm->mmio_stats[i]);
     row_dev(out, "unhandled", "PIO", &vm->pio_unhandled);
     row_dev(out, "unhandled", "MMIO", &vm->mmio_unhandled);
+    pthread_mutex_unlock(&vm->io_lock);
 }
 
-/* 打开 fd 上的统计并读出来；失败时在报告里写明原因 */
-static int read_kvm_stats(FILE *out, int fd, const char *what,
+/* 读创建 VM/vCPU 时打开的统计 fd；打不开过或读失败时在报告里写明原因 */
+static int read_kvm_stats(FILE *out, int sfd, const char *what,
                           struct kvm_stats *st)
 {
-    int sfd = kvm_get_stats_fd(fd);
     int r;
 
     if (sfd < 0) {
@@ -115,7 +117,6 @@ static int read_kvm_stats(FILE *out, int fd, const char *what,
         return VMM_ERR_SYS;
     }
     r = kvm_stats_read(sfd, st);
-    close(sfd);
     if (r != VMM_OK)
         fprintf(out, "  %s stats unreadable: malformed stats file "
                 "(error %d, details in the log)\n", what, r);
@@ -132,7 +133,7 @@ static void report_kvm_vcpu(FILE *out, struct vmm_vm *vm)
     fprintf(out, "\nKVM vCPU stats (KVM_GET_STATS_FD, nonzero single values; "
             "includes exits handled inside KVM)\n");
     for (; n < vm->nr_vcpus; n++)
-        if (read_kvm_stats(out, vm->vcpus[n].fd, "vCPU", &st[n]) != VMM_OK)
+        if (read_kvm_stats(out, vm->vcpus[n].stats_fd, "vCPU", &st[n]) != VMM_OK)
             goto out;
 
     header_vcpus(out, "name", vm->nr_vcpus);
@@ -158,7 +159,7 @@ static void report_kvm_vm(FILE *out, struct vmm_vm *vm)
     unsigned k;
 
     fprintf(out, "\nKVM VM stats (KVM_GET_STATS_FD, nonzero single values)\n");
-    if (read_kvm_stats(out, vm->vm_fd, "VM", &st) != VMM_OK)
+    if (read_kvm_stats(out, vm->stats_fd, "VM", &st) != VMM_OK)
         return;
     row_label(out, "name");
     fprintf(out, " %*s\n", NUM_W, "value");

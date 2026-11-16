@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include "vmm.h"
@@ -250,14 +251,34 @@ static void kick_handler(int sig)
 }
 
 /*
- * 停机要解决的竞态：目标线程刚检查完 should_stop（false），还没进
- * KVM_RUN，此时发信号只会被 handler 吃掉，随后它进入 KVM_RUN 并在
- * guest 的 HLT 里无限期睡下去。
- * kvm_run->immediate_exit（KVM_CAP_IMMEDIATE_EXIT）正是为此设计的：
- * KVM_RUN 入口处看到它为 1 就直接返回 -EINTR。先置位再发信号，两个窗口
- * 都被覆盖——没进 KVM_RUN 的被 immediate_exit 挡住，已经在里面的被
- * 信号踢出来。
+ * 把 vCPU 踢出 KVM_RUN，让它去看调用方事先写好的“要做的事”（should_stop、
+ * 工作队列）。
+ *
+ * 要解决的竞态：目标线程刚检查完“有没有事要做”（没有），还没进 KVM_RUN，
+ * 此时发信号只会被 handler 吃掉，随后它进入 KVM_RUN 并在 guest 的 HLT 里
+ * 无限期睡下去。kvm_run->immediate_exit（KVM_CAP_IMMEDIATE_EXIT）正是为此
+ * 设计的：KVM_RUN 入口处看到它为 1 就直接返回 -EINTR。先置位再发信号，
+ * 两个窗口都被覆盖：没进 KVM_RUN 的被 immediate_exit 挡住，已经在里面的
+ * 被信号踢出来。
+ *
+ * vCPU 线程在 EINTR 之后先清 immediate_exit，再检查要做的事
+ * （vcpu_run_loop）。调用方先写事、再置位，两边都是 seq_cst，所以 vCPU 的
+ * 清零要么早于调用方的置位（置位留下，下一次 KVM_RUN 立即返回），要么晚于
+ * 它（那么清零之后的检查一定看得到事），不会出现事已写好、置位却被清掉、
+ * vCPU 又睡回去的交错。
  */
+static void vcpu_kick(struct vmm_vcpu *v)
+{
+    if (v->run)
+        __atomic_store_n(&v->run->immediate_exit, 1, __ATOMIC_SEQ_CST);
+    if (__atomic_load_n(&v->thread_started, __ATOMIC_ACQUIRE) &&
+        !pthread_equal(v->thread, pthread_self()))
+        pthread_kill(v->thread, SIGUSR1);
+}
+
+/* should_stop 置位后不再清零（只有 vm_reset 在所有线程 join 之后清），
+ * 所以 vCPU 只在 should_stop 为假时清 immediate_exit：停机期间它必须保持
+ * 为 1，正在退出的线程不能再睡进 KVM_RUN */
 void vm_request_stop(struct vmm_vm *vm)
 {
     int i;
@@ -266,17 +287,49 @@ void vm_request_stop(struct vmm_vm *vm)
     for (i = 0; i < vm->nr_vcpus; i++) {
         struct vmm_vcpu *v = &vm->vcpus[i];
 
-        v->should_stop = true;
-        if (v->run)
-            __atomic_store_n(&v->run->immediate_exit, 1, __ATOMIC_SEQ_CST);
-        if (__atomic_load_n(&v->thread_started, __ATOMIC_ACQUIRE) &&
-            !pthread_equal(v->thread, pthread_self()))
-            pthread_kill(v->thread, SIGUSR1);
+        __atomic_store_n(&v->should_stop, true, __ATOMIC_SEQ_CST);
+        vcpu_kick(v);
     }
     /* 被 gdb 暂停的 vCPU 不在 KVM_RUN 里，信号叫不醒它，要广播 gdbstub 的
      * 条件变量。必须在所有 should_stop 置位之后调用，见 park_locked() */
     if (vm->gdb)
         gdbstub_vm_stopping(vm->gdb);
+}
+
+int vcpu_queue_work(struct vmm_vcpu *v, struct vcpu_work *w)
+{
+    /* 自己的线程排队等自己处理会永远等不到 */
+    if (__atomic_load_n(&v->thread_started, __ATOMIC_ACQUIRE) &&
+        pthread_equal(v->thread, pthread_self()))
+        return VMM_ERR_INVAL;
+
+    pthread_mutex_lock(&v->work_lock);
+    if (!v->work_open) {
+        pthread_mutex_unlock(&v->work_lock);
+        return VMM_ERR_EXIT;
+    }
+    w->next = NULL;
+    *v->work_tail = w;
+    v->work_tail = &w->next;
+    pthread_mutex_unlock(&v->work_lock);
+    vcpu_kick(v);
+    return VMM_OK;
+}
+
+void vcpu_run_work(struct vmm_vcpu *v)
+{
+    struct vcpu_work *w, *next;
+
+    pthread_mutex_lock(&v->work_lock);
+    w = v->work_head;
+    v->work_head = NULL;
+    v->work_tail = &v->work_head;
+    pthread_mutex_unlock(&v->work_lock);
+
+    for (; w; w = next) {
+        next = w->next;     /* fn 返回后 w 可能已被释放 */
+        w->fn(v, w);
+    }
 }
 
 static void *vcpu_thread(void *arg)
@@ -286,6 +339,10 @@ static void *vcpu_thread(void *arg)
 
     snprintf(name, sizeof(name), "vcpu%d", v->id);
     pthread_setname_np(pthread_self(), name);
+    __atomic_store_n(&v->tid, (int)gettid(), __ATOMIC_RELAXED);
+    pthread_mutex_lock(&v->work_lock);
+    v->work_open = true;
+    pthread_mutex_unlock(&v->work_lock);
 
     v->result = vcpu_run_loop(v);
     if (v->result != VMM_OK)
@@ -293,6 +350,13 @@ static void *vcpu_thread(void *arg)
 
     /* 任何一个 vCPU 退出（poweroff、reset、出错）都意味着整机停下 */
     vm_request_stop(v->vm);
+
+    /* 先关队列再执行剩下的工作，被接受的工作因此恰好执行一次，见 smp.h */
+    pthread_mutex_lock(&v->work_lock);
+    v->work_open = false;
+    pthread_mutex_unlock(&v->work_lock);
+    vcpu_run_work(v);
+    __atomic_store_n(&v->state, VCPU_STOPPED, __ATOMIC_RELAXED);
     return NULL;
 }
 

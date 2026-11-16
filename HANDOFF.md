@@ -61,6 +61,7 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 | exit 统计、KVM 二进制统计 | `src/exit_stats.c`、`src/kvm_stats.c`、`src/vm.c` 分发路径 | `blog/15` |
 | PCI 总线、BAR 路由、PCI0 的 `_CRS`/`_PRT`、AML 编码 | `src/pci/`、`src/boot/aml.c`、`src/boot/acpi.c`、`src/boot/mptable.c` | `blog/16`、`blog/17` |
 | gdb 远程协议、整机暂停、guest debug 与断点 | `src/gdb/`、`src/vm.c` 的 `KVM_EXIT_DEBUG`、`src/smp.c` 的 `vm_request_stop` | `blog/30` |
+| monitor 协议与命令注册、vCPU 工作队列（`vcpu_queue_work`）、运行中读统计 | `src/monitor.c`、`src/monitor_cmds.c`、`src/smp.c`、`src/vm.c` 运行循环的 `EINTR` 分支 | `blog/33` |
 
 ## 已知的小缺口
 
