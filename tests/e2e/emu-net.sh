@@ -195,12 +195,10 @@ if ! unshare -rn true 2>/dev/null; then
     skip_case "guest 网络用例" "unprivileged user namespaces are disabled (sysctl kernel.unprivileged_userns_clone / user.max_user_namespaces)"
     return
 fi
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 
 local work
 work="$(mktemp -d)"

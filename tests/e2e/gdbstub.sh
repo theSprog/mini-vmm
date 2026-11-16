@@ -52,12 +52,10 @@ if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
     skip_case "gdb 用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 
 head1 "gdb 调试 guest 内核"
 

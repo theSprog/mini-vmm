@@ -87,12 +87,10 @@ if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
     skip_case "BusyBox guest 用例" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
     return
 fi
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 local text_lo text_hi
 text_lo=$(nm "$VMLINUX" | awk '$3 == "_stext" { print $1 }')
 text_hi=$(nm "$VMLINUX" | awk '$3 == "_etext" { print $1 }')

@@ -337,10 +337,15 @@ ifneq ($(HAVE_FUZZ_CC),)
 TEST_PREREQ += $(FUZZ_BINS)
 endif
 
-.PHONY: test test-list tests-clean $(TEST_SEL_NOOP)
+.PHONY: test test-list tests-clean print-unit-bins $(TEST_SEL_NOOP)
 
 test: $(TEST_PREREQ)
 	@./tests/run.sh $(TEST_SEL)
+
+# tests/offline/unit.sh 从这里取要跑的单元测试，清单只在 UNIT_BINS 一处维护：
+# 手写第二份清单时，新加的测试会被构建却从来不跑
+print-unit-bins:
+	@echo $(notdir $(UNIT_BINS))
 
 test-list:
 	@./tests/run.sh --list

@@ -53,13 +53,10 @@ if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
     return
 fi
 
-# 早于 devmem 生成的 initramfs 里没有它，按构建产物过期处理，重新生成
-if [ ! -f "$INITRD" ] || ! gzip -dc "$INITRD" | grep -qa 'sbin/devmem'; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 
 head1 "ACPI 启动：枚举、BAR、中断"
 

@@ -12,7 +12,7 @@
 #   ./tests/e2e/linux-boot.sh -m                              只看人工指引
 #
 # 没设 VMLINUX 时 2.2/2.3 的用例 SKIP，没设 BZIMAGE 时 2.4 SKIP。
-# Linux 模式必须带 --initrd；initramfs 不存在时用 tools/build_initramfs.sh 现做。
+# Linux 模式必须带 --initrd；initramfs 不存在或过期时由 lib.sh 的 initrd_ready 重新生成。
 
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
@@ -51,12 +51,10 @@ expect_rc 1
 expect_has "--mode linux requires --initrd"
 end_case
 
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "vmlinux / initramfs / bzImage" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "vmlinux / initramfs / bzImage" "tools/build_initramfs.sh failed"
+    return
+}
 
 run_case "既不是 ELF 也不是 bzImage 的内核给出明确报错" \
     "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$SERIAL64"

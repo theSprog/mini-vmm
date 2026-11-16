@@ -55,12 +55,10 @@ fi
 head1 "SMP 启动"
 
 # Linux 模式必须带 --initrd
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 
 # panic 发生在哪个 vCPU 上不确定，i8042 reset 由它触发，其余 vCPU
 # 必须被 vm_request_stop() 踢出 KVM_RUN，否则 VMM 挂住直到 timeout。

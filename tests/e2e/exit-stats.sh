@@ -113,12 +113,10 @@ if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
     return
 fi
 
-if [ ! -f "$INITRD" ]; then
-    "$ROOT/tools/build_initramfs.sh" "$INITRD" >/dev/null || {
-        skip_case "initramfs" "tools/build_initramfs.sh failed"
-        return
-    }
-fi
+initrd_ready "$INITRD" || {
+    skip_case "initramfs" "tools/build_initramfs.sh failed"
+    return
+}
 
 head1 "Linux guest（2 vCPU）"
 

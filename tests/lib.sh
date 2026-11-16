@@ -153,6 +153,19 @@ expect_any() {
     CUR_BAD=1
 }
 
+# 准备好 e2e 用的 initramfs：不存在，或者比打包脚本、tools/guest/*.c 里任何
+# 一个旧时，调 tools/build_initramfs.sh 重新生成。guest 工具改了之后旧包里还是
+# 旧程序，只看“文件存在”会让用例跑在过期的产物上。按 mtime 判断：mutate.py
+# 复制源码树和 initramfs 时都保留 mtime，副本里的判断结果和原树一致。
+# 打包失败（例如缺静态 busybox）返回非 0，由调用方 SKIP。
+initrd_ready() {
+    local out="$1"
+    if [ -f "$out" ] && [ -z "$(find "$ROOT/tools/build_initramfs.sh" "$ROOT"/tools/guest/*.c -newer "$out" 2>/dev/null)" ]; then
+        return 0
+    fi
+    "$ROOT/tools/build_initramfs.sh" "$out" >/dev/null
+}
+
 # TSC 频率已经确定，且路径与 guest 内核配置相符。
 #
 # 内核开了 CONFIG_KVM_GUEST 并检测到 KVM 时（日志有 "kvm-clock: Using msrs"），

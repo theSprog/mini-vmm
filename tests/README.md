@@ -33,7 +33,7 @@ tests/
 ├── monitor_client.py  monitor e2e 的客户端：连 socket 发命令、按协议切出回复，@ 开头的步骤做核对（线程号对 /proc、rip 在内核代码段、exit 计数增长、连接数上限），打 CHECK ok/FAIL
 ├── TEST_DESIGN.md  验证设计与批准记录
 ├── offline/        不需要 /dev/kvm，可以在任何 Linux 上跑
-│   ├── unit.sh         跑 build/tests/*_test，外加回归输入重放
+│   ├── unit.sh         跑 Makefile 的 UNIT_BINS 列出的单元测试（make print-unit-bins），外加回归输入重放
 │   ├── negctl.sh       negative control：每个 mutant 都必须让测试变红
 │   ├── boot_tables.sh  把 ACPI 表交给 iasl 反汇编，DSDT 再编译回 AML 逐字节比对
 │   ├── guest_shell.sh  guest_shell.py 的自测
@@ -100,11 +100,11 @@ tests/
 | `split-irqchip` | 是 | 是 | `--kernel-irqchip` 各种取值的报错；两种模式各启动一次：`pci=nomsi` 下 AHCI 的 INTx 走 IO-APIC 17-fasteoi、读盘不超时，split 下 `info irqchip` 的 EOI exit 数和 pin 17 投递数不少于 AHCI 中断数、exit 统计里有 IOAPIC_EOI 和用户态 PIT/PIC/IOAPIC 的访问，内核模式里一项都没有；guest 里重放 Linux 的 PIT 校准（`pitprobe`），测出的 TSC 频率与 kvmclock 报告的相差不到 1%；`noapic` 下时钟和串口走 XT-PIC，split 下经 `KVM_INTERRUPT` 注入过 ExtINT；`no-kvmclock` 下 TSC 校准走 PIT 的三种合法结局之一；`noapictimer` 把 tick 钉在 PIT 上，VMM 被 SIGSTOP 一秒后，补发开时 jiffies 与 CLOCK_MONOTONIC 相差不超过 50 ms、关时落后至少 500 ms，两种模式下 IRQ0 计数与 jiffies 一致 |
 | `arch-distro` | 是 | 否，用 `tools/build_arch_image.sh` 生成的 Arch 镜像 | 官方 linux 包的内核和 initramfs 直启，systemd 自己报告 `running`、`systemctl --failed` 为空，dmesg 没有超时、err/warn 只有已查明与 VMM 无关的几条；e1000 经 DHCP 上网，pacman 从本地仓库装包并校验签名；`systemctl reboot` 后 boot_id 变了、再次 `running`、systemd-fsck 报 clean；`systemctl poweroff` 经 ACPI S5 退出，host 上 `e2fsck -fn` 无错；两次关机各在 30 秒内完成 |
 
-`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` / `system-reset` / `monitor` / `split-irqchip` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，脚本在 `build/initramfs.cpio.gz` 不存在时会先调 `tools/build_initramfs.sh`；`pci-bus` 还要求里面有 `/sbin/devmem`，没有就当作过期的构建产物重新生成。
+`linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` / `system-reset` / `monitor` / `split-irqchip` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，各 suite 经 `lib.sh` 的 `initrd_ready` 使用 `build/initramfs.cpio.gz`：它不存在，或者比 `tools/build_initramfs.sh`、`tools/guest/*.c` 里任何一个旧时，先调 `tools/build_initramfs.sh` 重新生成；打包失败（例如没有静态 busybox）时相关用例 SKIP。
 
 `arch-distro` 不用 `guest-kernel/` 的内核，而是 `tools/build_arch_image.sh` 生成在 `arch-image/` 里的整套发行版（要联网、几分钟、不需要 root，`ARCH_IMAGE=` 可指向别处），没有时 SKIP；它还需要非特权 user namespace 和 dnsmasq。网络在 `unshare -rn` 里离线完成，结果不随外网和上游版本变化。设 `ARCH_DISTRO_BASELINE=1` 时额外跑 fio 和 iperf3 的固定负载基线（需要 host 装 iperf3），打印每次 I/O、每帧的 exit 数；没设时不跑也不计 SKIP，因为它多三次启动，而且给出的是供对照的数字，不是通过与否的判据。设 `ARCH_DISTRO_ONLINE=1` 时再跑真实外网的 `pacman -Syu`（需要 host 装 passt 包里的 pasta）：脚本在 pasta 建的 namespace 里把 pasta 的 tap 接口 `pst0` 和 VMM 的 `tap0` 挂进同一个 bridge，guest 的 DHCP 由 pasta 应答，拿到和 host 相同的地址，pacman 用镜像自带的 mirrorlist；结果取决于外网和软件源，所以不进默认用例，没设时不跑也不计 SKIP。
 
-`IRQCHIP=on|split` 让所有 suite 的 Linux 模式启动都带上对应的 `--kernel-irqchip`，用来确认两种中断控制器模式下现有设备的中断都对（split-irqchip 里程碑的第一条验收）；不设时 VMM 用默认的内核态 irqchip，取其他值时每个 suite 在 source `lib.sh` 时以退出码 2 退出。`split-irqchip` suite 自己显式指定模式，不受它影响。`tools/guest/` 下的程序（例如 `pitprobe`）编进 initramfs，改了它们之后要删掉 `build/initramfs.cpio.gz` 或重跑 `tools/build_initramfs.sh`，suite 不会自动发现 initramfs 过期。
+`IRQCHIP=on|split` 让所有 suite 的 Linux 模式启动都带上对应的 `--kernel-irqchip`，用来确认两种中断控制器模式下现有设备的中断都对（split-irqchip 里程碑的第一条验收）；不设时 VMM 用默认的内核态 irqchip，取其他值时每个 suite 在 source `lib.sh` 时以退出码 2 退出。`split-irqchip` suite 自己显式指定模式，不受它影响。`tools/guest/` 下的程序（例如 `devmem`、`pitprobe`）编进 initramfs，改了之后下一个 suite 会按 mtime 发现 initramfs 过期并重新打包。
 
 `gdbstub` 还要求 PATH 里有 gdb，没有时 gdb 用例 SKIP。检查只用到 vmlinux 的符号表，不需要 DWARF。读 vCPU 线程的 `/proc/<pid>/task/*/syscall` 由 `gdb_session.py` 做而不是放进 gdb 脚本：Yama `ptrace_scope=1` 时只有 VMM 的祖先进程能读它，gdb 是 VMM 的兄弟进程。
 
