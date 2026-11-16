@@ -13,6 +13,7 @@
   - 两棵树都有 `compile_commands.json` 和 clangd background index，index 由 `~/.local/bin/clangd`（clangd 22）建立。非交互 ssh 的 PATH 里是 `/usr/bin/clangd`（clangd 14），版本对不上，必须显式用 22 版。符号查询用 `~/.local/bin/clangd_query.py`，带环境变量 `CLANGD=~/.local/bin/clangd`；clangd 打开第一个文件之前不加载 index，所以先对任意 `.c` 跑一次 `outline` 再用 `symbol`。`rg` 在 `~/.local/bin/`，同样不在 ssh 的 PATH 里。
   - 远端命令超时时被中断的只是连接，远端的循环和子进程可能还在跑，事后检查有没有残留的 `vmm` 或 clangd 进程。
 - **WSL2**：Arch Linux，嵌套虚拟化提供 `/dev/kvm`。guest 内核由 `tools/build_guest_kernel.sh --src ~/linux-6.6` 构建到仓库的 `guest-kernel/`（已被 `.gitignore` 忽略），测试自动使用那里的 vmlinux 和 bzImage。`~/linux-6.6` 的源码树本身不放产物，它的另一个构建目录 `~/linux-6.6-build` 是给 clangd 建索引用的 allmodconfig，驱动多为 `=m` 且强制模块签名，不适合直接当测试 guest。`/dev/kvm` 是否存在取决于 Windows 侧的嵌套虚拟化状态，消失时先查 Windows 更新是否改动了 Hyper-V 的嵌套特性。
+  - **在 WSL2 上读 GPU 的 PCI 配置空间可能让整台 WSL2 虚拟机卡死，连带同一台机器上的其他会话。** WSL2 里的 GPU 是 Hyper-V 半虚拟化设备（驱动 dxgkrnl），读它的配置空间要经 `_hv_pcifront_read_config` 转发给 Windows 宿主，宿主不回时这颗 CPU 关着中断空转，其他 CPU 在跨核调用里等它，整机停摆。会触发的有 host 上的 `lspci`、`setpci`，以及任何加载 NVIDIA EGL/GL vendor 的程序（它会调 `nvidia-modprobe` 扫 PCI），例如 virglrenderer、带 GL 的 QEMU 显示后端、EGL 探测程序。这里的 GPU 走 Mesa 的 d3d12 驱动，跑 GL 相关程序时设 `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`，只让 glvnd 加载 Mesa；`/usr/share/glvnd/egl_vendor.d/` 里出现 NVIDIA 的 json，说明装了 nvidia-utils，它在 WSL2 上用不到。是否又撞上了这个问题，看 `journalctl -k` 里有没有调用栈停在 `_hv_pcifront_read_config` 的 soft lockup 或 RCU stall。
 
 **跑测试之前先 `make`。** `make test` 只构建测试二进制，不保证 `build/vmm` 是最新的，直接跑会用到旧二进制。
 
