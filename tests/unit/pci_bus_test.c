@@ -89,6 +89,12 @@ void gdbstub_vcpu_interrupted(struct vmm_vcpu *v) { (void)v; }
 int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v)  { (void)v; return VMM_ERR_GUEST; }
 /* vm.c 的运行循环在 KVM_RUN 被打断后执行 vCPU 工作队列（smp.c），同样不会被调用 */
 void vcpu_run_work(struct vmm_vcpu *v) { (void)v; }
+/* vm.c 在 cfg->irqchip 为 split 时改走 split_irqchip.c；这里的 VM 用默认的内核模式，
+ * 运行循环也不跑，这些桩不会被调用 */
+int  split_irqchip_create(struct vmm_vm *vm)    { (void)vm; return VMM_ERR_SYS; }
+int  split_irqchip_pre_run(struct vmm_vcpu *v)  { (void)v; return VMM_OK; }
+int  split_irqchip_eoi(struct vmm_vcpu *v, uint8_t vector) { (void)v; (void)vector; return VMM_OK; }
+void split_irqchip_destroy(struct vmm_vm *vm)   { (void)vm; }
 
 /* KVM_IRQ_LINE 的记录：每次调用追加一条 "gsi=level"，用例比对整串序列，
  * 多发、漏发、发错线都会体现在字符串里 */

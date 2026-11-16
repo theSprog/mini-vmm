@@ -26,6 +26,10 @@ SRCS := \
 	src/boot/gdt_pgtable.c \
 	src/devices/serial8250.c \
 	src/devices/irqchip.c \
+	src/devices/split_irqchip.c \
+	src/devices/ioapic.c \
+	src/devices/i8259.c \
+	src/devices/i8254.c \
 	src/devices/i8042.c \
 	src/boot/elf_loader.c \
 	src/boot/bzimage.c \
@@ -150,7 +154,7 @@ clean:
 TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
                event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub \
-               system-reset arch-distro monitor
+               system-reset arch-distro monitor split-irqchip
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。
@@ -189,7 +193,10 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/ahci_test \
              $(BUILD)/tests/aml_test \
              $(BUILD)/tests/gdb_test \
-             $(BUILD)/tests/monitor_test
+             $(BUILD)/tests/monitor_test \
+             $(BUILD)/tests/ioapic_test \
+             $(BUILD)/tests/pic_test \
+             $(BUILD)/tests/pit_test
 
 # 同一份 boot_tables_test 编两遍，理由和 fuzz 那两个 target 一样：
 # 严格版负责报出未对齐访问这类未定义行为（unit suite 用它），
@@ -279,6 +286,18 @@ $(BUILD)/tests/monitor_test: tests/unit/monitor_test.c src/monitor.c \
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
 $(BUILD)/tests/gdb_test: tests/unit/gdb_test.c src/gdb/rsp.c src/gdb/x86.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/ioapic_test: tests/unit/ioapic_test.c src/devices/ioapic.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/pic_test: tests/unit/pic_test.c src/devices/i8259.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/pit_test: tests/unit/pit_test.c src/devices/i8254.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 

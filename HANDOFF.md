@@ -53,10 +53,10 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 |---|---|---|
 | vCPU 运行、世界切换 | `src/vm.c`、`src/arch/amd/` | `learning-note/01`、`03` |
 | guest 内存、memslot、MMIO hole | `src/mem.c` | `blog/13`、`learning-note/02`、`learning-note/05` 4.4 节 |
-| 中断控制器、中断注入 | `src/devices/irqchip.c` | `learning-note/04` |
+| 中断控制器、中断注入 | `src/devices/irqchip.c`；split 模式另有 `src/devices/split_irqchip.c`（主板接线、KVM 接口、补发）和 `ioapic.c`、`i8259.c` | `learning-note/04`、`blog/34`–`36` |
 | boot_params、E820、MP/ACPI 表 | `src/boot/` | `learning-note/05` |
 | SMP、CPUID 拓扑、停机协调 | `src/smp.c`、`src/vm.c` | `learning-note/06` |
-| PIT、TSC 校准、kvmclock 的发现（hypervisor CPUID 位） | `src/devices/irqchip.c`、`src/arch/amd/svm.c` | `blog/05`、`learning-note/07` |
+| PIT、TSC 校准、kvmclock 的发现（hypervisor CPUID 位） | `src/devices/irqchip.c`、split 模式的 `src/devices/i8254.c`、`src/arch/amd/svm.c` | `blog/05`、`blog/37`、`learning-note/07` |
 | 16550A、RTC、i8042、ACPI PM、未注册端口 | `src/devices/`、`src/boot/acpi.c`、`src/vm.c` | `learning-note/07` |
 | I/O 线程、后端 fd、加锁顺序 | `src/io/event_loop.c`、`src/console.c` | `blog/14` |
 | exit 统计、KVM 二进制统计 | `src/exit_stats.c`、`src/kvm_stats.c`、`src/vm.c` 分发路径 | `blog/15` |

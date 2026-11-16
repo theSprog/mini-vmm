@@ -11,6 +11,7 @@
 #include "boot/gdt_pgtable.h"
 #include "devices/serial8250.h"
 #include "devices/irqchip.h"
+#include "devices/split_irqchip.h"
 #include "devices/i8042.h"
 #include "boot/kernel_loader.h"
 #include "boot/zeropage.h"
@@ -103,6 +104,7 @@ void vmm_config_default(struct vmm_config *cfg)
     cfg->dump_gpa     = 0x500000;
     cfg->dump_len     = 32;
     cfg->gdb_port     = -1;
+    cfg->pit_reinject = true;
 }
 
 void vmm_usage(const char *prog)
@@ -140,10 +142,20 @@ void vmm_usage(const char *prog)
 "                           (0 = any free port, printed in the log); the guest\n"
 "                           stays paused until gdb connects\n"
 "  --monitor PATH         Accept HMP-style text commands on a unix socket at\n"
-"                           PATH (info status/cpus/registers/exit-stats, cpu,\n"
-"                           quit; 'help' lists them). Replies end with a line\n"
+"                           PATH (info status/cpus/registers/exit-stats/\n"
+"                           irqchip, cpu, quit; 'help' lists them). Replies\n"
+"                           end with a line\n"
 "                           'OK' or 'ERR <reason>'; body lines start with two\n"
 "                           spaces. Try: socat READLINE UNIX-CONNECT:PATH\n"
+"  --kernel-irqchip on|split\n"
+"                         linux: where the interrupt controllers live\n"
+"                           (default: on). on = PIC, IOAPIC, PIT and LAPIC\n"
+"                           all in KVM; split = only the LAPIC in KVM, the\n"
+"                           8259A pair, IOAPIC and 8254 PIT in this process\n"
+"  --pit-reinject on|off  linux: PIT ticks the guest has not acknowledged yet\n"
+"                           are queued and delivered one per acknowledgement\n"
+"                           (on, default) or merged into one interrupt (off);\n"
+"                           same policy in both irqchip modes\n"
 "  --no-reboot            linux: exit when the guest requests a reset\n"
 "                           (reboot, panic with panic=-1) instead of\n"
 "                           resetting the machine and booting again\n"
@@ -227,6 +239,8 @@ static const char *g_append;
 int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
 {
     int i, r;
+    bool irqchip_given = false;
+    bool reinject_given = false;
 
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -326,6 +340,33 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
             cfg->monitor_path = argv[i];
         } else if (!strcmp(a, "--no-reboot")) {
             cfg->no_reboot = true;
+        } else if (!strcmp(a, "--kernel-irqchip")) {
+            NEED_ARG();
+            if (!strcmp(argv[i], "on")) {
+                cfg->irqchip = VMM_IRQCHIP_ON;
+            } else if (!strcmp(argv[i], "split")) {
+                cfg->irqchip = VMM_IRQCHIP_SPLIT;
+            } else if (!strcmp(argv[i], "off")) {
+                vmm_err("--kernel-irqchip off (LAPIC in user space) is not "
+                        "implemented yet; it belongs to the user-lapic "
+                        "milestone");
+                return VMM_ERR_INVAL;
+            } else {
+                vmm_err("--kernel-irqchip must be on or split: %s", argv[i]);
+                return VMM_ERR_INVAL;
+            }
+            irqchip_given = true;
+        } else if (!strcmp(a, "--pit-reinject")) {
+            NEED_ARG();
+            if (!strcmp(argv[i], "on")) {
+                cfg->pit_reinject = true;
+            } else if (!strcmp(argv[i], "off")) {
+                cfg->pit_reinject = false;
+            } else {
+                vmm_err("--pit-reinject must be on or off: %s", argv[i]);
+                return VMM_ERR_INVAL;
+            }
+            reinject_given = true;
         } else if (!strcmp(a, "--exit-stats")) {
             NEED_ARG();
             cfg->exit_stats_path = argv[i];
@@ -441,6 +482,15 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
     }
     if (cfg->no_reboot && cfg->mode != VMM_BOOT_LINUX) {
         vmm_err("--no-reboot requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    /* 裸 payload 模式不创建任何中断控制器 */
+    if (irqchip_given && cfg->mode != VMM_BOOT_LINUX) {
+        vmm_err("--kernel-irqchip requires --mode linux");
+        return VMM_ERR_INVAL;
+    }
+    if (reinject_given && cfg->mode != VMM_BOOT_LINUX) {
+        vmm_err("--pit-reinject requires --mode linux");
         return VMM_ERR_INVAL;
     }
     /* --netdev、--drive 可以写在引用它们的 --device 之后，所以引用要等
@@ -588,6 +638,14 @@ static int boot_linux(struct vmm_vm *vm, const struct vmm_config *cfg,
 
     com1->irq_set    = irqchip_irq_cb;
     com1->irq_opaque = vm;
+
+    /* split 时用户态的 PIC/IOAPIC/PIT 最先挂：它的复位回调要排在所有会拉
+     * 中断线的设备之前，见 reset.h */
+    if (vm->split) {
+        r = split_irqchip_attach(vm, loop);
+        if (r != VMM_OK)
+            return r;
+    }
 
     r = i8042_attach(vm);
     if (r == VMM_OK)

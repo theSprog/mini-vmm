@@ -25,7 +25,7 @@ struct vcpu_power_on {
 struct vm_power_on {
     struct vcpu_power_on   vcpu[VMM_MAX_VCPUS];
     size_t                 xsave_size;
-    bool                   has_irqchip;
+    bool                   has_irqchip;    /* 内核态 PIC/IOAPIC/PIT 的状态已存 */
     struct kvm_irqchip     chip[3];        /* PIC master、PIC slave、IOAPIC */
     struct kvm_pit_state2  pit;
 };
@@ -202,7 +202,9 @@ int vm_power_on_save(struct vmm_vm *vm)
     if (r != VMM_OK)
         return r;
 
-    po->has_irqchip = vm->has_irqchip;
+    /* split 时 PIC/IOAPIC/PIT 在用户态，由它们的复位回调负责；KVM 里只有
+     * LAPIC，随 vCPU 状态一起存 */
+    po->has_irqchip = vm->has_irqchip && !vm->split;
     if (po->has_irqchip) {
         for (i = 0; i < 3; i++) {
             po->chip[i].chip_id = (uint32_t)i;

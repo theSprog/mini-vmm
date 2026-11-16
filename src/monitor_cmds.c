@@ -17,6 +17,7 @@
 #include "monitor.h"
 #include "monitor_cmds.h"
 #include "exit_stats.h"
+#include "devices/split_irqchip.h"
 
 static double uptime(struct vmm_vm *vm)
 {
@@ -250,6 +251,26 @@ static int cmd_quit(struct mon_req *req, int argc, char **argv)
     return MON_OK;
 }
 
+/* ---- info irqchip ---- */
+
+static int info_irqchip(struct mon_req *req, int argc, char **argv)
+{
+    struct vmm_vm *vm = mon_req_opaque(req);
+
+    (void)argc; (void)argv;
+    if (vm->split) {
+        split_irqchip_report(vm->split, mon_out(req));
+        return MON_OK;
+    }
+    if (!vm->has_irqchip)
+        return mon_err(req, "no interrupt controller (bare payload mode)");
+    /* KVM 不导出内核 PIT/PIC/IOAPIC 的中断计数，guest 的 /proc/interrupts
+     * 是唯一的来源 */
+    fprintf(mon_out(req), "kernel irqchip: PIC + IOAPIC + PIT + LAPIC in KVM\n");
+    fprintf(mon_out(req), "pit: reinject %s\n", vm->cfg.pit_reinject ? "on" : "off");
+    return MON_OK;
+}
+
 int monitor_cmds_register(struct monitor *m, struct vmm_vm *vm)
 {
     const struct mon_cmd top[] = {
@@ -267,6 +288,8 @@ int monitor_cmds_register(struct monitor *m, struct vmm_vm *vm)
           0, 1, info_registers, vm },
         { "exit-stats", "", "VM exit counts so far, same report as --exit-stats",
           0, 0, info_exit_stats, vm },
+        { "irqchip", "", "irqchip mode, PIT reinject policy and interrupt counts",
+          0, 0, info_irqchip, vm },
     };
     size_t i;
     int r;

@@ -341,7 +341,9 @@ int i8042_attach(struct vmm_vm *vm)
     g_kbc.vm = vm;
     i8042_reset(NULL);
 
-    /* 0x60 和 0x64 中间隔着 0x61（PIT gate，由 KVM 内核处理），
+    /* 0x60 和 0x64 中间隔着 0x61（PIIX4 的 NMI 状态/控制口，PIT 通道 2 的
+     * GATE 和 OUT 在这里；kernel irqchip 时 KVM 接管，split 时由
+     * split_irqchip 注册），
      * 所以分两个单字节设备注册，不能占 [0x60, 0x65) 整段。 */
     memset(&dev, 0, sizeof(dev));
     dev.name   = "i8042-data";

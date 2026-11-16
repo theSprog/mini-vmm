@@ -7,10 +7,12 @@
 #include "vmm.h"
 #include "kvm_wrappers.h"
 #include "devices/irqchip.h"
+#include "devices/split_irqchip.h"
 
 int irqchip_create(struct vmm_vm *vm)
 {
     struct kvm_pit_config pit;
+    struct kvm_reinject_control reinject;
 
     if (!kvm_check_extension(vm->kvm_fd, KVM_CAP_IRQCHIP)) {
         vmm_err("kernel does not support KVM_CAP_IRQCHIP");
@@ -44,8 +46,25 @@ int irqchip_create(struct vmm_vm *vm)
         return VMM_ERR_SYS;
     }
 
+    /* 补发策略（api.rst KVM_REINJECT_CONTROL）。reinject 时 KVM 给 GSI 0
+     * 挂确认通知，上一个 tick 被 PIC 清 ISR 或 IOAPIC 收到 EOI 之后才送下
+     * 一个，积压的逐个补；关掉时每个 tick 到期直接送，前一个没确认就和它
+     * 合并（arch/x86/kvm/i8254.c pit_timer_fn、pit_do_work、kvm_pit_ack_irq） */
+    if (!kvm_check_extension(vm->kvm_fd, KVM_CAP_REINJECT_CONTROL)) {
+        vmm_err("kernel does not support KVM_CAP_REINJECT_CONTROL");
+        return VMM_ERR_UNSUPPORTED;
+    }
+    memset(&reinject, 0, sizeof(reinject));
+    reinject.pit_reinject = vm->cfg.pit_reinject;
+    if (ioctl(vm->vm_fd, KVM_REINJECT_CONTROL, &reinject) < 0) {
+        vmm_err("ioctl(KVM_REINJECT_CONTROL pit_reinject=%d) failed: %s",
+                reinject.pit_reinject, strerror(errno));
+        return VMM_ERR_SYS;
+    }
+
     vm->has_irqchip = true;
-    vmm_info("in-kernel irqchip: PIC + IOAPIC + LAPIC, PIT on GSI 0");
+    vmm_info("in-kernel irqchip: PIC + IOAPIC + LAPIC, PIT on GSI 0 "
+             "(reinject %s)", vm->cfg.pit_reinject ? "on" : "off");
     return VMM_OK;
 }
 
@@ -55,6 +74,10 @@ int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
 
     if (!vm->has_irqchip || gsi < 0)
         return VMM_OK;
+    if (vm->split) {
+        split_irqchip_set_irq(vm->split, gsi, level);
+        return VMM_OK;
+    }
 
     il.irq   = (uint32_t)gsi;
     il.level = level;

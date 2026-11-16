@@ -28,8 +28,8 @@
 | 5 | pci-msi ✓ |
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
-| 8 | monitor ✓ · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
-| 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
+| 8 | monitor ✓ · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
+| 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
 | 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
@@ -294,14 +294,24 @@ guest 侧内核模块这条线的起点。设备的寄存器规范由本项目�
 
 ### split-irqchip — 中断控制器搬到用户态
 
-依赖: legacy-devices, exit-stats · 参考: `linux/kvm.h`（`KVM_CAP_SPLIT_IRQCHIP`、`KVM_EXIT_IOAPIC_EOI`）、82093AA IOAPIC datasheet、8259A datasheet、8254 datasheet
+依赖: legacy-devices, exit-stats · 参考: `linux/kvm.h`（`KVM_CAP_SPLIT_IRQCHIP`、`KVM_EXIT_IOAPIC_EOI`）、82093AA IOAPIC datasheet、8259A datasheet、8254 datasheet、PIIX4 datasheet（ELCR 与端口 0x61），均在 `ref/`
 
 现在 PIC、IOAPIC、PIT 都由 KVM 内核态模拟。split 模式下 LAPIC 留在内核，其余由 VMM 自己实现，这是亲手写一遍中断控制器的机会。
 
-- [ ] 启动参数可以在内核 irqchip 和 split irqchip 之间切换，两种模式下现有 e2e 全部通过
-- [ ] split 模式下 PIC、IOAPIC、PIT 都在用户态，电平触发中断的 EOI 经 `KVM_EXIT_IOAPIC_EOI` 正确处理
-- [ ] 两种模式下对比启动过程的用户态 exit 次数和 TSC 校准路径，结论写进笔记
-- [ ] guest 以 `noapictimer` 启动、由 PIT 承担 tick，host 过载时对比补发策略开关下的 guest tick 计数与时间漂移：内核 PIT 用 `KVM_REINJECT_CONTROL` 开关，用户态 PIT 自己实现同样的两种策略，结论写进笔记
+- [x] 启动参数可以在内核 irqchip 和 split irqchip 之间切换，两种模式下现有 e2e 全部通过
+- [x] split 模式下 PIC、IOAPIC、PIT 都在用户态，电平触发中断的 EOI 经 `KVM_EXIT_IOAPIC_EOI` 正确处理
+- [x] 两种模式下对比启动过程的用户态 exit 次数和 TSC 校准路径，结论写进笔记
+- [x] guest 以 `noapictimer` 启动、由 PIT 承担 tick，host 过载时对比补发策略开关下的 guest tick 计数与时间漂移：内核 PIT 用 `KVM_REINJECT_CONTROL` 开关，用户态 PIT 自己实现同样的两种策略，结论写进笔记
+
+### user-lapic — LAPIC 也搬到用户态
+
+依赖: split-irqchip · 参考: Intel SDM Vol. 3A 第 11 章（APIC）、AMD APM Vol. 2 第 16 章（APIC）、`linux/kvm.h`（`KVM_INTERRUPT`、`KVM_EXIT_HLT`、`kvm_run` 的 `request_interrupt_window`/`ready_for_interrupt_injection`/`if_flag`/`cr8`/`apic_base`）、`Documentation/virt/kvm/api.rst`
+
+对应 QEMU 的 `kernel-irqchip=off`：KVM 里不再有任何中断控制器，HLT 以 `KVM_EXIT_HLT` 退出到 VMM，中断经 `KVM_INTERRUPT` 注入，TPR 经 `kvm_run->cr8` 同步。split-irqchip 写好的 PIC、IOAPIC、PIT 原样复用，新增的只有 LAPIC。这种模式下 irqfd 不可用，只作为学习和对照用的模式，后面的 ioeventfd、vhost 里程碑仍在内核或 split 模式下运行。
+
+- [ ] `--kernel-irqchip off` 下现有 e2e 全部通过，SMP 的 AP 由用户态 LAPIC 的 INIT/SIPI 唤醒，vCPU 在 HLT 时由 VMM 让线程睡眠、来中断时唤醒
+- [ ] LAPIC 定时器的 periodic、one-shot、TSC-deadline 三种模式都能被 guest 使用，IPI 与 EOI 的语义正确
+- [ ] 与内核 LAPIC 对比 EOI、IPI、定时器中断的用户态 exit 次数和延迟，说明 APICv/AVIC 省掉了哪些 exit，结论写进笔记
 
 ### cpu-hotplug — CPU 热插拔
 

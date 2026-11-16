@@ -12,7 +12,16 @@ set -u
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$TESTS_DIR")"
-VMM="$ROOT/build/vmm"
+VMM_BIN="$ROOT/build/vmm"
+VMM="$VMM_BIN"
+# IRQCHIP=split（或 on）：所有 Linux 模式的启动都带上 --kernel-irqchip $IRQCHIP，
+# 用来在 split irqchip 上回归整套 e2e，见 tests/vmm_irqchip.sh
+if [ -n "${IRQCHIP:-}" ]; then
+    case "$IRQCHIP" in
+    on|split) export IRQCHIP; VMM="$TESTS_DIR/vmm_irqchip.sh" ;;
+    *) printf 'IRQCHIP must be on or split: %s\n' "$IRQCHIP" >&2; exit 2 ;;
+    esac
+fi
 # 启动 VMM 并在 guest shell 里按提示符逐条执行命令，用法见脚本头注释
 GUEST_SHELL="$ROOT/tests/guest_shell.py"
 
@@ -68,7 +77,7 @@ need_kvm() {
 }
 
 need_build() {
-    if [ ! -x "$VMM" ]; then
+    if [ ! -x "$VMM_BIN" ]; then
         log "${C_YEL}build/vmm 不存在，先编译${C_RST}"
         ( cd "$ROOT" && make ) || exit 1
     fi
@@ -154,10 +163,13 @@ expect_any() {
 #   裸机 KVM：quick_pit_calibrate() 成功 -> Fast TSC calibration using PIT
 #   嵌套 KVM（WSL2）：快路在 500ppm 外推处静默返回 0，慢路接手
 #                     -> Using PIT calibration value
-#   host 负载大时：慢路的 tscmax > 10*tscmin 抽查把三轮全判废
+#   慢路三轮全被判废：读次数低于 1000，或最慢一次读超过最快一次的 10 倍
 #                     -> Unable to calibrate against PIT，退回 refined-jiffies
-# 这些都不是 VMM 的问题（PIT 通道 2 由 KVM 内核模块提供），一并接受。
-# 详见 learning-note 卷七第 3 节。
+# 走哪条取决于读一次端口 0x61 的耗时和抖动，不取决于 PIT 的计时对不对：
+# 嵌套环境下内核 irqchip 的 PIT 多数启动是 Unable（读得快、10 倍阈值太紧），
+# split 模式的用户态 PIT 多数是 Using PIT（读得慢、读次数贴着 1000 的下限）。
+# 两种 irqchip 模式下三种结局都是 Linux 对参照时钟不可信的正当反应，一并接受。
+# 详见 learning-note 卷七第 3 节和 blog 37（split irqchip P4）第六节。
 expect_tsc_calibrated() {
     if printf '%s' "$CUR_OUT" | grep -qF -- "kvm-clock: Using msrs"; then
         expect_has "tsc: Detected "

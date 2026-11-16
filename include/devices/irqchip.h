@@ -8,6 +8,10 @@
  *
  * 副作用：有了内核态 LAPIC 之后，guest 的 HLT 由 KVM 就地处理
  * （阻塞到有中断为止），不再以 KVM_EXIT_HLT 返回用户态。
+ *
+ * --kernel-irqchip split 时 KVM 里只有 LAPIC，PIC/IOAPIC/PIT 在用户态
+ * （devices/split_irqchip.h）。设备看到的接口不变：irqchip_set_irq 转给
+ * split_irqchip_set_irq，MSI 仍然走 KVM_SIGNAL_MSI。
  */
 #ifndef DEVICES_IRQCHIP_H
 #define DEVICES_IRQCHIP_H

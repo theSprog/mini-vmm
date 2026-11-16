@@ -72,6 +72,7 @@ struct vmm_vm;
 struct vmm_vcpu;
 struct arch_cpu_ops;
 struct gdbstub;
+struct split_irqchip;
 
 /* ------------------------------------------------------------------ */
 /* IO 总线（PIO / MMIO 统一抽象）                                       */
@@ -163,6 +164,13 @@ enum vmm_boot_mode {
     VMM_BOOT_LINUX,       /* Linux 直启：vmlinux/bzImage + zeropage */
 };
 
+/* 取值沿用 QEMU 的 kernel-irqchip=on|split|off。off（LAPIC 也在用户态）
+ * 属于 user-lapic 里程碑，命令行解析时拒绝 */
+enum vmm_irqchip_mode {
+    VMM_IRQCHIP_ON = 0,     /* PIC、IOAPIC、PIT、LAPIC 全在 KVM */
+    VMM_IRQCHIP_SPLIT,      /* 只有 LAPIC 在 KVM */
+};
+
 struct vmm_config {
     enum vmm_boot_mode mode;
     uint64_t    ram_size;      /* 字节 */
@@ -210,6 +218,14 @@ struct vmm_config {
 
     /* --monitor 的 unix socket 路径，NULL 表示不启用，见 monitor.h */
     const char *monitor_path;
+
+    /* --kernel-irqchip：PIC/IOAPIC/PIT 在 KVM 里还是在用户态 */
+    enum vmm_irqchip_mode irqchip;
+
+    /* --pit-reinject：PIT 通道 0 的 tick 因为 guest 没及时确认而积压时，
+     * true 逐个补发（KVM 内核 PIT 的默认），false 合并成一次。两种 irqchip
+     * 模式语义相同，见 devices/split_irqchip.h */
+    bool pit_reinject;
 };
 
 void vmm_config_default(struct vmm_config *cfg);
@@ -293,7 +309,11 @@ struct vmm_vm {
 
     const struct arch_cpu_ops *arch;   /* 运行时探测出的 CPU 厂商后端 */
 
-    bool            has_irqchip;       /* KVM_CREATE_IRQCHIP 已完成 */
+    /* KVM 里有 LAPIC、能投递 MSI：KVM_CREATE_IRQCHIP 或 KVM_CAP_SPLIT_IRQCHIP
+     * 已完成。split 时 split 非 NULL，PIC/IOAPIC/PIT 在用户态，
+     * 见 devices/split_irqchip.h */
+    bool            has_irqchip;
+    struct split_irqchip *split;
 
     struct vmm_io_dev pio_devs[VMM_MAX_PIO_DEVS];
     int               nr_pio_devs;

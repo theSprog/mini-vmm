@@ -20,7 +20,8 @@
  * 没有 ACPI（acpi=off）时使用，那种情况下没有热插拔。
  *
  * ISA IRQ i 直接接 IOAPIC pin i，是因为 KVM 内核态 irqchip 的默认 GSI
- * 路由就是这样（包括 PIT 的 GSI 0 -> pin 0）。和 qemu 那种
+ * 路由就是这样（包括 PIT 的 GSI 0 -> pin 0），split irqchip 的用户态接线
+ * （devices/split_irqchip.c）也按这个关系。和 qemu 那种
  * "IRQ0 -> pin2 + 中断源覆盖" 的做法不同，照抄 qemu 的表会让时钟中断丢失。
  */
 #include <string.h>

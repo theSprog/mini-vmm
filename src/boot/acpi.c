@@ -442,7 +442,8 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
         p += sizeof(*io);
     }
     /* ISA IRQ 0-15 与 GSI 恒等映射，不需要 Interrupt Source Override：
-     * Linux 在没有 override 时默认就是恒等，而 KVM 的默认路由也是恒等。 */
+     * Linux 在没有 override 时默认就是恒等；kernel irqchip 时 KVM 的默认路由
+     * 也是恒等，split irqchip 时 split_irqchip_set_irq 按同样的恒等关系接线。 */
     {
         struct madt_lapic_nmi *n = (struct madt_lapic_nmi *)p;
 

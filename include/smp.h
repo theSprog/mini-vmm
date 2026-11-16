@@ -26,6 +26,11 @@ int  vm_run(struct vmm_vm *vm);
 /* 让所有 vCPU 线程尽快离开 KVM_RUN。可以在任意线程里调用，可重入。 */
 void vm_request_stop(struct vmm_vm *vm);
 
+/* 把一个 vCPU 踢出 KVM_RUN，让它回到 run loop 顶部重新看“要做的事”。
+ * 调用方先写好事（should_stop、工作队列、split irqchip 的 PIC 输出），再调它；
+ * 竞态分析见 smp.c。可以在任意线程里调用 */
+void vcpu_kick(struct vmm_vcpu *v);
+
 /*
  * 把一个函数交给指定 vCPU 的线程执行（QEMU 叫 run_on_cpu）。
  *

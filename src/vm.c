@@ -13,6 +13,7 @@
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
 #include "devices/irqchip.h"
+#include "devices/split_irqchip.h"
 #include "gdb/gdbstub.h"
 #include "smp.h"
 
@@ -557,13 +558,25 @@ int vcpu_handle_exit(struct vmm_vcpu *vcpu)
                  run->system_event.type);
         return VMM_ERR_EXIT;
 
+    case KVM_EXIT_IRQ_WINDOW_OPEN:
+        /* split irqchip 请求的中断窗口开了：回到 run loop 顶部注入 */
+        if (vcpu->vm->split)
+            return VMM_OK;
+        break;
+
+    case KVM_EXIT_IOAPIC_EOI:
+        if (vcpu->vm->split)
+            return split_irqchip_eoi(vcpu, run->eoi.vector);
+        break;
+
     default:
-        vmm_err("vCPU %d: unhandled exit_reason=%u (%s)", vcpu->id,
-                run->exit_reason,
-                kvm_exit_reason_str(run->exit_reason));
-        vcpu_dump_state(vcpu);
-        return VMM_ERR_GUEST;
+        break;
     }
+
+    vmm_err("vCPU %d: unhandled exit_reason=%u (%s)", vcpu->id,
+            run->exit_reason, kvm_exit_reason_str(run->exit_reason));
+    vcpu_dump_state(vcpu);
+    return VMM_ERR_GUEST;
 }
 
 int vcpu_run_loop(struct vmm_vcpu *vcpu)
@@ -571,6 +584,12 @@ int vcpu_run_loop(struct vmm_vcpu *vcpu)
     int r;
 
     while (!__atomic_load_n(&vcpu->should_stop, __ATOMIC_SEQ_CST)) {
+        /* split irqchip 的 PIC 输出只接 vCPU 0 的 LINT0 */
+        if (vcpu->vm->split && vcpu->id == 0) {
+            r = split_irqchip_pre_run(vcpu);
+            if (r != VMM_OK)
+                return r;
+        }
         __atomic_store_n(&vcpu->state, VCPU_GUEST, __ATOMIC_RELAXED);
         r = kvm_run(vcpu->fd);
         __atomic_store_n(&vcpu->state, VCPU_VMM, __ATOMIC_RELAXED);
@@ -756,7 +775,8 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
     /* 7. Linux 需要中断控制器和 PIT，且必须在创建 vCPU 之前建好：
      *    KVM 在 KVM_CREATE_VCPU 时才决定是否给 vCPU 挂内核态 LAPIC。 */
     if (cfg->mode == VMM_BOOT_LINUX) {
-        r = irqchip_create(vm);
+        r = cfg->irqchip == VMM_IRQCHIP_SPLIT ? split_irqchip_create(vm)
+                                              : irqchip_create(vm);
         if (r != VMM_OK)
             goto fail;
     }
@@ -798,6 +818,7 @@ void vm_destroy(struct vmm_vm *vm)
     vm->stats_fd = -1;
 
     vm_power_on_free(vm);
+    split_irqchip_destroy(vm);
     mem_destroy(vm);
 
     if (vm->vm_fd >= 0)

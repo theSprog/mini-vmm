@@ -267,7 +267,7 @@ static void kick_handler(int sig)
  * 它（那么清零之后的检查一定看得到事），不会出现事已写好、置位却被清掉、
  * vCPU 又睡回去的交错。
  */
-static void vcpu_kick(struct vmm_vcpu *v)
+void vcpu_kick(struct vmm_vcpu *v)
 {
     if (v->run)
         __atomic_store_n(&v->run->immediate_exit, 1, __ATOMIC_SEQ_CST);

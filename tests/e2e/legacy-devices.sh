@@ -106,15 +106,16 @@ end_case
 
 head1 "PIO trace 的结构"
 
-CUR_NAME="trace 里 PIT 端口为空、0x87 读回 0xFF、S5 分两次写"
+CUR_NAME="trace 里 PIT 端口的归属、0x87 读回 0xFF、S5 分两次写"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
 # 上一条用例已经把 trace 写出来了，这里只做静态检查。
 # 标记串由本地命令替换生成，不会和 trace 内容混淆。
 CUR_OUT="$(
     printf 'TRACE-LINES-%s\n' "$(wc -l < "$TRACE")"
-    # 0x40-0x43 和 0x61 由 KVM 内核态 PIT 接管（KVM_PIT_SPEAKER_DUMMY），
-    # 一条都不该落到用户态
+    # kernel irqchip：0x40-0x43 和 0x61 由 KVM 内核态 PIT 接管
+    # （KVM_PIT_SPEAKER_DUMMY），一条都不该落到用户态；split irqchip：PIT 在
+    # 用户态，guest 编程 PIT（至少有 clockevent 的设置和关闭）必然出现在 trace 里
     printf 'PIT-USERSPACE-%s\n' \
         "$(grep -cE ' 004[0-3] | 0061 ' "$TRACE" || true)"
     # 0x87 = DMA_PAGE_0，i8237A_init_ops() 靠读回 0xFF 判定没有 8237
@@ -128,7 +129,11 @@ CUR_OUT="$(
 CUR_RC=0
 expect_rc 0
 expect_not "TRACE-LINES-0"
-expect_has "PIT-USERSPACE-0"
+if [ "${IRQCHIP:-on}" = split ]; then
+    expect_not "PIT-USERSPACE-0"
+else
+    expect_has "PIT-USERSPACE-0"
+fi
 expect_has "DMA0-R1-ff"
 expect_has "S5-1401-3401-"
 end_case
