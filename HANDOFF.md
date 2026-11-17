@@ -17,6 +17,8 @@
 
 **guest 内核跟上游 mainline，查 guest 行为看钉住的那个 commit。** 用最新上游而不是 LTS，是为了让 guest 侧的新行为和上游回归尽早暴露；钉住 commit 让任何时候构建出的都是同一个内核，测试期望里的 dmesg 措辞和 sysfs 取值以它为准。升级的步骤写在 `tools/build_guest_kernel.sh` 的 `KERNEL_COMMIT` 旁边。
 
+**要回答“这在最新 KVM 上还成不成立”时用 `tools/nested_kvm.sh`。** mini-vmm 的 CPU 虚拟化全部交给 host 内核的 KVM，WSL 的 6.6 只能代表 KVM 6.6。这个脚本用 QEMU 起一台虚拟机跑被测内核（kvm-x86/next 或打了补丁的分支），把 host 的 `/` 经 9p 只读共享进去、仓库读写共享在同一路径，在里面直接跑 `make test`，用法见 `--help`。guest 处在第三层，启动和 I/O 慢好几倍，对时间敏感的用例可能要放宽余量；L1 默认占 4G 内存，这台机器一共约 7G，同一时间只跑一台 L1。它不是日常测试环境，只在怀疑问题出在 KVM、或者要验证 KVM 补丁时用。
+
 **跑测试之前先 `make`。** `make test` 只构建测试二进制，不保证 `build/vmm` 是最新的，直接跑会用到旧二进制。
 
 ## guest 内核配置兼容

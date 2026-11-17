@@ -10,4 +10,5 @@
 /**/*.bin
 /vmlinux
 /guest-kernel
+/nested-kernel
 /arch-image
