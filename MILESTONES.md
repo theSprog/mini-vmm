@@ -33,7 +33,7 @@
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
 | 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
-| 13 | virtio-fs · sriov-pf-driver · guest-vfio · live-migration |
+| 13 | virtio-gpu-venus · virtio-fs · sriov-pf-driver · guest-vfio · live-migration |
 | 14 | vfio-pci · postcopy |
 
 层级表由 `tools/check_milestones.py --write` 生成，增删里程碑或改依赖后重新生成；`make test milestones` 会检查依赖有没有写错、表有没有过时。层级只说明“能不能开始”，不是推荐顺序。推荐顺序是文档顺序：先打通到 arch-distro，然后按章节往下走。
@@ -557,6 +557,21 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 - [ ] 声明 `VIRTIO_GPU_F_VIRGL`，capset 查询返回 virglrenderer 提供的内容，guest `eglinfo` 的 renderer 为 `virgl (<host 渲染器>)`
 - [ ] context 创建与销毁、资源与 context 的绑定、`SUBMIT_3D` 命令流交给 virglrenderer，fence 完成后才回写 used ring
 - [ ] guest 用 GL 渲染的画面经 scanout 显示，VNC 和 monitor 截图与之一致；测试在没有窗口系统（不设 `DISPLAY` 和 `WAYLAND_DISPLAY`）时运行，host 没有可用的 GL 时报 SKIP 并说明缺什么
+
+### virtio-gpu-venus — Vulkan 计算与 guest 内的 LLM 推理
+
+依赖: virtio-gpu-3d · 参考: OASIS VirtIO Spec（GPU Device：blob resource、context init、shared memory region；Virtio Over PCI Bus：shared memory capability）、`linux/virtio_gpu.h`、`linux/virtio_pci.h`、`linux/kvm.h`（`KVM_SET_USER_MEMORY_REGION`）、virglrenderer 的 `virglrenderer.h`
+
+前提: host 的 virglrenderer 编译时开启了 Venus（带 `virgl_render_server`），并装有 lavapipe（Arch 的 `vulkan-swrast`）。
+
+virgl 转发的是 GL 命令流，数据靠 transfer 命令在 guest 内存和 host 资源之间来回拷贝；Venus 转发 Vulkan 命令流，guest 驱动要直接 `vkMapMemory` 访问 host 分配的内存，拷贝走不通。所以这个里程碑要学的新机制是 blob 资源：host 把一块 Vulkan 内存导出成 fd 交给 VMM，VMM 在运行中把它 mmap 进一个新的 memslot，放在设备 BAR 里 shared memory region 的某个偏移上，guest 驱动再把那段 GPA 映射给用户态；context init 让每个 context 选定 capset 并拥有多条带独立 fence 的 ring。LLM 推理只是承载这些机制的负载，选它是因为它的计算量足够大，能看出命令提交和内存映射的开销。验收以 lavapipe 为基准：它导出的 host-visible 内存是 memfd，能被 mmap，结果确定且不依赖 GPU 驱动。WSL2 上 Mesa 的 dzn（D3D12 上的 Vulkan）不能作为 Venus 的 host 驱动：它没有 dma_buf 导出，带 opaque fd 导出的 host-visible 分配返回 `VK_ERROR_OUT_OF_DEVICE_MEMORY`，virglrenderer 的 udmabuf 退路又要求驱动支持 `VK_EXT_external_memory_dma_buf`，于是 guest 能枚举出 GPU，但第一次 `vkMapMemory` 就失败（`RESOURCE_CREATE_BLOB` 回 `ERR_UNSPEC`）。这个结论依赖 virglrenderer 1.3 和 Mesa dzn 的扩展列表，换版本后用 host 的 `vulkaninfo` 查 dzn 是否出现 `VK_EXT_external_memory_dma_buf` 来重新判断。lavapipe 的设备类型是 CPU，Venus 原样透传，llama.cpp 的 Vulkan 后端默认只选 discrete/integrated GPU，要用 `GGML_VK_VISIBLE_DEVICES` 显式指定。
+
+- [ ] 声明 `VIRTIO_GPU_F_RESOURCE_BLOB` 和 `VIRTIO_GPU_F_CONTEXT_INIT`，capset 列表含 Venus，guest `vulkaninfo` 的 deviceName 为 `Virtio-GPU Venus (<host 设备>)`
+- [ ] host-visible blob 经 shared memory region 映射给 guest：`RESOURCE_MAP_BLOB` 时运行中加入 memslot，`RESOURCE_UNMAP_BLOB` 和资源销毁时移除；越界、与已有映射重叠、未对齐和引用不存在资源的请求被拒绝，诊断里带 resource id、offset 和 size
+- [ ] 每条 ring 有独立的 fence 时间线（`VIRTIO_GPU_FLAG_INFO_RING_IDX`），一条 ring 上未完成的 fence 不挡住其他 ring 的完成通知
+- [ ] llama.cpp 的 `test-backend-ops` 在 Venus 设备上相对 CPU 后端通过，不支持的算子逐个列出原因
+- [ ] Qwen2.5-Coder-0.5B Q4_K_M 全部层 offload 到 Venus，贪心生成的 C hello world 在 guest 内编译运行、输出正确；同一 prompt 用 guest 的 CPU 后端作对照组，记录两边的 token/s 和 VMM 统计的 `SUBMIT_3D`、blob 创建与映射次数。判据不比速度：lavapipe 的计算本来就在 host CPU 上，每次跨越虚拟机边界的往返开销会让 Venus 慢于 guest CPU，这正是要观察的现象。也不要求两边文本逐字节相同：两个后端的浮点运算顺序不同，贪心解码在后段可能选出不同的 token
+- [ ] host 缺少带 Venus 的 virglrenderer、lavapipe 或模型文件时报 SKIP 并说明缺什么、怎么获取；host 驱动能导出可映射内存时（例如原生 Linux 上的 Mesa GPU 驱动）对真 GPU 再跑一遍推理验收，否则这一项报 SKIP 并给出原因
 
 ### virtio-balloon — 内存气球
 
