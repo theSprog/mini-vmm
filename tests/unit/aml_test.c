@@ -1,4 +1,4 @@
-/* tests/unit/aml_test.c — AML 编码器的边界：PkgLength、整数前缀、EisaId、溢出
+/* tests/unit/aml_test.c — AML 编码器的边界：PkgLength、整数前缀、字符串、EisaId、溢出
  *
  * DSDT 整体的正确性由 tables suite 的 iasl 往返检查（反汇编再编译后逐字节
  * 一致）兜底，但那只覆盖当前 DSDT 实际用到的长度：PkgLength 只出现了 1 字节
@@ -109,6 +109,20 @@ int main(int argc, char **argv)
             CHECK(a.len == t[i].n && !memcmp(g_buf, t[i].bytes, t[i].n),
                   "integer 0x%llx", (unsigned long long)t[i].v);
         }
+    }
+
+    T_CASE("字符串：StringPrefix 0x0D、ASCII 字符、NUL 结尾（20.2.3）");
+    {
+        static const uint8_t want[] = { 0x0D, 'Q', 'E', 'M', 'U', '0', '0', '0', '1', 0x00 };
+
+        aml_init(&a, g_buf, sizeof(g_buf));
+        aml_string(&a, "QEMU0001");
+        CHECK(a.len == sizeof(want) && !memcmp(g_buf, want, sizeof(want)),
+              "\"QEMU0001\" encodes to %zu bytes", a.len);
+        aml_init(&a, g_buf, sizeof(g_buf));
+        aml_string(&a, "");
+        CHECK(a.len == 2 && g_buf[0] == 0x0D && g_buf[1] == 0x00,
+              "empty string is prefix + NUL");
     }
 
     T_CASE("EisaId：PNP0A03 的压缩值，以及按 ACPICA 的算法解回原文");

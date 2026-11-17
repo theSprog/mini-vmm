@@ -50,6 +50,7 @@ SRCS := \
 	src/block/blockdev.c \
 	src/opts.c \
 	src/devices/rtc.c \
+	src/devices/pvpanic.c \
 	src/console.c \
 	src/io/event_loop.c \
 	src/kvm_stats.c \
@@ -157,7 +158,7 @@ TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
                event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub \
                system-reset arch-distro monitor split-irqchip \
-               acpi-events
+               acpi-events pvpanic
 
 # `make test smp` 里的 smp 对 make 来说也是一个 goal，不声明的话
 # 会报 "No rule to make target 'smp'"。all 例外——它是真实目标。

@@ -13,6 +13,7 @@
 #define AML_BYTE_PREFIX      0x0A
 #define AML_WORD_PREFIX      0x0B
 #define AML_DWORD_PREFIX     0x0C
+#define AML_STRING_PREFIX    0x0D
 #define AML_QWORD_PREFIX     0x0E
 #define AML_SCOPE_OP         0x10
 #define AML_BUFFER_OP        0x11
@@ -176,6 +177,13 @@ size_t aml_package(struct aml *a, uint8_t n)
     at = aml_open(a);
     aml_byte(a, n);
     return at;
+}
+
+/* String := StringPrefix AsciiCharList NullChar（20.2.3） */
+void aml_string(struct aml *a, const char *s)
+{
+    aml_byte(a, AML_STRING_PREFIX);
+    aml_bytes(a, s, strlen(s) + 1);
 }
 
 void aml_buffer(struct aml *a, const void *bytes, size_t n)

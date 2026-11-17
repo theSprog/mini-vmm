@@ -28,7 +28,7 @@
 | 5 | pci-msi ✓ |
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
-| 8 | monitor ✓ · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
+| 8 | monitor ✓ · pvpanic ✓ · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
 | 9 | acpi-events ✓ · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
@@ -208,8 +208,8 @@ mkinitcpio 的 autodetect hook 按构建机（host）的 sysfs 挑选模块，�
 
 依赖: legacy-devices · 参考: QEMU `docs/specs/pvpanic.rst`、Linux `drivers/misc/pvpanic/`
 
-- [ ] 提供 pvpanic 设备（ISA 端口加 ACPI 描述），guest pvpanic 驱动完成绑定
-- [ ] guest panic 时 VMM 记录 panic 事件，退出码能区分 panic 和正常重启
+- [x] 提供 pvpanic 设备（ISA 端口加 ACPI 描述），guest pvpanic 驱动完成绑定
+- [x] guest panic 时 VMM 记录 panic 事件，退出码能区分 panic 和正常重启
 
 ### edu-dev — 教学 PCI 设备与自己写的 guest 驱动
 

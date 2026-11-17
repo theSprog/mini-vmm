@@ -15,6 +15,7 @@
 #include "boot/mptable.h"
 #include "devices/i8042.h"
 #include "devices/acpi_pm.h"
+#include "devices/pvpanic.h"
 #include "boot/aml.h"
 #include "pci/pci.h"
 
@@ -179,6 +180,8 @@ _Static_assert(sizeof(struct acpi_facs) == 64, "facs size");
 #define RES_WORD_ADDRESS     0x88    /* Word Address Space Descriptor */
 #define RES_DWORD_ADDRESS    0x87    /* DWord Address Space Descriptor */
 #define RES_END_TAG          0x79    /* 小型描述符，类型 0xF，长度 1 */
+#define RES_IO_PORT          0x47    /* 小型描述符，类型 0x8，长度 7（6.4.2.5） */
+#define RES_IO_DECODE16      0x01    /* _DEC = 1：译码全部 16 位地址 */
 #define RES_WORD_LEN         13
 #define RES_DWORD_LEN        23
 
@@ -282,6 +285,40 @@ static void build_pci0_prt(struct aml *a)
     aml_close(a, prt);
 }
 
+/* pvpanic（devices/pvpanic.h）：
+ *   Device (PEVT) {
+ *     Name (_HID, "QEMU0001")
+ *     Name (_CRS, ResourceTemplate () { IO (Decode16, 0x505, 0x505, 1, 1) })
+ *   }
+ * Linux 的 pvpanic-mmio 按 _HID 绑定，从 _CRS 取端口（platform_get_mem_or_io）。
+ * 没有 _STA：不在可枚举总线上的设备缺 _STA 时，OSPM 当它存在、启用、工作
+ * 正常（ACPI 6.5 6.3.7），这个设备不会被拔出或关闭，没有别的状态要报。
+ * QEMU 规范里的 RDPT/WRPT 方法也不提供：Linux 驱动直接读写端口，不调用
+ * 它们，没有调用方就验证不了它们写得对不对。 */
+static void build_pvpanic(struct aml *a)
+{
+    uint8_t buf[16];
+    struct aml r;
+    size_t dev;
+
+    aml_init(&r, buf, sizeof(buf));
+    aml_byte(&r, RES_IO_PORT);
+    aml_byte(&r, RES_IO_DECODE16);
+    aml_word(&r, PVPANIC_PORT);             /* _MIN */
+    aml_word(&r, PVPANIC_PORT);             /* _MAX */
+    aml_byte(&r, 1);                        /* _ALN */
+    aml_byte(&r, 1);                        /* _LEN */
+    aml_byte(&r, RES_END_TAG);
+    aml_byte(&r, 0);
+
+    dev = aml_device(a, "PEVT");
+    aml_name_decl(a, "_HID");
+    aml_string(a, PVPANIC_ACPI_HID);
+    aml_name_decl(a, "_CRS");
+    aml_buffer(a, r.buf, r.len);
+    aml_close(a, dev);
+}
+
 /* DSDT：
  *   Name (_S5, Package () { 5, 5, 0, 0 })
  *   Scope (\_SB) {
@@ -291,11 +328,13 @@ static void build_pci0_prt(struct aml *a)
  *       Name (_CRS, ResourceTemplate () { ... })
  *       Name (_PRT, Package () { ... })
  *     }
+ *     Device (PEVT) { ... }               挂了 pvpanic 时才有
  *   }
  * Linux poweroff 时查 \_S5 拿 SLP_TYP，然后写 PM1a_CNT = SLP_TYP<<10 | SLP_EN。
  * 找到 PNP0A03 后 Linux 的 acpi_pci_root 驱动接管 bus 0 的枚举，资源窗口
  * 取自 _CRS，INTx 路由取自 _PRT。 */
-static int build_dsdt(uint8_t *out, size_t cap, size_t *len)
+static int build_dsdt(const struct vmm_vm *vm, uint8_t *out, size_t cap,
+                      size_t *len)
 {
     static uint8_t buf[DSDT_AML_MAX];
     struct aml a;
@@ -320,6 +359,8 @@ static int build_dsdt(uint8_t *out, size_t cap, size_t *len)
     build_pci0_crs(&a);
     build_pci0_prt(&a);
     aml_close(&a, dev);
+    if (vm->pvpanic)
+        build_pvpanic(&a);
     aml_close(&a, sb);
 
     if (a.overflow || a.len > cap) {
@@ -420,7 +461,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 
     /* DSDT */
     h = (struct acpi_header *)(base + dsdt_off);
-    r = build_dsdt((uint8_t *)(h + 1),
+    r = build_dsdt(vm, (uint8_t *)(h + 1),
                    ACPI_TABLES_MAX - dsdt_off - sizeof(*h), &aml_len);
     if (r != VMM_OK)
         return r;

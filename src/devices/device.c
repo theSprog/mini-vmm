@@ -8,11 +8,13 @@
 #include "devices/ahci.h"
 #include "devices/e1000.h"
 #include "devices/pci_test.h"
+#include "devices/pvpanic.h"
 
 static const struct vmm_device_type *const device_types[] = {
     &ahci_device_type,
     &e1000_device_type,
     &pci_test_device_type,
+    &pvpanic_device_type,
 };
 
 #define NR_DEVICE_TYPES  (sizeof(device_types) / sizeof(device_types[0]))

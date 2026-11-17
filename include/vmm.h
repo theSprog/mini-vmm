@@ -50,6 +50,11 @@ enum vmm_errno {
     VMM_ERR_INTR        = -7,  /* KVM_RUN 被信号或 immediate_exit 打断 */
 };
 
+/* 进程退出码（vm->exit_code）里有约定含义的值，完整列表见 --help 的
+ * "Exit status"。0 是正常结束，1 是 VMM 出错（main 的错误返回）。
+ * 裸 payload 经调试端口 0xF4 可以写任意值，Linux guest 不碰这个端口。 */
+#define VMM_EXIT_GUEST_PANIC 3     /* guest 经 pvpanic 报告 PANICKED */
+
 /* ------------------------------------------------------------------ */
 /* 日志                                                                */
 /* ------------------------------------------------------------------ */
@@ -314,6 +319,9 @@ struct vmm_vm {
      * 见 devices/split_irqchip.h */
     bool            has_irqchip;
     struct split_irqchip *split;
+    /* 挂了 --device pvpanic，boot/acpi.c 据此在 DSDT 里描述它，
+     * 见 devices/pvpanic.h */
+    bool            pvpanic;
 
     struct vmm_io_dev pio_devs[VMM_MAX_PIO_DEVS];
     int               nr_pio_devs;
@@ -347,7 +355,7 @@ struct vmm_vm {
      * should_stop，quit 恰好落在复位过程中时，停机请求会被这次清零抹掉，
      * main 的复位循环在复位前后都检查这个标志，见 main.c */
     bool            quit_requested;
-    int             exit_code;
+    int             exit_code;         /* 取值约定见 VMM_EXIT_* */
     struct timespec started;           /* 第一次进入 guest 的时刻（CLOCK_MONOTONIC） */
     int             stats_fd;          /* VM 级 KVM_GET_STATS_FD，打不开时为 -1 */
 

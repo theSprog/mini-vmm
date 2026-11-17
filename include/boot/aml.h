@@ -5,7 +5,7 @@
  * 手写既易错又改不动，所以用一组按语法结构生成字节的函数。
  *
  * 只覆盖 DSDT 实际用到的那几种构造：Scope、Device、Name、Package、Buffer、
- * 整数和单段名字。结构嵌套用 open/close 配对：open 先预留 4 字节的
+ * 整数、字符串和单段名字。结构嵌套用 open/close 配对：open 先预留 4 字节的
  * PkgLength，close 时按实际长度改写成最短编码并把内容往前挪。
  *
  * 缓冲区由调用方提供，写满后后续写入全部丢弃并置 overflow，调用方在最后
@@ -55,6 +55,11 @@ void   aml_name_decl(struct aml *a, const char *name);
 
 /* Package (n) { ... }：返回位置，写完 n 个元素后 aml_close */
 size_t aml_package(struct aml *a, uint8_t n);
+
+/* 字符串常量："QEMU0001" 这类 ACPI ID 只能写成字符串（_HID 的整数形式只
+ * 容得下 EISA ID）。s 只能含 0x01-0x7F 的字符（20.2.3 AsciiChar），调用方
+ * 传常量 */
+void   aml_string(struct aml *a, const char *s);
 
 /* Buffer () { bytes }：一次写完 */
 void   aml_buffer(struct aml *a, const void *bytes, size_t n);

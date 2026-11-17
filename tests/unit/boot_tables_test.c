@@ -844,6 +844,35 @@ static void dump_tables(const char *dir, uint64_t rsdp_gpa)
     }
 }
 
+/* --device pvpanic（devices/pvpanic.h）：DSDT 里有 Name(_HID, "QEMU0001")
+ * 和 IO 端口描述符 IO(Decode16, 0x505, 0x505, 1, 1)。期望字节按规范逐个写出：
+ * NameOp 0x08、StringPrefix 0x0D 加 NUL 结尾（ACPI 6.5 20.2.3、20.2.5.1）；
+ * IO 描述符 0x47、_DEC=1、_MIN/_MAX 小端、_ALN、_LEN（6.4.2.5 Table 6.33），
+ * 后面紧跟 End Tag 0x79 0x00（6.4.2.9）。没挂设备时 DSDT 里不能出现这个 ID，
+ * 否则 guest 驱动会去写一个没人响应的端口。 */
+static void check_pvpanic(const struct platform *acpi, bool want)
+{
+    static const uint8_t hid[] = {
+        0x08, '_', 'H', 'I', 'D', 0x0D, 'Q', 'E', 'M', 'U', '0', '0', '0', '1', 0x00,
+    };
+    static const uint8_t io[] = {
+        0x47, 0x01, 0x05, 0x05, 0x05, 0x05, 0x01, 0x01, 0x79, 0x00,
+    };
+    bool has_hid, has_io;
+
+    if (!acpi->dsdt_aml)
+        return;
+    has_hid = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, hid, sizeof(hid)) != NULL;
+    has_io  = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, io, sizeof(io)) != NULL;
+    if (want) {
+        CHECK(has_hid, "pvpanic: DSDT has no Name(_HID, \"QEMU0001\")");
+        CHECK(has_io, "pvpanic: DSDT has no IO(Decode16, 0x505, 0x505, 1, 1)");
+    } else {
+        CHECK(!memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, "QEMU0001", 8),
+              "pvpanic not attached but DSDT mentions QEMU0001");
+    }
+}
+
 int main(int argc, char **argv)
 {
     static const int cpu_counts[] = { 1, 2, 4, VMM_MAX_VCPUS };
@@ -875,10 +904,14 @@ int main(int argc, char **argv)
 
         printf("nr_cpus = %d\n", n);
         g_ctx = "build";
+        /* 1 个 CPU 的那轮不挂 pvpanic，其余挂上；--dump 取 4 个 CPU 那轮，
+         * iasl 往返检查因此也覆盖 pvpanic 的 Device */
+        vm.pvpanic = n > 1;
         CHECK(build_all(&vm, n, cmdline, &rsdp) == 0, "builders failed");
         check_mptable(n, &mp);
         check_acpi(rsdp, n, &acpi);
         check_consistency(&mp, &acpi, n);
+        check_pvpanic(&acpi, vm.pvpanic);
         check_boot_params(&vm, rsdp, cmdline);
         if (dump_dir && n == 4)
             dump_tables(dump_dir, rsdp);
