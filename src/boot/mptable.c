@@ -29,6 +29,7 @@
 #include "vmm.h"
 #include "memory.h"
 #include "boot/mptable.h"
+#include "boot/acpi.h"
 #include "pci/pci.h"
 
 #define MPC_SPEC          4      /* MP spec 1.4 */
@@ -49,6 +50,12 @@
 #define MP_IRQTYPE_EXTINT 3
 
 #define MP_IOAPIC_USABLE  1
+
+/* intsrc 的 irqflag：bit 1:0 极性（PO），bit 3:2 触发方式（EL），编码与
+ * MADT 的 MPS INTI flags 相同（ACPI 6.5 Table 5.26，那里注明它和 MPS 1.4
+ * Table 4-10 一致）。11 = 低有效 / 电平触发 */
+#define MP_IRQFLAG_ACTIVE_LOW  0x3
+#define MP_IRQFLAG_LEVEL       (0x3 << 2)
 
 #define MP_BUS_ID_PCI     0
 #define MP_BUS_ID_ISA     1
@@ -219,6 +226,11 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
         s->srcbusirq = (uint8_t)i;
         s->dstapic   = ioapic_id;
         s->dstirq    = (uint8_t)i;
+        /* SCI 不是 ISA 的边沿中断：FADT SCI_INT 规定它是 level、active low，
+         * MADT 没写 ISO 时 Linux 正是这样配置 IRQ 9 的。这里写成同样的属性，
+         * 两份表描述的接线才一致 */
+        if (i == ACPI_SCI_IRQ)
+            s->irqflag = MP_IRQFLAG_ACTIVE_LOW | MP_IRQFLAG_LEVEL;
         p += sizeof(*s);
         nr_entries++;
     }

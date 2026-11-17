@@ -29,7 +29,7 @@
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
 | 8 | monitor ✓ · pvpanic · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
-| 9 | acpi-events · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
+| 9 | acpi-events ✓ · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
 | 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
@@ -201,8 +201,8 @@ mkinitcpio 的 autodetect hook 按构建机（host）的 sysfs 挑选模块，�
 
 依赖: monitor · 参考: ACPI spec（SCI、PM1 事件寄存器、GPE、Notify）
 
-- [ ] SCI 中断接通，PM1 事件寄存器的状态位和使能位语义正确
-- [ ] monitor 发出关机请求后，VMM 置电源按钮事件，Arch guest 的 systemd-logind 走完正常关机流程
+- [x] SCI 中断接通，PM1 事件寄存器的状态位和使能位语义正确
+- [x] monitor 发出关机请求后，VMM 置电源按钮事件，Arch guest 的 systemd-logind 走完正常关机流程
 
 ### pvpanic — guest panic 通知
 

@@ -210,6 +210,12 @@ static void check_mptable(int nr_cpus, struct platform *pf)
                 /* 恒等映射：ISA IRQ i -> IOAPIC pin i，和 KVM 默认 GSI 路由一致 */
                 CHECK(p[5] == p[7], "intsrc: ISA IRQ %u -> pin %u (KVM routes "
                       "GSI identically)", p[5], p[7]);
+                /* irqflag：ISA 默认（0 = 边沿、高有效），SCI 除外：FADT SCI_INT
+                 * 规定 SCI 是 level、active low（ACPI 6.5 Table 5.9），PO/EL
+                 * 编码见 Table 5.26。MADT 不写 ISO 时 Linux 按这个属性配 IRQ 9，
+                 * MP table 写成别的，两份表就描述了两种接线 */
+                CHECK(rd16(p + 2) == (p[5] == ACPI_SCI_IRQ ? 0x0F : 0),
+                      "intsrc: ISA IRQ %u irqflag 0x%x", p[5], rd16(p + 2));
             } else if (p[4] == pci_bus && pf->nr_pci_irqs < PCI_MAX_SLOTS) {
                 /* srcbusirq：bit 6:2 slot，bit 1:0 pin（0 = INTA） */
                 pf->pci_irqs[pf->nr_pci_irqs].slot = (p[5] >> 2) & 0x1f;
@@ -330,12 +336,56 @@ static void check_acpi(uint64_t rsdp_gpa, int nr_cpus, struct platform *pf)
     CHECK(rd32(fadt + 56) == ACPI_PM1A_EVT_PORT && rd32(fadt + 64) == ACPI_PM1A_CNT_PORT,
           "PM1a ports differ from the acpi_pm device");
     CHECK(rd16(fadt + 46) == ACPI_SCI_IRQ, "SCI_INT %u", rd16(fadt + 46));
+    /* PWR_BUTTON 清 0 = 固定功能电源按钮（ACPI 6.5 Table 4.8、Table 5.10）。
+     * 置位时 Linux 不创建 LNXPWRBN（drivers/acpi/scan.c），PM1 的电源按钮
+     * 事件没人接，monitor 的 system_powerdown 就不起作用 */
+    CHECK(!(rd32(fadt + 112) & (1u << 4)), "FADT PWR_BUTTON set: no fixed "
+          "power button");
     CHECK(rd32(fadt + 48) == 0, "SMI_CMD must be 0 (no SMM, always in ACPI mode)");
     CHECK(rd16(fadt + 109) & (1u << 1), "IAPC_BOOT_ARCH lacks 8042: i8042 "
           "would not be probed");
     CHECK(rd32(fadt + 40) == (uint32_t)rd64(fadt + 140),
           "DSDT 0x%x != X_DSDT 0x%llx", rd32(fadt + 40),
           (unsigned long long)rd64(fadt + 140));
+
+    /* FACS（ACPI 6.5 5.2.10，Table 5.13）：非 HW_REDUCED 平台必须有；FADT 的
+     * FIRMWARE_CTRL（offset 36）和 X_FIRMWARE_CTRL（offset 132）指向同一处；
+     * 64 字节对齐；落在 ACPI 表区里（表区不是 e820 RAM，见 check_boot_params）。
+     * 全局锁字初值 0，没有 S4BIOS、没有 64 位唤醒，OSPM flags 由固件清 0。
+     * hardware signature 按 acpi.c 的约定是 FACS 之前全部表字节的 FNV-1a，
+     * 这里独立算一遍：表里任何一个字节变了它都要跟着变 */
+    {
+        uint32_t fc = rd32(fadt + 36);
+        uint64_t xfc = rd64(fadt + 132);
+        int in_area = xfc >= ACPI_TABLES_GPA &&
+                      xfc + 64 <= ACPI_TABLES_GPA + ACPI_TABLES_MAX;
+        const uint8_t *facs = g_ram + xfc;
+
+        CHECK(xfc != 0 && fc == xfc, "FIRMWARE_CTRL 0x%x X_FIRMWARE_CTRL 0x%llx",
+              fc, (unsigned long long)xfc);
+        CHECK(!(xfc & 63), "FACS at 0x%llx is not 64-byte aligned",
+              (unsigned long long)xfc);
+        CHECK(in_area, "FACS at 0x%llx is outside the ACPI table area",
+              (unsigned long long)xfc);
+        if (in_area) {
+            uint32_t h = 2166136261u;
+            uint64_t a;
+
+            for (a = ACPI_TABLES_GPA; a < xfc; a++) {
+                h ^= g_ram[a];
+                h *= 16777619u;
+            }
+            CHECK(!memcmp(facs, "FACS", 4), "FACS signature %.4s", (const char *)facs);
+            CHECK(rd32(facs + 4) == 64, "FACS length %u", rd32(facs + 4));
+            CHECK(facs[32] == 3, "FACS version %u", facs[32]);
+            CHECK(rd32(facs + 16) == 0, "FACS global lock 0x%x at boot", rd32(facs + 16));
+            CHECK(rd32(facs + 20) == 0 && rd32(facs + 36) == 0,
+                  "FACS flags 0x%x OSPM flags 0x%x", rd32(facs + 20), rd32(facs + 36));
+            CHECK(rd32(facs + 12) == 0 && rd64(facs + 24) == 0, "FACS waking vectors set");
+            CHECK(rd32(facs + 8) == h, "FACS hardware signature 0x%08x, want 0x%08x",
+                  rd32(facs + 8), h);
+        }
+    }
 
     /* RESET_REG（offset 116 GAS）+ RESET_VALUE（128），FLAGS bit10 宣告有效。
      * Linux acpi_reboot() 只接受 bit_width 8、bit_offset 0 的寄存器。

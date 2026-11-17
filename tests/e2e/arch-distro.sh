@@ -73,8 +73,8 @@ FIO_IOS=16384
 FIO_CMD="fio --name=randread --filename=/dev/sda --readonly --rw=randread --bs=4k --direct=1 --ioengine=psync --size=1G --io_size=$((FIO_IOS * 4))k"
 IPERF_BYTES=64M
 
-# guest dmesg 里允许出现的 err/warn（扩展正则）。每一条都查明了与 VMM 无关，
-# 只是允许而不要求出现，换一台 host 时其中几条会消失。不在这里的
+# guest dmesg 里允许出现的 err/warn（扩展正则）。每一条都查明了与 VMM 无关
+# 或者是 VMM 有意为之，只是允许而不要求出现，换一台 host 时其中几条会消失。不在这里的
 # err/warn 一律算失败：VMM 的设备或固件表出问题时，最先表现为驱动或
 # ACPI 的一条警告。
 DMESG_ALLOWED=(
@@ -97,6 +97,12 @@ DMESG_ALLOWED=(
     # net-pf-16-proto-16-family-nl80211 自动加载 cfg80211，cfg80211 去读
     # wireless-regdb 包提供的 regulatory.db，镜像里没装这个包
     "regulatory: Direct firmware load for regulatory.db failed with error -2"
+    # 这两条和 VMM 有关，但是预期的：平台不实现可选的 RTC_STS/RTC_EN
+    # （ACPI 6.5 4.8.2.4，只对睡眠唤醒有用，这台机器只有 S5），rtc-cmos 装
+    # ACPI RTC 固定事件处理函数时 ACPICA 写 RTC_EN 读回 0，报一次 Error 一次
+    # Warning 后把这个事件当作不存在。理由见 include/devices/acpi_pm.h
+    "ACPI Error: Could not enable RealTimeClock event"
+    "ACPI Warning: Could not enable fixed event - RealTimeClock"
 )
 
 # ignore_loglevel：内核和 systemd-shutdown 的消息不论级别都打到串口。

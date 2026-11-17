@@ -1,10 +1,11 @@
-/* src/boot/acpi.c — 最小 ACPI 表 + PM1a 寄存器块               [linux-boot]
+/* src/boot/acpi.c — 最小 ACPI 表                                  [linux-boot]
  *
- * 内存布局（ACPI_TABLES_GPA 起，每张表 16 字节对齐）：
- *   RSDP  -> XSDT -> { FADT -> DSDT, MADT }
+ * 内存布局（ACPI_TABLES_GPA 起，每张表 16 字节对齐，FACS 64 字节对齐）：
+ *   RSDP  -> XSDT -> { FADT -> { DSDT, FACS }, MADT }
  *
- * 参考 ACPI 6.4 spec：5.2.5 RSDP, 5.2.8 XSDT, 5.2.9 FADT,
- * 5.2.11.1 DSDT, 5.2.12 MADT, 4.8.3 PM1 寄存器。
+ * 参考 ACPI 6.5 spec（ref/ACPI_Spec_6_5_Aug29.pdf）：5.2.5 RSDP, 5.2.8 XSDT,
+ * 5.2.9 FADT, 5.2.10 FACS, 5.2.11.1 DSDT, 5.2.12 MADT。FADT 指向的 PM1 寄存器由
+ * power.c 和 devices/acpi_pm.c 实现。
  */
 #include <string.h>
 
@@ -13,6 +14,7 @@
 #include "boot/acpi.h"
 #include "boot/mptable.h"
 #include "devices/i8042.h"
+#include "devices/acpi_pm.h"
 #include "boot/aml.h"
 #include "pci/pci.h"
 
@@ -135,16 +137,39 @@ _Static_assert(sizeof(struct madt_lapic) == 8, "madt_lapic size");
 _Static_assert(sizeof(struct madt_ioapic) == 12, "madt_ioapic size");
 _Static_assert(sizeof(struct madt_lapic_nmi) == 6, "madt_lapic_nmi size");
 
+/* FACS（ACPI 6.5 5.2.10，Table 5.13）。非硬件精简平台必须有它（5.2.10 第一
+ * 段），全局锁的锁字就在这里（5.2.10.1）。没有固件会来抢锁，所以锁字从 0
+ * 开始、只有 OSPM 自己用；ACPICA 还要看到 PM1_EN.GBL_EN 能写进去才认为锁
+ * 存在，见 devices/acpi_pm.h。唤醒向量和 S4BIOS 只对睡眠状态有意义，这台
+ * 机器只有 S5，flags 为 0。FACS 没有校验和。 */
+struct acpi_facs {
+    char     signature[4];
+    uint32_t length;
+    uint32_t hardware_signature;
+    uint32_t firmware_waking_vector;
+    uint32_t global_lock;
+    uint32_t flags;
+    uint64_t x_firmware_waking_vector;
+    uint8_t  version;
+    uint8_t  reserved[3];
+    uint32_t ospm_flags;
+    uint8_t  reserved2[24];
+} __attribute__((packed));
+_Static_assert(sizeof(struct acpi_facs) == 64, "facs size");
+#define FACS_VERSION 3
+
 #define FADT_F_WBINVD        (1u << 0)
-#define FADT_F_PWR_BUTTON    (1u << 4)   /* 置 1 = 没有固定功能电源键 */
+/* PWR_BUTTON / SLP_BUTTON 置 1 表示按钮是控制方法设备或者没有，清 0 表示
+ * 固定功能按钮（ACPI 6.5 Table 5.10、4.8.2.2.1 Table 4.8）。电源按钮用固定
+ * 功能的（PM1 的 PWRBTN_STS/EN，见 devices/acpi_pm.h），所以 flags 里不置
+ * PWR_BUTTON；没有睡眠按钮，SLP_BUTTON 置 1。 */
+#define FADT_F_PWR_BUTTON    (1u << 4)
 #define FADT_F_SLP_BUTTON    (1u << 5)
 #define FADT_F_RESET_REG_SUP (1u << 10)  /* RESET_REG / RESET_VALUE 有效 */
 #define FADT_BOOT_LEGACY_DEV (1u << 0)
 #define FADT_BOOT_8042       (1u << 1)
 
 #define MADT_PCAT_COMPAT     (1u << 0)   /* 同时存在 8259，Linux 会先屏蔽它 */
-
-#define S5_SLP_TYP 5
 
 /* DSDT 的 AML 写在这块缓冲区里，生成后整段拷进 guest 内存 */
 #define DSDT_AML_MAX 8192
@@ -280,8 +305,8 @@ static int build_dsdt(uint8_t *out, size_t cap, size_t *len)
 
     aml_name_decl(&a, "_S5_");
     pkg = aml_package(&a, 4);
-    aml_int(&a, S5_SLP_TYP);                 /* PM1a_CNT.SLP_TYP */
-    aml_int(&a, S5_SLP_TYP);                 /* PM1b_CNT.SLP_TYP */
+    aml_int(&a, ACPI_S5_SLP_TYP);            /* PM1a_CNT.SLP_TYP */
+    aml_int(&a, ACPI_S5_SLP_TYP);            /* PM1b_CNT.SLP_TYP */
     aml_int(&a, 0);                          /* 保留 */
     aml_int(&a, 0);
     aml_close(&a, pkg);
@@ -348,12 +373,28 @@ static void fill_header(struct acpi_header *h, const char *sig,
 }
 
 #define ALIGN16(x) (((x) + 15) & ~(uint64_t)15)
+#define ALIGN64(x) (((x) + 63) & ~(uint64_t)63)
+
+/* FACS 的 hardware signature：规范要求 ACPI 表的内容或结构一变它就变
+ * （Table 5.13），OSPM 据此判断能不能从 S4 镜像恢复。取 FACS 之前全部表
+ * 字节的 FNV-1a，同样的配置每次启动得到同一个值 */
+static uint32_t tables_signature(const uint8_t *p, size_t len)
+{
+    uint32_t h = 2166136261u;
+
+    while (len--) {
+        h ^= *p++;
+        h *= 16777619u;
+    }
+    return h;
+}
 
 int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 {
     enum gpa_status gs;
     uint8_t *base;
-    uint64_t off, xsdt_off, fadt_off, dsdt_off, madt_off;
+    uint64_t off, xsdt_off, fadt_off, dsdt_off, madt_off, facs_off;
+    struct acpi_facs *facs;
     struct acpi_rsdp *rsdp;
     struct acpi_fadt *fadt;
     struct acpi_madt *madt;
@@ -397,8 +438,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     fadt->pm1_cnt_len    = ACPI_PM1_CNT_LEN;
     fadt->century        = 0x32;          /* CMOS 世纪寄存器，见 rtc.c */
     fadt->iapc_boot_arch = FADT_BOOT_LEGACY_DEV | FADT_BOOT_8042;
-    fadt->flags          = FADT_F_WBINVD | FADT_F_PWR_BUTTON | FADT_F_SLP_BUTTON |
-                           FADT_F_RESET_REG_SUP;
+    fadt->flags          = FADT_F_WBINVD | FADT_F_SLP_BUTTON | FADT_F_RESET_REG_SUP;
     /* RESET_REG 指向 i8042 命令口，RESET_VALUE 是脉冲 reset 命令，复用
      * i8042 设备已有的 reset 路径。x86 Linux 的默认重启顺序先试 ACPI
      * （reboot_type 缺省 BOOT_ACPI），用户用 --cmdline 换掉默认的 reboot=k
@@ -414,7 +454,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
              ACPI_SLEEP_CTL_PORT);
     fill_gas(fadt->sleep_status, GAS_SPACE_SYSTEM_IO, 8, GAS_ACCESS_BYTE,
              ACPI_SLEEP_STS_PORT);
-    fill_header(&fadt->h, "FACP", sizeof(*fadt), 6);
+    /* FIRMWARE_CTRL 要等 MADT 定长后才知道 FACS 在哪，表头在那之后填 */
 
     /* MADT */
     madt = (struct acpi_madt *)(base + madt_off);
@@ -443,7 +483,11 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     }
     /* ISA IRQ 0-15 与 GSI 恒等映射，不需要 Interrupt Source Override：
      * Linux 在没有 override 时默认就是恒等；kernel irqchip 时 KVM 的默认路由
-     * 也是恒等，split irqchip 时 split_irqchip_set_irq 按同样的恒等关系接线。 */
+     * 也是恒等，split irqchip 时 split_irqchip_set_irq 按同样的恒等关系接线。
+     * SCI（IRQ 9）同样不需要：ISO 只用于非恒等映射或极性不合标准的输入
+     * （ACPI 6.5 5.2.12.5），SCI 的标准属性是 level、active low（FADT
+     * SCI_INT），Linux 没看到 ISO 时就按这个配置引脚
+     * （arch/x86/kernel/acpi/boot.c acpi_sci_ioapic_setup）。 */
     {
         struct madt_lapic_nmi *n = (struct madt_lapic_nmi *)p;
 
@@ -457,6 +501,16 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     if (madt_off + len > ACPI_TABLES_MAX)
         return VMM_ERR_INVAL;
     fill_header(&madt->h, "APIC", len, 5);
+
+    /* FACS 的位置写进 FADT 的 32 位和 64 位两个字段，取值相同：
+     * X_FIRMWARE_CTRL 非 0 时 OSPM 忽略 FIRMWARE_CTRL（Table 5.9），两者
+     * 一致时不管 OSPM 用哪个都指向同一处 */
+    facs_off = ALIGN64(madt_off + len);
+    if (facs_off + sizeof(struct acpi_facs) > ACPI_TABLES_MAX)
+        return VMM_ERR_INVAL;
+    fadt->firmware_ctrl   = (uint32_t)(ACPI_TABLES_GPA + facs_off);
+    fadt->x_firmware_ctrl = ACPI_TABLES_GPA + facs_off;
+    fill_header(&fadt->h, "FACP", sizeof(*fadt), 6);
 
     /* XSDT：列出除 DSDT 以外的顶层表（DSDT 由 FADT 引用） */
     h = (struct acpi_header *)(base + xsdt_off);
@@ -479,117 +533,21 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     rsdp->checksum     = acpi_checksum(rsdp, 20);
     rsdp->ext_checksum = acpi_checksum(rsdp, sizeof(*rsdp));
 
+    /* FACS 最后填：hardware signature 覆盖它前面已经定稿的全部表 */
+    facs = (struct acpi_facs *)(base + facs_off);
+    memcpy(facs->signature, "FACS", 4);
+    facs->length             = sizeof(*facs);
+    facs->hardware_signature = tables_signature(base, facs_off);
+    facs->version            = FACS_VERSION;
+
     *rsdp_gpa = ACPI_TABLES_GPA + off;
-    vmm_info("ACPI @ GPA 0x%llx: RSDP XSDT@0x%llx FADT@0x%llx DSDT@0x%llx MADT@0x%llx",
+    vmm_info("ACPI @ GPA 0x%llx: RSDP XSDT@0x%llx FADT@0x%llx DSDT@0x%llx MADT@0x%llx "
+             "FACS@0x%llx",
              (unsigned long long)ACPI_TABLES_GPA,
              (unsigned long long)(ACPI_TABLES_GPA + xsdt_off),
              (unsigned long long)(ACPI_TABLES_GPA + fadt_off),
              (unsigned long long)(ACPI_TABLES_GPA + dsdt_off),
-             (unsigned long long)(ACPI_TABLES_GPA + madt_off));
+             (unsigned long long)(ACPI_TABLES_GPA + madt_off),
+             (unsigned long long)(ACPI_TABLES_GPA + facs_off));
     return VMM_OK;
-}
-
-/* ------------------------------------------------------------------ */
-/* PM1a 事件块（STS/EN 各 16 位）+ 控制块（CNT 16 位）                  */
-/* ------------------------------------------------------------------ */
-
-#define PM1_CNT_SCI_EN   (1u << 0)
-#define PM1_CNT_SLP_TYP(v) (((v) >> 10) & 0x7)
-#define PM1_CNT_SLP_EN   (1u << 13)
-
-/* 扩展睡眠控制寄存器：SLP_TYP 在 bit 4:2，SLP_EN 在 bit 5（ACPI 6.x 4.8.3.7） */
-#define SLEEP_CTL_SLP_TYP(v) (((v) >> 2) & 0x7)
-#define SLEEP_CTL_SLP_EN     (1u << 5)
-/* 扩展睡眠状态寄存器：WAK_STS 在 bit 7，写 1 清零 */
-#define SLEEP_STS_WAK_STS    (1u << 7)
-
-#define PM_OFF_PM1_STS    0
-#define PM_OFF_PM1_EN     2
-#define PM_OFF_PM1_CNT    (ACPI_PM1A_CNT_PORT - ACPI_PM1A_EVT_PORT)
-#define PM_OFF_SLEEP_CTL  (ACPI_SLEEP_CTL_PORT - ACPI_PM1A_EVT_PORT)
-#define PM_OFF_SLEEP_STS  (ACPI_SLEEP_STS_PORT - ACPI_PM1A_EVT_PORT)
-
-static struct {
-    uint16_t sts;
-    uint16_t en;
-    uint16_t cnt;
-    uint8_t  sleep_sts;
-} g_pm;
-
-/* 端口 [0x600, 0x608)：0x600 PM1_STS, 0x602 PM1_EN, 0x604 PM1_CNT,
- * 0x606 SLEEP_CONTROL, 0x607 SLEEP_STATUS。
- * guest 可能按字节或按字访问，统一当成 8 字节的小端寄存器文件处理。
- * SLEEP_CONTROL 只写有意义（SLP_EN 是一次性触发位），读回 0。 */
-static int pm_read(void *opaque, uint64_t off, uint32_t size, void *data)
-{
-    uint8_t regs[ACPI_PM_IO_LEN] = {0};
-    uint16_t cnt = g_pm.cnt | PM1_CNT_SCI_EN;   /* 永远处于 ACPI 模式 */
-
-    (void)opaque;
-    memcpy(regs + PM_OFF_PM1_STS, &g_pm.sts, 2);
-    memcpy(regs + PM_OFF_PM1_EN, &g_pm.en, 2);
-    memcpy(regs + PM_OFF_PM1_CNT, &cnt, 2);
-    regs[PM_OFF_SLEEP_STS] = g_pm.sleep_sts;
-
-    memset(data, 0, size);
-    if (off + size <= sizeof(regs))
-        memcpy(data, regs + off, size);
-    return VMM_OK;
-}
-
-static int pm_write(void *opaque, uint64_t off, uint32_t size,
-                    const void *data)
-{
-    struct vmm_vm *vm = opaque;
-    uint16_t v = 0;
-
-    memcpy(&v, data, size > 2 ? 2 : size);
-    switch (off) {
-    case PM_OFF_PM1_STS:
-        g_pm.sts &= (uint16_t)~v;    /* 写 1 清零 */
-        break;
-    case PM_OFF_PM1_EN:
-        g_pm.en = v;
-        break;
-    case PM_OFF_PM1_CNT:
-        if ((v & PM1_CNT_SLP_EN) && PM1_CNT_SLP_TYP(v) == S5_SLP_TYP) {
-            vmm_info("guest requested poweroff via ACPI S5");
-            vm->exit_code = 0;
-            return VMM_ERR_EXIT;
-        }
-        g_pm.cnt = v & (uint16_t)~PM1_CNT_SLP_EN;
-        break;
-    case PM_OFF_SLEEP_CTL:
-        if ((v & SLEEP_CTL_SLP_EN) && SLEEP_CTL_SLP_TYP(v) == S5_SLP_TYP) {
-            vmm_info("guest requested poweroff via ACPI S5 (sleep control register)");
-            vm->exit_code = 0;
-            return VMM_ERR_EXIT;
-        }
-        break;
-    case PM_OFF_SLEEP_STS:
-        g_pm.sleep_sts &= (uint8_t)~(v & SLEEP_STS_WAK_STS);
-        break;
-    }
-    return VMM_OK;
-}
-
-void acpi_pm_reset(void *opaque)
-{
-    (void)opaque;
-    memset(&g_pm, 0, sizeof(g_pm));
-}
-
-int acpi_pm_attach(struct vmm_vm *vm)
-{
-    struct vmm_io_dev dev;
-
-    acpi_pm_reset(NULL);
-    memset(&dev, 0, sizeof(dev));
-    dev.name   = "acpi-pm1a";
-    dev.base   = ACPI_PM1A_EVT_PORT;
-    dev.len    = ACPI_PM_IO_LEN;
-    dev.opaque = vm;
-    dev.read   = pm_read;
-    dev.write  = pm_write;
-    return vmm_register_pio(vm, &dev);
 }

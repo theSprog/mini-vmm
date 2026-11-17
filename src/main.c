@@ -28,6 +28,7 @@
 #include "exit_stats.h"
 #include "monitor.h"
 #include "monitor_cmds.h"
+#include "power.h"
 #include "gdb/gdbstub.h"
 #include <time.h>
 #include <unistd.h>
@@ -657,9 +658,7 @@ static int boot_linux(struct vmm_vm *vm, const struct vmm_config *cfg,
     r = rtc_attach(vm);
     if (r != VMM_OK)
         return r;
-    r = acpi_pm_attach(vm);
-    if (r == VMM_OK)
-        r = vmm_register_reset(vm, "acpi-pm", acpi_pm_reset, NULL);
+    r = power_attach(vm);
     if (r != VMM_OK)
         return r;
 
@@ -834,6 +833,8 @@ run:
             goto out;
         mon_inited = true;
         r = monitor_cmds_register(&mon, &vm);
+        if (r == VMM_OK)
+            r = power_monitor_register(&mon);
         if (r == VMM_OK)
             r = monitor_listen(&mon, cfg.monitor_path, &loop);
         if (r != VMM_OK)

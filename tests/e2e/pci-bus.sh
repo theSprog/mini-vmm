@@ -61,10 +61,12 @@ initrd_ready "$INITRD" || {
 head1 "ACPI 启动：枚举、BAR、中断"
 
 # 标记串（IRQ-、MAGIC- 等）由 guest 的命令替换展开生成，回显的命令行里
-# 只有 $(...)，不会误匹配
+# 只有 $(...)，不会误匹配。ACPI Error 计数排除 RTC 闹钟那一条：平台不实现
+# 可选的 RTC_STS/RTC_EN（ACPI 6.5 4.8.2.4），rtc-cmos 装 ACPI 固定事件处理
+# 函数时 ACPICA 写 RTC_EN 读回 0，必然报一次，理由见 include/devices/acpi_pm.h
 boot \
     --cmd "dmesg | grep -aE 'PCI|pci |PCI0|root bus|BAR|GSI'" \
-    --cmd "echo ACPI-ERRORS-\$(dmesg | grep -ac 'ACPI Error')" \
+    --cmd "echo ACPI-ERRORS-\$(dmesg | grep -a 'ACPI Error' | grep -vc 'enable RealTimeClock')" \
     --cmd 'lspci' \
     --cmd "echo IRQ-BEFORE-\$(cat $D/irq)" \
     --cmd "echo 1 > $D/enable; echo IRQ-AFTER-\$(cat $D/irq)" \

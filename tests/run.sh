@@ -44,14 +44,14 @@ suite_script() {
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip) echo "e2e/$1.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip) return 0 ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -79,12 +79,13 @@ suite_desc() {
     system-reset)   echo "整机复位：连续 reboot、sysrq-b 时 AP 全部重新上线，设备回到上电值，--no-reboot" ;;
     monitor)        echo "unix socket 上的 HMP 风格命令：状态、vCPU、寄存器、实时 exit 统计、quit，错误输入不影响 guest" ;;
     split-irqchip)  echo "split irqchip：用户态 PIC/IOAPIC/PIT、level EOI 退出、XT-PIC、PIT 补发策略与内核态对照" ;;
+    acpi-events)    echo "ACPI 固定电源按钮：monitor 按键 → SCI → KEY_POWER，W1C 后 SCI 只触发一次，logind 经 S5 关机" ;;
     arch-distro)    echo "Arch Linux：systemd running、本地仓库 pacman、reboot/poweroff 后文件系统干净（无镜像时 SKIP）" ;;
     esac
 }
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
-E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset monitor split-irqchip arch-distro"
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset monitor split-irqchip acpi-events arch-distro"
 ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
 DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
 

@@ -7,7 +7,7 @@
  *
  * FADT 故意不设 HW_REDUCED_ACPI：Linux 看到硬件精简模式会把 PIT 和
  * 8259 当作不存在（x86_init.acpi.reduced_hw_early_init），而没有 kvmclock
- * 的内核要靠 PIT 校准 TSC。代价是得提供 PM1a 事件/控制寄存器块，见 acpi_pm。
+ * 的内核要靠 PIT 校准 TSC。代价是得提供 PM1a 事件/控制寄存器块，见 power.h。
  * 编译期只支持硬件精简 ACPI 的内核不看这个标志也不碰 PM1，它们用的
  * 扩展睡眠寄存器和 RESET_REG 同样在 FADT 里提供。
  */
@@ -24,7 +24,7 @@ struct vmm_vm;
 #define ACPI_TABLES_GPA   0xE0000ULL
 #define ACPI_TABLES_MAX   0x10000ULL
 
-/* PM1a 寄存器块端口，FADT 里写这两个地址，acpi_pm 设备在这里响应 */
+/* PM1a 寄存器块端口，FADT 里写这两个地址，power.c 注册的 PM1 设备在这里响应 */
 #define ACPI_PM1A_EVT_PORT 0x600
 #define ACPI_PM1A_CNT_PORT 0x604
 #define ACPI_PM1_EVT_LEN   4
@@ -32,7 +32,7 @@ struct vmm_vm;
 #define ACPI_SCI_IRQ       9
 
 /* ACPI 5.0 扩展睡眠寄存器（FADT SLEEP_CONTROL_REG / SLEEP_STATUS_REG），
- * 各 1 字节，紧跟在 PM1a 控制块之后，由同一个 acpi_pm 设备响应。
+ * 各 1 字节，紧跟在 PM1a 控制块之后，由同一个 PM1 设备响应。
  *
  * 为什么 PM1 之外还要它：内核开了 CONFIG_ACPI_REDUCED_HARDWARE_ONLY 时，
  * ACPICA 在编译期删掉了全部 PM1 访问代码，关机只走这两个寄存器
@@ -44,10 +44,5 @@ struct vmm_vm;
 
 /* 构建全部表，返回 RSDP 的 GPA */
 int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa);
-
-/* PM1a + 扩展睡眠寄存器设备：guest 经任一路径请求 S5（poweroff）时让 VMM 退出 */
-int acpi_pm_attach(struct vmm_vm *vm);
-/* 整机复位回调（reset.h）：PM1 寄存器回到 0 */
-void acpi_pm_reset(void *opaque);
 
 #endif /* BOOT_ACPI_H */

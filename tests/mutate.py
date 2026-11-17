@@ -58,8 +58,10 @@ COPY_PATHS = ["Makefile", "include", "src", "tests/unit"]
 E2E_COPY_PATHS = ["Makefile", "include", "src", "tests", "tools"]
 # suite 用 build/ 下的 initramfs，复制过去免得每个副本都重新打包
 E2E_COPY_FILES = ["build/initramfs.cpio.gz"]
-FAIL_LINE = re.compile(r"^  FAIL ", re.M)
-SITE_LINE = re.compile(r"^\s+(\S+\.c:\d+): (.*)$", re.M)
+# 单测的两种失败行：tests/unit/harness.h 的 "  FAIL <用例>" 后面缩进一行
+# "file.c:N: msg"；boot_tables_test 自带的 CHECK 打一行 "FAIL [表] file.c:N: msg"
+FAIL_LINE = re.compile(r"^(?:  FAIL |FAIL \[)", re.M)
+SITE_LINE = re.compile(r"^(?:\s+|FAIL \[[^]]*\] )(\S+\.c:\d+): (.*)$", re.M)
 # tests/lib.sh 的 summary() 打印的汇总行和失败用例列表
 SUMMARY_LINE = re.compile(r"^  PASS (\d+)  FAIL (\d+)  SKIP (\d+)$", re.M)
 FAILED_CASE = re.compile(r"^  - (.+)$", re.M)
