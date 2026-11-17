@@ -155,8 +155,8 @@ void gdb_x86_guest_debug(const struct gdb_x86_bps *b, bool step,
 /*
  * USE_SW_BP 打开后 guest 执行的每一条 int3 都会退出到这里，包括 guest 自己
  * 的：Linux 启动时 int3_selftest() 故意执行一条 int3 并检查自己的 #BP
- * 处理函数被调用了（linux-6.6 arch/x86/kernel/alternative.c），运行中
- * text_poke_bp() 改代码时也临时插 int3。所以 pc 不在断点表里的 #BP 必须
+ * 处理函数被调用了（Linux arch/x86/kernel/alternative.c），运行中
+ * smp_text_poke_single() 等改代码时也临时插 int3。所以 pc 不在断点表里的 #BP 必须
  * 还给 guest，否则 guest 会 BUG。
  *
  * #DB 同理：USE_HW_BP 或 SINGLESTEP 打开时所有 #DB 都退出到这里，DR6 里

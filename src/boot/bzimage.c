@@ -130,7 +130,7 @@ int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
     }
 
     /* init_size 是解压、重定位期间从装载地址起需要的线性内存，
-     * 比文件大得多（6.6 约 28MiB，文件约 7.6MiB），必须整段是 RAM */
+     * 比文件大得多（测试 guest 内核约 44MiB，文件约 15MiB），必须整段是 RAM */
     need = hdr.init_size > pm_len ? hdr.init_size : pm_len;
     gs = gpa_to_hva(vm, load, need, (void **)&dst);
     if (gs != GPA_OK) {

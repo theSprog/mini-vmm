@@ -45,7 +45,7 @@ static uint32_t order_base2(uint32_t n)
 /*
  * 填一条 0xB 的子叶。字段含义见 Intel SDM Vol.2 CPUID 指令的
  * "Extended Topology Enumeration Leaf"，guest 侧的解析在
- * linux-6.6 arch/x86/kernel/cpu/topology.c detect_extended_topology()：
+ * Linux arch/x86/kernel/cpu/topology_ext.c cpu_parse_topology_ext()：
  *   EAX[4:0]    从本层算到下一层要把 APIC ID 右移几位
  *   EBX[15:0]   本层的逻辑处理器数；为 0 表示这一层无效
  *   ECX[7:0]    子叶号（原样回显），ECX[15:8] 层类型
@@ -68,23 +68,26 @@ static void topo_leaf_set(struct kvm_cpuid_entry2 *e, uint32_t index,
 /*
  * 补齐 CPUID 叶 0xB。
  *
- * KVM_GET_SUPPORTED_CPUID 只给出 0xB 的子叶 0 且内容全零（海光 host 上
- * 实测如此），而 Linux 判断“有没有这套枚举”的条件是子叶 0 的 EBX 非零
- * 且层类型为 SMT（topology.c check_extended_topology_leaf()），所以原样
- * 透传等于告诉 guest“不提供”。这对 AMD/海光 guest 没有影响——它们还有
- * 0x80000008 + 0x8000001E 这条退路；但 Intel guest 只认 0x1F/0xB，退路
- * 是 detect_ht() 读 CPUID.1:EBX[23:16] 加 CPUID.4，更难填对。
+ * KVM_GET_SUPPORTED_CPUID 给出的 0xB 是 host 的原值：在不实现 0xB 的
+ * host（例如海光）上是一个全零的子叶 0，在实现它的 host 上是 host 自己的
+ * 拓扑，两种都不能透传。Linux 认定一个子叶有效的条件是 EBX[15:0] 逻辑
+ * 处理器数非零且层类型非 0，子叶 0 无效就整片放弃（topology_ext.c
+ * topo_subleaf()、parse_topology_leaf()）。0xB 有效时 Linux 对 AMD、海光、
+ * Intel 都优先用它；无效时 AMD/海光退回 0x80000008 + 0x8000001E
+ * （topology_amd.c parse_topology_amd()），Intel 退回 parse_legacy() 读
+ * CPUID.1:EBX[23:16] 加 CPUID.4，更难填对。
  *
  * 这里按 1 socket × n core × 1 thread 填三条子叶：
  *   0  SMT  层：每核 1 个线程，移位 0
  *   1  Core 层：每 package n 个核，移位 order_base2(n)
  *   2  终止：类型 0
- * 解析出来的结果与 0x8000001E 那条路完全一致（cpu_core_id = APIC ID，
- * phys_proc_id = 0，x86_max_cores = n，__max_die_per_package = 1），
- * 两条路并存也不会打架。
+ * 每条子叶的 EDX 都是本 vCPU 的 APIC ID，Linux 拿后续子叶的 EDX 与子叶 0
+ * 比对，不一致会打印 FW_BUG。解析出的 SMT/Core 域与 0x80000008 +
+ * 0x8000001E 那条路完全一致，两条路并存也不会打架。
  *
- * 0x1F（更多层级的版本）仍然整体清零：KVM 也只给子叶 0，填一半反而会让
- * detect_extended_topology() 算出错误的掩码，不如让它明确地走不通。
+ * 0x1F（更多层级的版本）仍然整体清零：cpu_parse_topology_ext() 先查 0x1F
+ * 再查 0xB，KVM 对 0x1F 同样只给 host 原值，填一半会被采信而跳过 0xB，
+ * 不如让它明确地走不通。
  *
  * cpuid 缓冲区必须来自 kvm_get_supported_cpuid()，末尾有
  * KVM_CPUID_SPARE 个空位可供追加。
@@ -131,8 +134,8 @@ static void cpuid_fill_topology_leaf(struct kvm_cpuid2 *cpuid,
  * vCPU 数超过 8 时提醒一句：部分 guest 内核不看 CPUID 0x8000001D 报的
  * 缓存共享关系，而是直接拿 APIC ID 的某一位当核簇号。海光 model < 5
  * （mini-vmm 在 soc63 上引导的正是这一类）走的是
- *   linux-6.6 arch/x86/kernel/cpu/cacheinfo.c cacheinfo_hygon_init_llc_id()
- *     per_cpu(cpu_llc_id, cpu) = c->apicid >> 3;
+ *   Linux arch/x86/kernel/cpu/cacheinfo.c cacheinfo_hygon_init_llc_id()
+ *     c->topo.llc_id = c->topo.apicid >> 3;
  * 而 mini-vmm 让 APIC ID 等于 vCPU 序号，于是 vCPU 超过 8 个时 guest 会
  * 按 8 个一组切出多个 LLC 域（实测 --smp 16 得到 0-7 和 8-15 两块），
  * 尽管 CPUID 里报的是所有 vCPU 共享同一个 L3。
@@ -191,8 +194,8 @@ static void smp_warn_llc_split(int nr_vcpus)
  *              L1/L2 每核私有，L3 所有 vCPU 共享
  *   0x8000001E EAX 扩展 APIC ID，EBX[7:0] core id、EBX[15:8] 每核线程数 - 1，
  *              ECX[7:0] node id
- * Hygon 的 guest 拓扑代码见 linux-6.6 arch/x86/kernel/cpu/hygon.c
- * hygon_get_topology() / hygon_detect_cmp()。
+ * Hygon 的 guest 拓扑代码见 Linux arch/x86/kernel/cpu/topology_amd.c
+ * parse_8000_001e()（AMD 与海光共用，海光分支调 cacheinfo_hygon_init_llc_id()）。
  */
 void smp_fixup_cpuid(const struct vmm_vcpu *vcpu, struct kvm_cpuid2 *cpuid)
 {

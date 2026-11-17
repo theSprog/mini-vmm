@@ -31,7 +31,7 @@ struct vmm_vm;
 #define ZP_HIGH_MEM_START   0x100000ULL
 
 /* vmlinux 没有 setup header，initrd_addr_max 取协议 2.02 及以前的默认值；
- * bzImage 用内核自己声明的值（6.6 是 0x7fffffff） */
+ * bzImage 用内核自己声明的值（x86_64 内核的 header.S 里是 0x7fffffff） */
 #define ZP_INITRD_ADDR_MAX  0x37ffffffULL
 
 struct setup_header;

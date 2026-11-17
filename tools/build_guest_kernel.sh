@@ -16,8 +16,14 @@ readonly EXIT_FAIL=1
 readonly EXIT_USAGE=2
 readonly EXIT_INTERRUPTED=130   # shell 对 SIGINT 的约定 128+2
 
-# 片段按这个版本系列编写和验证；换版本时改这里，并重新跑一遍 make test
-readonly KERNEL_SERIES="6.6"
+# guest 内核钉在上游 mainline 的一个 commit 上：片段按它编写和验证，测试
+# 期望里的内核文本（dmesg 措辞、驱动的 sysfs 取值）也以它为准。用最新上游
+# 而不是某个 LTS，是为了让 guest 侧的新行为和上游回归尽早暴露；钉住 commit
+# 是为了让同一份仓库在任何时候构建出同一个内核。升级时改这两行，重新构建，
+# 跑一遍完整的 make test 和 IRQCHIP=split make test，逐条确认变红的期望是
+# 内核措辞变了还是 VMM 出了问题。
+readonly KERNEL_VERSION="7.4.0-rc2"
+readonly KERNEL_COMMIT="7e1392a42ea288d70a266f6553fe06f57f8647ea"
 readonly BASE_DEFCONFIG="x86_64_defconfig"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,14 +39,16 @@ tools/guest-kernel.config, built out of tree. Prints the paths of vmlinux and
 bzImage on stdout when done; progress goes to stderr.
 
 Options:
-  --src DIR   Linux $KERNEL_SERIES.x source tree (or set LINUX_SRC); it is never written to
+  --src DIR   Linux source tree at commit $KERNEL_COMMIT
+              ($KERNEL_VERSION), or set LINUX_SRC; it is never written to
   --out DIR   build directory (default: guest-kernel/ in the repository)
   -j N        parallel jobs (default: number of CPUs, at most 8)
   -h, --help  show this help
 
 EXAMPLE:
-  tools/build_guest_kernel.sh --src ~/linux-6.6
-  LINUX_SRC=~/linux-6.6 tools/build_guest_kernel.sh -j 4
+  git -C ~/linux worktree add --detach ~/linux-guest $KERNEL_COMMIT
+  tools/build_guest_kernel.sh --src ~/linux-guest
+  LINUX_SRC=~/linux-guest tools/build_guest_kernel.sh -j 4
   VMLINUX=guest-kernel/vmlinux make test linux-boot
 
 NOTE:
@@ -94,10 +102,16 @@ done
 src="$(cd "$src" && pwd)"
 
 version="$(make -s -C "$src" kernelversion)"
-case "$version" in
-"$KERNEL_SERIES" | "$KERNEL_SERIES".*) ;;
-*) die "$src is Linux $version, but the fragment is written for $KERNEL_SERIES.x (see KERNEL_SERIES in this script)" ;;
-esac
+[ "$version" = "$KERNEL_VERSION" ] ||
+    die "$src is Linux $version, but the fragment is written for $KERNEL_VERSION at $KERNEL_COMMIT (see KERNEL_COMMIT in this script)"
+# rc 版本号在两个 rc 之间的所有 commit 上都一样，只有 git 能确认是哪一个；
+# 不是 git 检出（例如解压的源码包）时无从核对，只提示
+if head="$(git -C "$src" rev-parse HEAD 2>/dev/null)"; then
+    [ "$head" = "$KERNEL_COMMIT" ] ||
+        die "$src is at $head, expected $KERNEL_COMMIT; check it out in a separate worktree: git -C $src worktree add --detach DIR $KERNEL_COMMIT"
+else
+    log "warning: $src is not a git checkout, cannot verify it is $KERNEL_COMMIT"
+fi
 
 if [ -e "$src/.config" ] || [ -d "$src/include/config" ]; then
     die "$src has in-tree build artifacts and kbuild will refuse an O= build; run 'make mrproper' there first"
@@ -106,6 +120,13 @@ fi
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 [ "$out" != "$src" ] || usage_error "--out must differ from the source tree"
+
+# 同一个 O= 目录上同时跑两个 make 不会立刻报错：一方重新生成 .config 和头文件、
+# 删改目标文件时，另一方照常编译，结果是 ar 找不到 .o 或者留下半截的 .o。后者
+# 时间戳是新的，之后的构建不会重编它。所以整个构建期间持有目录锁，第二个构建
+# 直接拒绝。锁随进程退出自动释放，不会因中断残留。
+exec 9>"$out/.build.lock"
+flock -n 9 || die "another build is running in $out (lock: $out/.build.lock)"
 
 log "Linux $version from $src, building in $out"
 

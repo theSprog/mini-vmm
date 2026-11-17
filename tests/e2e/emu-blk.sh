@@ -119,7 +119,8 @@ end_case
 # 驱动按 class 010601 绑定，打印的是它从 VS、CAP、PI 读出的值
 check_case "ahci 驱动绑定，CAP/PI/VS 被如实读出"
 expect_has "pci 00:01.0 ahci [1234:0003] class 010601"
-expect_has "ahci 0000:00:01.0: AHCI 0001.0301 32 slots 6 ports 6 Gbps 0x3f impl SATA mode"
+expect_has "ahci 0000:00:01.0: AHCI vers 0001.0301, 32 command slots, 6 Gbps, SATA mode"
+expect_has "ahci 0000:00:01.0: 6/6 ports implemented (port mask 0x3f)"
 expect_has "ahci 0000:00:01.0: flags: 64bit ncq clo only pio"
 expect_has "ata6: SATA max UDMA/133 abar m8192@0xc0000000 port 0xc0000380 irq 17"
 end_case

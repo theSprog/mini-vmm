@@ -90,7 +90,7 @@ expect_has "guest requested reset via i8042"
 expect_has "serio: i8042 KBD port at 0x60,0x64 irq 1"
 expect_has "input: AT Translated Set 2 keyboard"
 expect_not "Can't read CTR"
-expect_not "i8042: probe of i8042 failed"
+expect_not "probe with driver i8042 failed"
 expect_not "AUX port"
 # 没有 PIT gate（0x61）时 TSC 校准会间歇失败，jiffies 停住
 expect_not "Unable to read current time from RTC"
@@ -108,10 +108,11 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
 CUR_RC=$?
 expect_rc 0
 expect_has "Run /init as init process"
-expect_has "mini-vmm initramfs: Linux 6."
+expect_re "mini-vmm initramfs: Linux [0-9]+\\.[0-9]+"
 # 42 只能来自 guest shell 真的执行了算术展开，回显的命令行里只有 6*7
 expect_has "MARK-42"
-expect_has "IO-APIC   4-edge      ttyS0"
+# 列宽随内核版本变（芯片名一列按最长的名字对齐），只认字段
+expect_re "IO-APIC +4-edge +ttyS0"
 expect_has "guest requested poweroff via ACPI S5"
 expect_not "Kernel panic"
 end_case

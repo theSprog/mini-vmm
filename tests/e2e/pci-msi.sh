@@ -164,14 +164,21 @@ head1 "非法的 MSI 地址和数据"
 
 truncate -s 64M "$WORK/disk.img"
 
-# Linux 给出的消息是地址 0xfee01004、数据 0x0021 这类（向量随分配变化，
+# Linux 给出的消息是地址 0xfee00000、数据 0x0021 这类（向量随分配变化，
 # 所以只改不随分配变化的那个字节）。偏移：capability 在 0x40，地址在
 # +4（0x44-0x47），数据在 +0xC（0x4C）。
+#
+# 目标 ID 在地址的 bit 19:12，0x45 这个字节的高 4 位是它的低 4 位。写 0xE0
+# 得到目标 0x0E：物理目标模式下是 APIC ID 14，扁平逻辑模式下是 CPU 1-3 的
+# 位图，用例只有一个 vCPU（APIC ID 0），两种模式下都没人匹配。不能写 0：
+# 64 位 Linux 只用物理目标模式（arch/x86/kernel/apic/apic_flat_64.c 只剩
+# apic_physflat），消息本来就发给 APIC ID 0，写 0 等于没改，请求照常完成，
+# 等 inflight 的循环永远等不到。
 bad_msi "向量写成 0x05（异常向量）：报出原因，不投递" 76 005 \
     "data 0x0005 not delivered: vector outside 0x10-0xfe (1 with this address/data, 1 in total)"
 bad_msi "地址最高字节写成 0（不在中断窗口里）：报出原因，不投递" 71 000 \
     "not delivered: address is outside the interrupt window 0xfee00000-0xfeefffff (1 with this address/data, 1 in total)"
-bad_msi "目标 ID 写成 0（没有 vCPU 匹配）：KVM 没有收下，报出原因" 69 000 \
+bad_msi "目标 ID 写成 0x0E（没有 vCPU 匹配）：KVM 没有收下，报出原因" 69 340 \
     "not delivered: no vCPU accepted it"
 }
 

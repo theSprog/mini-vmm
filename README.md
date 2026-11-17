@@ -28,7 +28,9 @@
 ```sh
 make                                   # 产物 build/vmm 和测试 payload
 tools/build_initramfs.sh               # 生成 build/initramfs.cpio.gz，需要静态 busybox
-tools/build_guest_kernel.sh --src ~/linux-6.6   # guest 内核，产物在 guest-kernel/
+# guest 内核：Linux 上游钉住的 commit（见脚本里的 KERNEL_COMMIT），产物在 guest-kernel/
+git -C ~/linux worktree add --detach ~/linux-guest "$(sed -n 's/^readonly KERNEL_COMMIT="\(.*\)"/\1/p' tools/build_guest_kernel.sh)"
+tools/build_guest_kernel.sh --src ~/linux-guest
 
 ./build/vmm --mode linux --mem 512M --smp 4 \
     --initrd build/initramfs.cpio.gz guest-kernel/vmlinux

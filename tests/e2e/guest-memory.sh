@@ -73,9 +73,9 @@ CUR_RC=$?
 expect_rc 0
 expect_has "e820: [0x000000100000, 0x0000c0000000) RAM"
 expect_has "e820: [0x000100000000, 0x000180000000) RAM"
-expect_has "BIOS-e820: [mem 0x0000000000100000-0x00000000bfffffff] usable"
-expect_has "BIOS-e820: [mem 0x0000000100000000-0x000000017fffffff] usable"
-expect_has "[mem 0xc0000000-0xffffffff] available for PCI devices"
+expect_has "BIOS-e820: [mem 0x0000000000100000-0x00000000bfffffff]  System RAM"
+expect_has "BIOS-e820: [mem 0x0000000100000000-0x000000017fffffff]  System RAM"
+expect_has "[gap 0xc0000000-0xffffffff] available for PCI devices"
 expect_has "present  524288"
 expect_has "start_pfn:           1048576"
 expect_has "MEMTOTAL-4GiB"

@@ -160,7 +160,7 @@ static int amd_prepare_vm(struct vmm_vm *vm)
  * guest“你在虚拟机里”。KVM_GET_SUPPORTED_CPUID 不报告这一位，要 VMM
  * 自己置上（QEMU 默认也会置上）。
  *
- * 写 0（不置位）：guest 认为自己跑在物理机上。以 guest 的 v6.6 为例：
+ * 写 0（不置位）：guest 认为自己跑在物理机上。以 Linux guest 为例：
  *   - 早期微码加载器启用，会去 initrd 里找微码并尝试更新（虚拟机里
  *     改不了物理 CPU 的微码，只是白做）；
  *   - 按物理机处理勘误：AMD 上会直接写 host 才有意义的 MSR（如

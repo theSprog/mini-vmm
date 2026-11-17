@@ -47,8 +47,8 @@ CUR_NAME="四个传统设备都被正确探测，且一次超时都没有"
 printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
 CUR_BAD=0
 CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 90 \
-    --cmd 'echo SER-$(sed -n "s/^0: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
-    --cmd 'echo SER1-$(sed -n "s/^1: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial)' \
+    --cmd 'echo SER-$(sed -n "s/^0: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial_8250)' \
+    --cmd 'echo SER1-$(sed -n "s/^1: uart:\([^ ]*\).*/\1/p" /proc/tty/driver/serial_8250)' \
     --cmd 'echo SERIRQ-$(sed -n "s/^ *4: *\([0-9]*\).*/\1/p" /proc/interrupts)-END' \
     --cmd 'echo KBDIRQ-$(sed -n "s/^ *1: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
     --cmd 'echo RTCIRQ-$(sed -n "s/^ *8: *\([0-9]*\).*/\1/p" /proc/interrupts)' \
@@ -59,11 +59,11 @@ CUR_RC=$?
 expect_rc 0
 
 # 串口：autoconfig 认成 16550A，IRQ 写死 4
-expect_has "ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A"
+expect_has "serial8250: ttyS0 I/O:0x3f8 (irq = 4, base_baud = 115200) is a 16550A"
 expect_has "SER-16550A"
 # 另外三个 ISA 口没人应答，必须是 unknown 而不是被误认
 expect_has "SER1-unknown"
-expect_not "ttyS1 at I/O 0x2f8"
+expect_not "ttyS1 I/O:0x2f8"
 # 8250 探测失败时的两条典型日志
 expect_not "LSR safety check engaged"
 expect_not "detected caps"
@@ -93,8 +93,12 @@ expect_tsc_calibrated
 # 中断确实在走：串口和键盘都有计数，RTC 我们不产生中断
 expect_not "SERIRQ-0-END"
 expect_not "SERIRQ--END"
-# 键盘应答的 9 个字节各产生一次边沿：3（GETID）+ 1×6（F5/ED+00/F3+00/F4）
-expect_has "KBDIRQ-9"
+# 键盘每个应答字节产生一次边沿，所以计数 = guest 读到的应答字节数，取决于
+# atkbd 发了哪些命令。钉住的内核在读计数之前发的是 F2（GETID，应答 FA AB 83）
+# 和 F5、ED 00、F3 00、F4、ED 00、F3 00（各应答一个 FA）：3 + 10 = 13。
+# 换内核后计数变了，用 --trace-pio 数 i8042-data 0060 的 W1/R1 序列重新核对，
+# 不要直接改成新的数
+expect_has "KBDIRQ-13"
 expect_has "RTCIRQ-0"
 
 expect_has "guest requested poweroff via ACPI S5"
@@ -176,7 +180,7 @@ guide "把一次启动的寄存器序列录下来并逐段读" \
 guide "确认串口是中断驱动而不是轮询" \
 "# guest 里：
 cat /proc/interrupts | grep ttyS0
-cat /proc/tty/driver/serial" \
+cat /proc/tty/driver/serial_8250" \
 "IRQ 4 的计数随输出增长；serial 里是 uart:16550A ... RTS|CTS|DTR|DSR|CD
 如果 IRQ 4 恒为 0，检查 MCR.OUT2 门控和 IIR 的 THRI 语义"
 

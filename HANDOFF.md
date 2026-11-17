@@ -9,11 +9,13 @@
 项目在两台机器上开发和验证过，同一份代码两边都要能通过 `make test`。
 
 - **海光物理机**：Hygon C86 3280，vendor string `HygonGenuine`，微架构派生自 Zen1，走 `kvm_amd`，所以 `src/arch/amd/` 同时服务 AMD 和海光。Ubuntu 22.04，host 内核 5.15，经 ssh 使用。
-  - host 内核源码在 `~/china_os/linux-5.15`，guest 内核源码在 `~/china_os/linux-6.6`。查 KVM 行为看 5.15，查 guest 行为看 6.6。那棵 6.6 树里有树内构建的预编译产物（vmlinux 在树根），kbuild 拒绝对这样的源码树做 `O=` 构建，所以它不能直接作为 `tools/build_guest_kernel.sh --src`：另解压一份干净的 6.6 源码，或者在那棵树里 `make mrproper`（会删掉预编译产物）。
+  - host 内核源码在 `~/china_os/linux-5.15`，查这台机器上的 KVM 行为看它。
   - 两棵树都有 `compile_commands.json` 和 clangd background index，index 由 `~/.local/bin/clangd`（clangd 22）建立。非交互 ssh 的 PATH 里是 `/usr/bin/clangd`（clangd 14），版本对不上，必须显式用 22 版。符号查询用 `~/.local/bin/clangd_query.py`，带环境变量 `CLANGD=~/.local/bin/clangd`；clangd 打开第一个文件之前不加载 index，所以先对任意 `.c` 跑一次 `outline` 再用 `symbol`。`rg` 在 `~/.local/bin/`，同样不在 ssh 的 PATH 里。
   - 远端命令超时时被中断的只是连接，远端的循环和子进程可能还在跑，事后检查有没有残留的 `vmm` 或 clangd 进程。
-- **WSL2**：Arch Linux，嵌套虚拟化提供 `/dev/kvm`。guest 内核由 `tools/build_guest_kernel.sh --src ~/linux-6.6` 构建到仓库的 `guest-kernel/`（已被 `.gitignore` 忽略），测试自动使用那里的 vmlinux 和 bzImage。`~/linux-6.6` 的源码树本身不放产物，它的另一个构建目录 `~/linux-6.6-build` 是给 clangd 建索引用的 allmodconfig，驱动多为 `=m` 且强制模块签名，不适合直接当测试 guest。`/dev/kvm` 是否存在取决于 Windows 侧的嵌套虚拟化状态，消失时先查 Windows 更新是否改动了 Hyper-V 的嵌套特性。
+- **WSL2**：Arch Linux，host 内核 6.6（WSL 自带，换不了），嵌套虚拟化提供 `/dev/kvm`。上游源码集中在 `~/upstream`（布局见它的 README），guest 内核源码是其中的 worktree `~/upstream/worktrees/linux-guest`，检出在 `tools/build_guest_kernel.sh` 钉住的 commit 上；`tools/build_guest_kernel.sh --src ~/upstream/worktrees/linux-guest` 构建到仓库的 `guest-kernel/`（已被 `.gitignore` 忽略），测试自动使用那里的 vmlinux 和 bzImage。`/dev/kvm` 是否存在取决于 Windows 侧的嵌套虚拟化状态，消失时先查 Windows 更新是否改动了 Hyper-V 的嵌套特性。
   - **在 WSL2 上读 GPU 的 PCI 配置空间可能让整台 WSL2 虚拟机卡死，连带同一台机器上的其他会话。** WSL2 里的 GPU 是 Hyper-V 半虚拟化设备（驱动 dxgkrnl），读它的配置空间要经 `_hv_pcifront_read_config` 转发给 Windows 宿主，宿主不回时这颗 CPU 关着中断空转，其他 CPU 在跨核调用里等它，整机停摆。会触发的有 host 上的 `lspci`、`setpci`，以及任何加载 NVIDIA EGL/GL vendor 的程序（它会调 `nvidia-modprobe` 扫 PCI），例如 virglrenderer、带 GL 的 QEMU 显示后端、EGL 探测程序。这里的 GPU 走 Mesa 的 d3d12 驱动，跑 GL 相关程序时设 `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`，只让 glvnd 加载 Mesa；`/usr/share/glvnd/egl_vendor.d/` 里出现 NVIDIA 的 json，说明装了 nvidia-utils，它在 WSL2 上用不到。是否又撞上了这个问题，看 `journalctl -k` 里有没有调用栈停在 `_hv_pcifront_read_config` 的 soft lockup 或 RCU stall。
+
+**guest 内核跟上游 mainline，查 guest 行为看钉住的那个 commit。** 用最新上游而不是 LTS，是为了让 guest 侧的新行为和上游回归尽早暴露；钉住 commit 让任何时候构建出的都是同一个内核，测试期望里的 dmesg 措辞和 sysfs 取值以它为准。升级的步骤写在 `tools/build_guest_kernel.sh` 的 `KERNEL_COMMIT` 旁边。
 
 **跑测试之前先 `make`。** `make test` 只构建测试二进制，不保证 `build/vmm` 是最新的，直接跑会用到旧二进制。
 

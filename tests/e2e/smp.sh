@@ -23,7 +23,7 @@ VMLINUX="${VMLINUX:-}"
 MEM=512M
 SMP=4
 # 并行启动（guest 的 CONFIG_HOTPLUG_PARALLEL）会把所有 AP 一起踢醒，它们
-# 随后一起抢实模式跳板的那把锁（linux-6.6 arch/x86/realmode/rm/
+# 随后一起抢实模式跳板的那把锁（Linux arch/x86/realmode/rm/
 # trampoline_64.S 的 tr_lock）。4 个 vCPU 压不到这条路径，用一个大一些的
 # 数再跑一遍。VMM_MAX_VCPUS 是 32，host 物理核少于这个数也没关系，超卖
 # 只是慢一点。
@@ -69,13 +69,13 @@ run_case "$SMP vCPU 启动到 VFS panic 并经 i8042 reset 全部退出" \
 expect_rc 0
 expect_has "MP table @ GPA 0x9fc00: $SMP CPU(s), IOAPIC id $SMP"
 expect_has "$SMP vCPU thread(s) running"
-expect_has "smpboot: Allowing $SMP CPUs, 0 hotplug CPUs"
+expect_has "CPU topo: Allowing $SMP present CPUs plus 0 hotplug CPUs"
 expect_has "smp: Brought up 1 node, $SMP CPUs"
 expect_has "guest requested reset via i8042"
 # AP 唤醒失败、APIC ID 和固件表对不上、TSC 不同步的典型报错
 expect_not "failed to report alive state"
 expect_not "do_boot_cpu failed"
-expect_not "APIC id mismatch"
+expect_not "APIC ID mismatch"
 expect_not "TSC synchronization"
 expect_not "stopped with error"
 expect_not "SHUTDOWN"
@@ -112,7 +112,7 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
 expect_rc 0
-expect_has "mini-vmm initramfs: Linux 6."
+expect_re "mini-vmm initramfs: Linux [0-9]+\\.[0-9]+"
 expect_has "NPROC-$SMP"
 # 拓扑：1 socket × 4 core × 1 thread，APIC ID = vcpu id
 expect_has "APIC-0-1-2-3-"
@@ -141,14 +141,14 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 120 \
 CUR_RC=$?
 expect_rc 0
 expect_has "$SMP_MANY vCPU thread(s) running"
-expect_has "smpboot: Allowing $SMP_MANY CPUs, 0 hotplug CPUs"
+expect_has "CPU topo: Allowing $SMP_MANY present CPUs plus 0 hotplug CPUs"
 expect_has "smp: Brought up 1 node, $SMP_MANY CPUs"
 expect_has "NPROC-$SMP_MANY"
 expect_has "PKG-0-"
 # AP 争跳板锁失败、APIC ID 对不上、TSC 不同步的典型报错
 expect_not "failed to report alive state"
 expect_not "do_boot_cpu failed"
-expect_not "APIC id mismatch"
+expect_not "APIC ID mismatch"
 expect_not "TSC synchronization"
 expect_not "Kernel panic"
 expect_not "stopped with error"

@@ -17,8 +17,8 @@
 #   bit 1 CRASH_LOADED、bit 2 SHUTDOWN）。
 #   驱动行为：drivers/misc/pvpanic/pvpanic-mmio.c 把 capability 设成“驱动
 #   认识的位 & 读端口的值”，events 初值等于 capability，两者在 sysfs 里以
-#   十六进制给出。6.6 的驱动只认识 PANICKED|CRASH_LOADED（capability 3），
-#   7.x 加上了 SHUTDOWN（capability 7）。pvpanic.c 的 panic notifier 在没有
+#   十六进制给出。7.x 的驱动三个位都认识（capability 7），更早的驱动没有
+#   SHUTDOWN（capability 3）。pvpanic.c 的 panic notifier 在没有
 #   装载 kdump 内核时发 PANICKED，并且只发 events 里打开的位。
 #   SHUTDOWN 挂在 SYS_OFF_PRIO_LOW 的 sys_off handler 上，ACPI 的关机
 #   handler 优先级是 SYS_OFF_PRIO_FIRMWARE（include/linux/reboot.h），S5 能
@@ -43,7 +43,7 @@ outb() { printf "printf '\\\\%s' | dd of=/dev/port bs=1 seek=$PORT count=1 2>/de
 
 # ------------------------------------------------------------------
 busybox_tests() {
-head1 "BusyBox guest（Linux 6.6 驱动）"
+head1 "BusyBox guest（驱动编进内核）"
 
 run_case "驱动绑定，端口语义，CRASH_LOADED 不打断 guest，sysrq-c 以退出码 3 结束" \
     python3 "$GUEST_SHELL" --timeout 120 \
@@ -57,8 +57,8 @@ run_case "驱动绑定，端口语义，CRASH_LOADED 不打断 guest，sysrq-c �
               --initrd "$INITRD" "$VMLINUX"
 expect_rc 3
 expect_has "DRV-pvpanic-mmio"
-# 6.6 的驱动只认识 bit 0、1，capability = 3 & 读端口的值
-expect_has "CAP-3 EV-3"
+# capability = 驱动认识的位 & 读端口的值，两边都认识三个位
+expect_has "CAP-7 EV-7"
 # 设备自己认识三个位，读端口原样给出
 expect_has "PORT-07"
 # 0xf8 没有一个认识的位：整个写入被忽略，guest 继续
@@ -108,8 +108,8 @@ end_case
 
 head1 "SHUTDOWN 事件"
 
-# 6.6 的驱动不发 SHUTDOWN，7.x 的驱动只在 ACPI 关机没生效时才发（见文件
-# 头），所以由 guest 直接写端口
+# 驱动只在 ACPI 关机没生效时才发 SHUTDOWN（见文件头），这台机器上造不出
+# 这种情形，所以由 guest 直接写端口
 run_case "写 SHUTDOWN：VMM 按关机处理，退出码 0" \
     python3 "$GUEST_SHELL" --timeout 120 \
         --stop "$(outb 004)" \
@@ -144,7 +144,7 @@ end_case
 
 # ------------------------------------------------------------------
 # 发行版内核：驱动是模块，靠 udev 按 ACPI modalias（acpi:QEMU0001:）自动
-# 加载；7.x 的驱动认识 SHUTDOWN
+# 加载
 arch_tests() {
 local f disk uuid
 head1 "Arch guest（发行版内核，驱动为模块）"
@@ -216,7 +216,7 @@ guide "让 guest panic" \
 # guest 里
 cat /sys/bus/platform/devices/QEMU0001:00/capability
 echo c > /proc/sysrq-trigger" \
-"capability 是 3；panic 后 VMM 打印 'pvpanic: guest panicked (events 0x01:
+"capability 是 7；panic 后 VMM 打印 'pvpanic: guest panicked (events 0x01:
 PANICKED), exiting with code 3'，shell 里 exit=3。去掉 --device pvpanic 再来一次，
 guest 按 panic=-1 复位、重新启动"
 }

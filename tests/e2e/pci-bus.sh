@@ -96,17 +96,21 @@ expect_has "00:01.0 Class ff00: 1234:0002"
 expect_not "No config space access function"
 end_case
 
-# 窗口来自 DSDT 里 PCI0 的 _CRS（src/boot/acpi.c）。资源不在窗口里时内核会
-# 打印 "BAR 0: assigned" 或 "no space for" 并重新分配
+# 窗口来自 DSDT 里 PCI0 的 _CRS（src/boot/acpi.c）。BAR 不在窗口里时内核
+# 打印 "BAR 0 [mem ...]: can't claim; no compatible bridge window"，再重新
+# 分配并打印 "BAR 0 [mem ...]: assigned"，没有空间时是 "can't assign; no
+# space"（drivers/pci/setup-res.c）。这些行的格式随内核版本变过，换 guest
+# 内核时要把 _CRS 窗口故意挪开一次，确认下面的 expect_not 仍然命中
 check_case "DSDT 描述 PCI0 的窗口，BAR 原样收下，不重新分配"
 expect_has "ACPI: PCI Root Bridge [PCI0] (domain 0000 [bus 00-ff])"
 expect_has "root bus resource [io  0x0000-0x0cf7 window]"
 expect_has "root bus resource [io  0x0d00-0xffff window]"
 expect_has "root bus resource [mem 0xc0000000-0xfebfffff window]"
-expect_has "reg 0x10: [mem 0xc0000000-0xc0000fff]"
-expect_has "reg 0x14: [io  0x1000-0x100f]"
-expect_not ": assigned ["
-expect_not "no space for"
+expect_has "pci 0000:00:01.0: BAR 0 [mem 0xc0000000-0xc0000fff]"
+expect_has "pci 0000:00:01.0: BAR 1 [io  0x1000-0x100f]"
+expect_not "can't claim"
+expect_not "]: assigned"
+expect_not "can't assign"
 expect_has "ACPI-ERRORS-0"
 end_case
 
