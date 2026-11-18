@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="613" viewBox="0 0 840 613" role="img" aria-labelledby="title desc">
+  <title id="title">i8042：CPU 端口、状态位与主板接线</title>
+  <desc id="desc">0x64 读为状态字，写为控制器命令。状态字 bit 0 OBF 表示输出缓冲满，可以读 0x60；bit 1 IBF 表示输入缓冲满，应先等待。0x60 读输出缓冲，写键盘字节或命令参数。传统 PC 上 i8042 接 PS/2 键盘和 IRQ1，并有内部输出端口的 bit 1 接 A20、bit 0 接低有效的复位线。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="611" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">i8042：CPU 端口、状态位与主板接线</text>
+  <defs>
+    <marker id="wire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <text x="36" y="71" font-size="15" font-weight="400" text-anchor="start" class="ink">0x60、0x64 是 CPU 的 I/O 端口号；A20 和 RESET# 则接控制器的内部输出位。</text>
+  <rect x="36" y="92" width="768" height="205" rx="10" class="panel"/>
+  <text x="53" y="119" font-size="16" font-weight="700" text-anchor="start" class="ink">0x64 读：状态寄存器</text>
+  <text x="786" y="119" font-size="13" font-weight="700" text-anchor="end" class="muted">0x64 写：控制器命令（同址，不是这些状态位）</text>
+  <rect x="53" y="150" width="184" height="35" rx="0" class="res" data-bits="7:6"/>
+  <text x="145" y="142" font-size="12" font-weight="700" text-anchor="middle" class="muted">7:6</text>
+  <text x="145" y="172.5" font-size="14" font-weight="700" text-anchor="middle" class="ink">其他位</text>
+  <rect x="237" y="150" width="92" height="35" rx="0" class="blue" data-bits="5"/>
+  <text x="283" y="142" font-size="12" font-weight="700" text-anchor="middle" class="muted">5</text>
+  <text x="283" y="172.5" font-size="14" font-weight="700" text-anchor="middle" class="ink">AUXDATA</text>
+  <rect x="329" y="150" width="276" height="35" rx="0" class="res" data-bits="4:2"/>
+  <text x="467" y="142" font-size="12" font-weight="700" text-anchor="middle" class="muted">4:2</text>
+  <text x="467" y="172.5" font-size="14" font-weight="700" text-anchor="middle" class="ink">其他位</text>
+  <rect x="605" y="150" width="92" height="35" rx="0" class="flag" data-bits="1"/>
+  <text x="651" y="142" font-size="12" font-weight="700" text-anchor="middle" class="muted">1</text>
+  <text x="651" y="172.5" font-size="14" font-weight="700" text-anchor="middle" class="goldText">IBF</text>
+  <rect x="697" y="150" width="92" height="35" rx="0" class="teal" data-bits="0"/>
+  <text x="743" y="142" font-size="12" font-weight="700" text-anchor="middle" class="muted">0</text>
+  <text x="743" y="172.5" font-size="14" font-weight="700" text-anchor="middle" class="tealText">OBF</text>
+  <text x="53" y="213" font-size="13" font-weight="400" text-anchor="start" class="ink">AUXDATA = 1：输出缓冲中的字节来自 AUX 口。</text>
+  <path d="M651 185V227H462V238" class="accent"/>
+  <path d="M743 185V219H587V238" class="tealWire"/>
+  <rect x="53" y="239" width="421" height="38" rx="6" class="flag"/>
+  <rect x="492" y="239" width="297" height="38" rx="6" class="teal"/>
+  <text x="69" y="263" font-size="13" font-weight="700" text-anchor="start" class="goldText">IBF = 1：上次写入还没处理，等 IBF = 0 再写。</text>
+  <text x="509" y="263" font-size="13" font-weight="700" text-anchor="start" class="tealText">OBF = 1：有字节，可读 0x60。</text>
+  <rect x="36" y="315" width="768" height="269" rx="10" class="panel"/>
+  <text x="53" y="344" font-size="16" font-weight="700" text-anchor="start" class="ink">数据端口和传统 PC 主板接线</text>
+  <rect x="53" y="370" width="125" height="72" rx="7" class="res"/>
+  <text x="115.5" y="398" font-size="17" font-weight="700" text-anchor="middle" class="ink">CPU</text>
+  <text x="115.5" y="420" font-size="13" font-weight="400" text-anchor="middle" class="muted">I/O 端口 0x60</text>
+  <rect x="300" y="360" width="249" height="113" rx="8" class="blue"/>
+  <text x="424.5" y="389" font-size="16" font-weight="700" text-anchor="middle" class="ink">i8042 键盘控制器</text>
+  <text x="425" y="420" font-size="13" font-weight="400" text-anchor="middle" class="ink">命令参数／键盘数据</text>
+  <text x="425" y="450" font-size="13" font-weight="400" text-anchor="middle" class="ink">输出缓冲：扫描码或应答</text>
+  <rect x="667" y="370" width="121" height="72" rx="7" class="teal"/>
+  <text x="727.5" y="399" font-size="15" font-weight="700" text-anchor="middle" class="ink">PS/2 键盘</text>
+  <text x="727.5" y="422" font-size="12" font-weight="400" text-anchor="middle" class="muted">时钟线＋数据线</text>
+  <path d="M178 391H298" class="line" marker-end="url(#wire)"/>
+  <text x="238" y="381" font-size="12" font-weight="700" text-anchor="middle" class="ink">写字节</text>
+  <path d="M300 425H180" class="tealWire" marker-end="url(#wire)"/>
+  <text x="238" y="418" font-size="12" font-weight="700" text-anchor="middle" class="tealText">读字节</text>
+  <path d="M549 402H667" class="line"/>
+  <circle cx="549" cy="402" r="3" class="pad"/>
+  <circle cx="667" cy="402" r="3" class="pad"/>
+  <path d="M549 455H667" class="accent" marker-end="url(#wire)"/>
+  <text x="602" y="446" font-size="13" font-weight="700" text-anchor="middle" class="goldText">IRQ1</text>
+  <text x="680" y="460" font-size="13" font-weight="700" text-anchor="start" class="ink">中断控制器</text>
+  <text x="53" y="506" font-size="14" font-weight="700" text-anchor="start" class="ink">i8042 的内部输出端口（选两位）</text>
+  <rect x="301" y="490" width="64" height="36" rx="0" class="res"/>
+  <rect x="365" y="490" width="64" height="36" rx="0" class="flag"/>
+  <text x="333" y="514" font-size="13" font-weight="700" text-anchor="middle" class="ink">bit 1</text>
+  <text x="397" y="514" font-size="13" font-weight="700" text-anchor="middle" class="goldText">bit 0</text>
+  <path d="M333 526V548H467" class="line"/>
+  <path d="M397 526V530H467" class="accent"/>
+  <text x="480" y="535" font-size="13" font-weight="700" text-anchor="start" class="goldText">RESET# · 低电平复位</text>
+  <text x="480" y="553" font-size="13" font-weight="700" text-anchor="start" class="ink">A20 门 · 控制地址线 A20</text>
+</svg>

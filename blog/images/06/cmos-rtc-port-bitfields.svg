@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="491" viewBox="0 0 840 491" role="img" aria-labelledby="title desc">
+  <title id="title">CMOS RTC：0x70 选寄存器，0x71 传数据</title>
+  <desc id="desc">0x70 写入的 bit 7 是 PC 平台的 NMI 屏蔽位，bits 6 到 0 选择 CMOS 寄存器。0x71 读写选中的寄存器；以 0x0A 为例，读回字节的 bit 7 是 UIP，表示 RTC 正在更新时间。这两个 bit 7 分属于两次不同的端口访问。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="489" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">CMOS RTC：0x70 选寄存器，0x71 传数据</text>
+  <defs>
+    <marker id="wire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <text x="36" y="71" font-size="15" font-weight="400" text-anchor="start" class="ink">CPU 只有两个 I/O 端口可访问，但 RTC 内部有一组编号各异的寄存器。</text>
+  <rect x="36" y="92" width="768" height="312" rx="10" class="panel"/>
+  <text x="53" y="123" font-size="16" font-weight="700" text-anchor="start" class="ink">写 0x70 · 索引／NMI 控制</text>
+  <rect x="53" y="155" width="47" height="35" rx="0" class="flag" data-bits="7"/>
+  <text x="76.5" y="147" font-size="12" font-weight="700" text-anchor="middle" class="muted">7</text>
+  <text x="76.5" y="177.5" font-size="12" font-weight="700" text-anchor="middle" class="goldText">NMI</text>
+  <rect x="100" y="155" width="329" height="35" rx="0" class="teal" data-bits="6:0"/>
+  <text x="264.5" y="147" font-size="12" font-weight="700" text-anchor="middle" class="muted">6:0</text>
+  <text x="264.5" y="177.5" font-size="14" font-weight="700" text-anchor="middle" class="tealText">寄存器编号</text>
+  <path d="M76.5 190V215" class="accent" marker-end="url(#wire)"/>
+  <text x="53" y="240" font-size="13" font-weight="700" text-anchor="start" class="goldText">主板 NMI 门控</text>
+  <text x="53" y="259" font-size="12" font-weight="400" text-anchor="start" class="goldText">1 = 屏蔽</text>
+  <rect x="484" y="112" width="302" height="169" rx="8" class="blue"/>
+  <text x="502" y="137" font-size="16" font-weight="700" text-anchor="start" class="ink">RTC 内部寄存器</text>
+  <rect x="502" y="185" width="266" height="31" rx="4" class="teal"/>
+  <text x="516" y="168" font-size="14" font-weight="400" text-anchor="start" class="ink">0x00 / 0x02 / 0x04   秒、分、时</text>
+  <text x="516" y="206" font-size="15" font-weight="700" text-anchor="start" class="tealText">0x0A   寄存器 A</text>
+  <text x="516" y="240" font-size="13" font-weight="400" text-anchor="start" class="ink">0x0B / 0x0C / 0x0D   寄存器 B、C、D</text>
+  <path d="M264.5 190V201H501" class="tealWire" marker-end="url(#wire)"/>
+  <text x="273" y="220" font-size="13" font-weight="700" text-anchor="start" class="tealText">例如索引字段填 0x0A</text>
+  <text x="53" y="294" font-size="16" font-weight="700" text-anchor="start" class="ink">读／写 0x71 · 所选寄存器的 8 位数据</text>
+  <path d="M768 200H778V319H432" class="tealWire" marker-end="url(#wire)"/>
+  <text x="556" y="308" font-size="13" font-weight="700" text-anchor="start" class="tealText">本次以读寄存器 A 为例</text>
+  <rect x="53" y="330" width="47" height="35" rx="0" class="flag" data-bits="7"/>
+  <text x="76.5" y="322" font-size="12" font-weight="700" text-anchor="middle" class="muted">7</text>
+  <text x="76.5" y="352.5" font-size="12" font-weight="700" text-anchor="middle" class="goldText">UIP</text>
+  <rect x="100" y="330" width="141" height="35" rx="0" class="blue" data-bits="6:4"/>
+  <text x="170.5" y="322" font-size="12" font-weight="700" text-anchor="middle" class="muted">6:4</text>
+  <text x="170.5" y="352.5" font-size="14" font-weight="700" text-anchor="middle" class="ink">时基／分频</text>
+  <rect x="241" y="330" width="188" height="35" rx="0" class="blue" data-bits="3:0"/>
+  <text x="335" y="322" font-size="12" font-weight="700" text-anchor="middle" class="muted">3:0</text>
+  <text x="335" y="352.5" font-size="14" font-weight="700" text-anchor="middle" class="ink">速率选择</text>
+  <text x="53" y="388" font-size="14" font-weight="400" text-anchor="start" class="ink">UIP = 1：正在更新时间；UIP = 0：未在更新。</text>
+  <rect x="36" y="426" width="768" height="36" rx="7" class="flag"/>
+  <text x="52" y="449" font-size="14" font-weight="700" text-anchor="start" class="ink">两个 bit 7 不同：写 0x70 的是 NMI 屏蔽位，从 0x71 读到的才是寄存器 A 的 UIP。</text>
+</svg>

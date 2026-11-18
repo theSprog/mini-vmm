@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="576" viewBox="0 0 840 576" role="img" aria-labelledby="title desc">
+  <title id="title">COM1：端口地址和 DLAB 是两回事</title>
+  <desc id="desc">驱动直接访问完整 I/O 端口地址。COM1 的偏移是端口号减去 0x3F8；0x3FB 对应独立的 8 位 LCR，数据 bit 7 是 DLAB。DLAB 为 0 时，0x3F8 读 RBR、写 THR，0x3F9 读写 IER；DLAB 为 1 时，这两个端口读写 DLL 和 DLM。端口号保持不变。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="574" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">COM1：端口地址和 DLAB 是两回事</text>
+  <text x="36" y="71" font-size="15" font-weight="400" text-anchor="start" class="ink">驱动直接读写完整端口号；设备内偏移 = 端口号 − 0x3F8。</text>
+  <rect x="36" y="95" width="120" height="34" rx="0" class="navy"/>
+  <text x="48" y="117" font-size="13" font-weight="700" text-anchor="start" class="white">完整端口号</text>
+  <rect x="36" y="129" width="120" height="29" rx="0" class="res"/>
+  <text x="48" y="149" font-size="13" font-weight="700" text-anchor="start" class="ink">设备内偏移</text>
+  <rect x="36" y="158" width="120" height="32" rx="0" class="panel"/>
+  <text x="48" y="179" font-size="13" font-weight="700" text-anchor="start" class="ink">读 · DLAB=0</text>
+  <rect x="36" y="190" width="120" height="32" rx="0" class="panel"/>
+  <text x="48" y="211" font-size="13" font-weight="700" text-anchor="start" class="ink">写 · DLAB=0</text>
+  <rect x="156" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3F8"/>
+  <path d="M156 95V129" class="faint" opacity="0.4"/>
+  <text x="196.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3F8</text>
+  <rect x="156" y="129" width="81" height="29" rx="0" class="res" data-offset="0"/>
+  <text x="196.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">0</text>
+  <rect x="156" y="158" width="81" height="32" rx="0" class="blue"/>
+  <text x="196.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">RBR</text>
+  <rect x="156" y="190" width="81" height="32" rx="0" class="blue"/>
+  <text x="196.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="ink">THR</text>
+  <rect x="237" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3F9"/>
+  <path d="M237 95V129" class="faint" opacity="0.4"/>
+  <text x="277.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3F9</text>
+  <rect x="237" y="129" width="81" height="29" rx="0" class="res" data-offset="1"/>
+  <text x="277.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">1</text>
+  <rect x="237" y="158" width="81" height="32" rx="0" class="panel"/>
+  <text x="277.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">IER</text>
+  <rect x="237" y="190" width="81" height="32" rx="0" class="panel"/>
+  <text x="277.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="ink">IER</text>
+  <rect x="318" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3FA"/>
+  <path d="M318 95V129" class="faint" opacity="0.4"/>
+  <text x="358.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3FA</text>
+  <rect x="318" y="129" width="81" height="29" rx="0" class="res" data-offset="2"/>
+  <text x="358.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">2</text>
+  <rect x="318" y="158" width="81" height="32" rx="0" class="blue"/>
+  <text x="358.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">IIR</text>
+  <rect x="318" y="190" width="81" height="32" rx="0" class="blue"/>
+  <text x="358.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="ink">FCR</text>
+  <rect x="399" y="95" width="81" height="34" rx="0" class="flag" data-port="0x3FB"/>
+  <path d="M399 95V129" class="faint" opacity="0.4"/>
+  <text x="439.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="goldText">0x3FB</text>
+  <rect x="399" y="129" width="81" height="29" rx="0" class="res" data-offset="3"/>
+  <text x="439.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">3</text>
+  <rect x="399" y="158" width="81" height="32" rx="0" class="flag"/>
+  <text x="439.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="goldText">LCR</text>
+  <rect x="399" y="190" width="81" height="32" rx="0" class="flag"/>
+  <text x="439.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="goldText">LCR</text>
+  <rect x="480" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3FC"/>
+  <path d="M480 95V129" class="faint" opacity="0.4"/>
+  <text x="520.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3FC</text>
+  <rect x="480" y="129" width="81" height="29" rx="0" class="res" data-offset="4"/>
+  <text x="520.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">4</text>
+  <rect x="480" y="158" width="81" height="32" rx="0" class="panel"/>
+  <text x="520.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">MCR</text>
+  <rect x="480" y="190" width="81" height="32" rx="0" class="panel"/>
+  <text x="520.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="ink">MCR</text>
+  <rect x="561" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3FD"/>
+  <path d="M561 95V129" class="faint" opacity="0.4"/>
+  <text x="601.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3FD</text>
+  <rect x="561" y="129" width="81" height="29" rx="0" class="res" data-offset="5"/>
+  <text x="601.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">5</text>
+  <rect x="561" y="158" width="81" height="32" rx="0" class="panel"/>
+  <text x="601.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">LSR</text>
+  <rect x="561" y="190" width="81" height="32" rx="0" class="panel"/>
+  <text x="601.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="muted">—</text>
+  <rect x="642" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3FE"/>
+  <path d="M642 95V129" class="faint" opacity="0.4"/>
+  <text x="682.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3FE</text>
+  <rect x="642" y="129" width="81" height="29" rx="0" class="res" data-offset="6"/>
+  <text x="682.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">6</text>
+  <rect x="642" y="158" width="81" height="32" rx="0" class="panel"/>
+  <text x="682.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">MSR</text>
+  <rect x="642" y="190" width="81" height="32" rx="0" class="panel"/>
+  <text x="682.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="muted">—</text>
+  <rect x="723" y="95" width="81" height="34" rx="0" class="navy" data-port="0x3FF"/>
+  <path d="M723 95V129" class="faint" opacity="0.4"/>
+  <text x="763.5" y="117" font-size="15" font-weight="700" text-anchor="middle" class="white">0x3FF</text>
+  <rect x="723" y="129" width="81" height="29" rx="0" class="res" data-offset="7"/>
+  <text x="763.5" y="149" font-size="13" font-weight="400" text-anchor="middle" class="muted">7</text>
+  <rect x="723" y="158" width="81" height="32" rx="0" class="panel"/>
+  <text x="763.5" y="179" font-size="14" font-weight="700" text-anchor="middle" class="ink">SCR</text>
+  <rect x="723" y="190" width="81" height="32" rx="0" class="panel"/>
+  <text x="763.5" y="211" font-size="14" font-weight="700" text-anchor="middle" class="ink">SCR</text>
+  <path d="M399 222L36 263 M480 222L804 263" class="dash"/>
+  <rect x="36" y="263" width="768" height="113" rx="9" class="panel"/>
+  <text x="56" y="289" font-size="17" font-weight="700" text-anchor="start" class="ink">LCR · 端口 0x3FB</text>
+  <text x="784" y="289" font-size="13" font-weight="400" text-anchor="end" class="muted">寄存器的数据位，不是端口地址位</text>
+  <text x="101.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">7</text>
+  <text x="192.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">6</text>
+  <text x="283.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">5</text>
+  <text x="374.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">4</text>
+  <text x="465.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">3</text>
+  <text x="556.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">2</text>
+  <text x="647.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">1</text>
+  <text x="738.5" y="316" font-size="12" font-weight="700" text-anchor="middle" class="muted">0</text>
+  <rect x="56" y="324" width="91" height="33" rx="0" class="flag" data-bits="7"/>
+  <rect x="147" y="324" width="637" height="33" rx="0" class="res" data-bits="6:0"/>
+  <text x="101.5" y="346" font-size="15" font-weight="700" text-anchor="middle" class="goldText">DLAB</text>
+  <text x="465.5" y="346" font-size="14" font-weight="400" text-anchor="middle" class="muted">字长、停止位、校验等线路设置</text>
+  <path d="M101.5 357V396H609 M231 396V413 M609 396V413" class="accent"/>
+  <circle cx="101.5" cy="357" r="3.5" class="tap"/>
+  <circle cx="231" cy="396" r="3.5" class="tap"/>
+  <rect x="56" y="413" width="348" height="102" rx="8" class="blue"/>
+  <text x="74" y="440" font-size="15" font-weight="700" text-anchor="start" class="ink">DLAB = 0 · 正常寄存器</text>
+  <path d="M73 450H387" class="faint"/>
+  <text x="74" y="475" font-size="14" font-weight="400" text-anchor="start" class="ink">0x3F8：读 RBR，写 THR</text>
+  <text x="74" y="500" font-size="14" font-weight="400" text-anchor="start" class="ink">0x3F9：读写 IER</text>
+  <rect x="436" y="413" width="348" height="102" rx="8" class="flag"/>
+  <text x="454" y="440" font-size="15" font-weight="700" text-anchor="start" class="ink">DLAB = 1 · 波特率除数</text>
+  <path d="M453 450H767" class="faint"/>
+  <text x="454" y="475" font-size="14" font-weight="400" text-anchor="start" class="ink">0x3F8：读写 DLL（低字节）</text>
+  <text x="454" y="500" font-size="14" font-weight="400" text-anchor="start" class="ink">0x3F9：读写 DLM（高字节）</text>
+  <text x="56" y="548" font-size="14" font-weight="700" text-anchor="start" class="ink">例如：同样往 0x3F8 写 0x41，DLAB=0 是发送 A，DLAB=1 是改除数低字节。</text>
+</svg>
