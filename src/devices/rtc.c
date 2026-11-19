@@ -2,11 +2,12 @@
  *
  * 不模拟它的话，端口 0x70/0x71 读回 0xFF，寄存器 A 的 UIP 位
  * （update in progress）永远为 1，mc146818_avoid_UIP() 的等待循环只能
- * 跑满超时：10000 圈、每圈 udelay(100) 加两次 CMOS_READ。两个调用者
- * （mach_get_cmos_time 和 rtc-cmos 探测里的 mc146818_does_rtc_work）
- * 各超时一次，实测整次启动多出 8 万次 PIO exit、约 2 秒（--trace-pio
- * 对比：30449 -> 110187 条，Run /init 从 0.75s 推到 2.70s），
- * 日志里还会留下 "Unable to read current time from RTC" 和
+ * 跑满超时：10000 圈、每圈 udelay(100) 加两次 CMOS_READ。启动时有两个调用者
+ * 各超时一次，每次约 4 万次 PIO exit、1 秒：CONFIG_PM_TRACE_RTC 的
+ * read_magic_time()（drivers/base/power/trace.c）和 rtc-cmos 探测里的
+ * mc146818_does_rtc_work()。开了 kvmclock 的 guest 墙钟取自 kvmclock，
+ * mach_get_cmos_time() 不再被调用；没有 kvmclock 时它是第三个调用者。
+ * 日志里会留下 "PM: Unable to read current time from RTC" 和
  * "rtc_cmos rtc_cmos: broken or not accessible"。
  *
  * 这里只做读时间：每次读时间寄存器都现取 host 的 UTC 时间，

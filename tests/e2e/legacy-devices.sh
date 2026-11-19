@@ -174,8 +174,11 @@ guide "把一次启动的寄存器序列录下来并逐段读" \
 ./tools/trace_decode.py /tmp/pio.txt --dev unhandled --syms \$VMLINUX" \
 "--summary: 串口占 98% 左右，没有 0x40-0x43 / 0x61
 --console: 每行日志对应的 trace 行号区间，用来定位某条消息前后发生了什么
---dev unhandled --syms: 0x87 来自 i8237A_init_ops，0xcf8 来自 pci_direct_probe
-  与 read_pci_config，0x80 来自 native_io_delay"
+--dev unhandled --syms: 0x87 读一次，来自 i8237A_init_ops；0x2f8/0x3e8/0x2e8
+  各 6 次，来自 io_serial_in/io_serial_out（8250 驱动探测 COM2-4，没有
+  设备时读回 0xff）。0xcf8 归 pci-conf1-addr，不在这里；没有 0x80：KVM 在
+  CPUID 里报 KVM_FEATURE_NOP_IO_DELAY，guest 的 paravirt_ops_setup() 据此
+  把 pv_info.io_delay 置假，slow_down_io() 不再写 0x80"
 
 guide "确认串口是中断驱动而不是轮询" \
 "# guest 里：

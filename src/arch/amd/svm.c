@@ -185,8 +185,8 @@ static int amd_prepare_vm(struct vmm_vm *vm)
  * guest 内核在 constant_tsc 时检查它，为 0 就打印
  * "[Firmware Bug]: TSC doesn't count with P0 frequency!"（写 1 表示
  * TSC 按 P0 频率计数，这条日志就会消失；写 0 只是多一行日志，行为不变，
- * TSC 在 KVM 下本来就恒定）。但 KVM 的 MSR_K7_HWCR 写处理（host v5.15
- * 的 arch/x86/kvm/x86.c，到 v6.6 仍然一样）只接受 bit 18 McStatusWrEn，
+ * TSC 在 KVM 下本来就恒定）。但 KVM 的 MSR_K7_HWCR 写处理（host v6.6
+ * arch/x86/kvm/x86.c 的 kvm_set_msr_common()）只接受 bit 18 McStatusWrEn，
  * 其余非零位一律拒绝，KVM_SET_MSRS 会返回 0 表示一个都没写成功。
  * 所以这一位用户态改不了，只能保持 KVM 的初值 0。
  */
