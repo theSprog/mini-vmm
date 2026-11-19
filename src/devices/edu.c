@@ -29,14 +29,29 @@ static unsigned g_warned;
         }                                       \
     } while (0)
 
-/* 中断原因从 old 变成 e->int_status 之后同步输出：INTx 电平跟着
- * INT_STATUS != 0 走（MSI 打开时 PCI 核心不把它放上线）；MSI 打开时，
- * 每多出一个原来为 0 的位发一条消息。 */
+/* 中断原因从 old 变成 e->int_status 之后同步输出：
+ *   - INTx 电平跟着 INT_STATUS != 0 走（MSI/MSI-X 打开时 PCI 核心不把它放上线）；
+ *   - 某个 MSI-X 项负责的字节清成 0，原因没有了，清它的 pending 位，不论
+ *     MSI-X 此刻是否打开：pending 位跨越打开和关闭保留，留着的话打开后会
+ *     补发一条没有原因的消息；
+ *   - MSI-X 打开时，每个多出原来为 0 的位的字节用自己那一项发一条；
+ *   - 否则 MSI 打开时，多出原来为 0 的位就发一条。 */
 static void edu_update_irq(struct edu *e, uint32_t old)
 {
+    uint32_t rise = e->int_status & ~old;
+    unsigned n;
+
     pci_set_irq(&e->pci, e->int_status != 0);
-    if ((e->int_status & ~old) && pci_msi_enabled(&e->pci))
+    for (n = 0; n < EDU_MSIX_VECTORS; n++)
+        if (!(e->int_status & EDU_INT_VEC_MASK(n)))
+            pci_msix_clear_pending(&e->pci, n);
+    if (pci_msix_enabled(&e->pci)) {
+        for (n = 0; n < EDU_MSIX_VECTORS; n++)
+            if (rise & EDU_INT_VEC_MASK(n))
+                pci_msix_notify(&e->pci, n);
+    } else if (rise && pci_msi_enabled(&e->pci)) {
         pci_msi_notify(&e->pci);
+    }
 }
 
 static void edu_set_int(struct edu *e, uint32_t bits)
@@ -263,6 +278,8 @@ int edu_attach(struct edu *e, struct vmm_vm *vm, struct pci_bus *bus,
     d->intx_pin   = 1;
     d->bus_master = true;
     d->msi        = true;
+    d->msix_vectors = EDU_MSIX_VECTORS;
+    d->msix_bar     = EDU_MSIX_BAR;
     d->bars[0].type   = PCI_BAR_MEM32;
     d->bars[0].size   = EDU_BAR0_SIZE;
     d->bars[0].opaque = e;
@@ -305,7 +322,7 @@ static const char *const edu_props[] = { "driver", NULL };
 
 const struct vmm_device_type edu_device_type = {
     .name   = "edu",
-    .desc   = "teaching PCI device: registers, a DMA engine, INTx and MSI",
+    .desc   = "teaching PCI device: registers, a DMA engine, INTx, MSI and MSI-X",
     .props  = edu_props,
     .create = edu_create,
     .attach = edu_dev_attach,

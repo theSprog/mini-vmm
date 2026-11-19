@@ -44,13 +44,40 @@
  * 发不出去的消息（Bus Master 关着、地址或数据不合法、KVM 没有 vCPU 收下）
  * 都记日志，带 BDF、地址、数据和原因。换成一条新的地址/数据组合时立刻记，
  * 同一个组合连续失败按第 1、2、4、8……次记：配置写坏时日志不会刷屏，丢了
- * 多少条也看得出来，guest 接连写出几种坏配置时每一种都能看到。
+ * 多少条也看得出来，guest 接连写出几种坏配置时每一种都能看到。MSI-X 的消息
+ * 走同一条发送路径，规则相同。
  *
- * capability 的形状固定为：单个向量（MMC = 0）、64 位地址、没有 per-vector
- * masking，放在 0x40，是链表里唯一的一项。64 位地址是规范的要求：设备作为
- * master 支持 64 位寻址时必须实现 Message Upper Address（第 6.8.1.5 节脚注），
- * 而做 DMA 的设备都是 64 位的。多向量和屏蔽位只有出现真正需要的设备时再加，
- * 那时 capability 的偏移也要改成由核心分配。
+ * MSI capability 的形状固定为：单个向量（MMC = 0）、64 位地址、没有
+ * per-vector masking。64 位地址是规范的要求：设备作为 master 支持 64 位寻址
+ * 时必须实现 Message Upper Address（第 6.8.1.5 节脚注），而做 DMA 的设备都是
+ * 64 位的。需要多个向量或屏蔽的设备用 MSI-X。
+ *
+ * MSI-X（PCI 3.0 第 6.8.2、6.8.3 节）：设备声明向量数 msix_vectors 和一个
+ * 空着的 BAR 号 msix_bar，核心把这个 BAR 整个拿来放 MSI-X table 和 PBA，读写
+ * 都由核心处理，设备只调 pci_msix_notify(dev, n)“第 n 项要发一条”。用独占
+ * 的 BAR 是规范实现注记推荐的做法：table 和设备自己的寄存器不共用一个
+ * 4 KiB 页，设备的 BAR 回调也不用为 MSI-X 留出一段地址再转交。
+ *
+ * 屏蔽和 pending 位的规则全部在核心里：
+ *   - 一项被屏蔽，是它自己的 Mask 位为 1，或者 Function Mask 为 1。
+ *   - notify 时这一项被屏蔽，就不发，只置 PBA 里它的 pending 位。
+ *   - 屏蔽解除时（清 Mask 位、清 Function Mask、打开 MSI-X Enable），
+ *     pending 的项立刻补发一条并清 pending。
+ *   - 设备的中断原因被软件处理掉了（比如驱动轮询后确认），设备调
+ *     pci_msix_clear_pending 清掉 pending，免得解除屏蔽后补发一条已经
+ *     没有原因的消息（第 6.8.3.5 节）。
+ * 补发用的是解除屏蔽那一刻 table 里的地址和数据，所以核心不缓存表项：
+ * 规范允许设备缓存未屏蔽表项的值，但要求解除屏蔽时更新，每次发都现读
+ * table 就天然满足。
+ *
+ * table 项只接受对齐的 4 字节或 8 字节访问（第 6.8.2 节实现注记，其他访问
+ * 结果未定义），这里读回全 1、写丢弃并记一次日志。8 字节访问按先低后高拆成
+ * 两次 4 字节：规范允许软件在一项已屏蔽时用一次 8 字节写同时填 Message
+ * Data 和 Vector Control，数据先于屏蔽位生效，拆分的顺序保证了这一点。
+ * Vector Control 只有 Mask 位，保留位读 0；PBA 只读，写被丢弃。
+ *
+ * capability 由核心依次排在 0x40 起：有 MSI 时 MSI 在前，然后是 MSI-X。
+ * 偏移记在 msi_cap/msix_cap 里，guest 按链表找，不依赖具体位置。
  *
  * DMA 经 pci_dma_read/pci_dma_write，它们先检查 command 的 Bus Master
  * Enable：规范规定这一位为 0 时设备不能发起总线访问（第 6.2.2 节），驱动
@@ -151,6 +178,23 @@ struct pci_bar {
     bool     mapped;               /* 当前是否在响应 */
 };
 
+/* MSI-X 的上限和 BAR 内布局。64 项让 PBA 正好是一个 qword；table 1 KiB、
+ * PBA 放在 BAR 的后半，两者不重叠，各自 QWORD 对齐（第 6.8.2.4、6.8.2.5 节）。
+ * BAR 取 4 KiB，是 table 不和任何别的东西共用一个页的最小大小。名字避开
+ * linux/pci_regs.h 里 capability 寄存器字段的 PCI_MSIX_TABLE_OFFSET 等。 */
+#define PCI_MSIX_MAX_VECTORS   64
+#define PCI_MSIX_BAR_SIZE      0x1000
+#define PCI_MSIX_BAR_TABLE     0x000
+#define PCI_MSIX_BAR_PBA       0x800
+
+/* 一个 MSI-X table 项，字段次序即 BAR 里的布局（第 6.8.2 节图 6-11） */
+struct pci_msix_entry {
+    uint32_t addr_lo;
+    uint32_t addr_hi;
+    uint32_t data;
+    uint32_t ctrl;
+};
+
 struct pci_bus;
 
 struct pci_device {
@@ -167,6 +211,10 @@ struct pci_device {
     uint8_t  intx_pin;             /* 0 = 不用 INTx，1..4 = INTA..INTD */
     bool     bus_master;           /* 会做 DMA：command 的 Bus Master 位可写 */
     bool     msi;                  /* 有 MSI capability，Bus Master 位也随之可写 */
+    /* MSI-X 的项数，0 表示没有 MSI-X。非 0 时 bars[msix_bar] 必须留空，
+     * 由核心放 table 和 PBA；Bus Master 位也随之可写 */
+    uint16_t msix_vectors;
+    uint8_t  msix_bar;
     struct pci_bar bars[PCI_NUM_BARS];
 
     /* 以下由 PCI 核心维护 */
@@ -180,11 +228,17 @@ struct pci_device {
     bool     intx_level;           /* 设备内部的中断请求电平 */
     bool     dma_blocked_logged;   /* Bus Master 关闭时的 DMA 只记一次日志 */
     bool     msi_was_enabled;      /* 上次配置写之后的 MSI Enable，用来记切换 */
-    uint64_t msi_sent;             /* 交给 KVM 并被收下的消息数 */
+    uint64_t msi_sent;             /* 交给 KVM 并被收下的消息数（MSI 与 MSI-X 合计） */
     uint64_t msi_dropped;          /* 没有送达的消息数 */
     uint64_t msi_drop_addr;        /* 最近一次没送达的消息，日志节流用 */
     uint32_t msi_drop_data;
     uint64_t msi_drop_run;         /* 这个组合连续没送达的次数 */
+    uint8_t  msi_cap;              /* capability 偏移，没有时为 0 */
+    uint8_t  msix_cap;
+    bool     msix_was_enabled;     /* 上次配置写之后的 MSI-X Enable，用来记切换 */
+    bool     msix_bad_access_logged;   /* table/PBA 的非法访问只记一次 */
+    struct pci_msix_entry msix_table[PCI_MSIX_MAX_VECTORS];
+    uint64_t msix_pba;             /* 第 n 位是第 n 项的 pending 位 */
 };
 
 struct pci_bus {
@@ -221,9 +275,6 @@ void     pci_cfg_write(struct pci_bus *bus, uint8_t busno, uint8_t devfn,
  * 设备没有 INTx（intx_pin == 0）时调用是设备模型的 bug，只记日志。 */
 void pci_set_irq(struct pci_device *dev, bool level);
 
-/* MSI capability 在配置空间里的位置（见文件头） */
-#define PCI_MSI_CAP_OFFSET  0x40
-
 /* guest 是否打开了 MSI。设备没有 MSI capability 时恒为 false。 */
 bool pci_msi_enabled(const struct pci_device *dev);
 
@@ -231,6 +282,18 @@ bool pci_msi_enabled(const struct pci_device *dev);
  * 的原因见文件头，记日志、计入 msi_dropped，不返回错误：设备对一次丢掉的
  * 中断也做不了什么，它该做的状态更新照常做。 */
 void pci_msi_notify(struct pci_device *dev);
+
+/* guest 是否打开了 MSI-X。设备没有 MSI-X 时恒为 false。 */
+bool pci_msix_enabled(const struct pci_device *dev);
+
+/* 第 n 项有中断要发：没被屏蔽就按它当前的地址和数据发一条，被屏蔽就置它
+ * 的 pending 位，等屏蔽解除时补发（见文件头）。只在 pci_msix_enabled 为真
+ * 时调用；n 越界或 MSI-X 没打开是设备模型的 bug，只记日志。 */
+void pci_msix_notify(struct pci_device *dev, unsigned n);
+
+/* 第 n 项对应的中断原因已经没有了（软件处理掉了），清它的 pending 位。
+ * 没有 pending 时什么都不做。 */
+void pci_msix_clear_pending(struct pci_device *dev, unsigned n);
 
 /* 设备发起的 DMA。Bus Master 关闭返回 VMM_ERR_GUEST；地址范围的检查和
  * 失败原因同 mem_read/mem_write。 */

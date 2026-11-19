@@ -20,6 +20,10 @@
  *     MSI Enable 打开时不得使用 INTx 是第 6.8.3.3 节，消息内容是第
  *     6.8.3.4 节；哪些消息不合法见 include/devices/irqchip.h（Intel SDM
  *     第 13.11 节），这里记录送进 KVM_SIGNAL_MSI 的每一条消息
+ *   - MSI-X：capability 和 table/PBA 的布局与读写属性是 PCI 3.0 第 6.8.2 节，
+ *     访问宽度和 8 字节写的拆分是同节的实现注记，Enable 与 INTx 互斥是
+ *     第 6.8.3.3 节，屏蔽、pending 置位、解除屏蔽补发、原因消失时清
+ *     pending 是第 6.8.3.5 节；表项的复位值是第 6.8.2.6 至 6.8.2.10 节
  *
  * 不碰 /dev/kvm：src/vm.c 里用到的 kvm_* 全部是桩。
  */
@@ -707,7 +711,7 @@ static void case_bus_master(void)
 
 static struct pci_device g_msi;
 
-#define CAP     PCI_MSI_CAP_OFFSET
+#define CAP     0x40    /* 只有 MSI 的设备，MSI 是第一项 */
 #define MSI_LOG(want, msg)  CHECK(!strcmp(g_msi_log, (want)), \
                                   "%s: KVM_SIGNAL_MSI log \"%s\", want \"%s\"", \
                                   (msg), g_msi_log, (want))
@@ -919,6 +923,349 @@ static void case_msi_invalid(void)
     g_msi_ret = VMM_OK;
 }
 
+/* ---- MSI-X ---- */
+
+static struct pci_device g_mx;
+
+#define MX_SLOT    2
+#define MX_BAR     2
+#define MX_N       4
+
+/* 一个带 MSI、MSI-X（4 项，放在 BAR2）和 INTA 的设备，slot 2（INTA -> GSI 18）。
+ * BAR0 是一个普通的 MMIO BAR，证明核心只拿走声明的那一个。 */
+static void setup_msix(void)
+{
+    setup();
+    memset(&g_mx, 0, sizeof(g_mx));
+    g_mx.name         = "mx";
+    g_mx.intx_pin     = 1;
+    g_mx.msi          = true;
+    g_mx.msix_vectors = MX_N;
+    g_mx.msix_bar     = MX_BAR;
+    g_mx.bars[0].type = PCI_BAR_MEM32;
+    g_mx.bars[0].size = 0x1000;
+    CHECK_U64(pci_register_device(&g_bus, &g_mx), VMM_OK, "register msix device");
+    CHECK_U64(g_mx.slot, MX_SLOT, "msix device in slot 2");
+    g_msi_log[0] = 0;
+    g_msi_ret = VMM_OK;
+    g_drop_logs = 0;
+    g_last_log[0] = 0;
+}
+
+static uint64_t mx_bar(void)
+{
+    return cfg_r(MX_SLOT, PCI_BASE_ADDRESS_0 + 4 * MX_BAR, 4) & PCI_BASE_ADDRESS_MEM_MASK;
+}
+
+static uint32_t tbl_r(unsigned n, unsigned field)
+{
+    return mmio_r(mx_bar() + PCI_MSIX_BAR_TABLE + n * PCI_MSIX_ENTRY_SIZE + field, 4);
+}
+
+static void tbl_w(unsigned n, unsigned field, uint32_t v)
+{
+    mmio_w(mx_bar() + PCI_MSIX_BAR_TABLE + n * PCI_MSIX_ENTRY_SIZE + field, 4, v);
+}
+
+static uint64_t mmio_r64(uint64_t a)
+{
+    uint64_t v = 0;
+
+    io_bus_dispatch_mmio(&g_vcpu, a, false, 8, (uint8_t *)&v);
+    return v;
+}
+
+static void mmio_w64(uint64_t a, uint64_t v)
+{
+    io_bus_dispatch_mmio(&g_vcpu, a, true, 8, (uint8_t *)&v);
+}
+
+static uint64_t pba(void)
+{
+    return mmio_r64(mx_bar() + PCI_MSIX_BAR_PBA);
+}
+
+static void mx_ctrl(uint16_t v)
+{
+    cfg_w(MX_SLOT, g_mx.msix_cap + PCI_MSIX_FLAGS, 2, (uint32_t)(MX_N - 1) | v);
+}
+
+/* Linux msix_capability_init 的次序：先带 Function Mask 打开 Enable，
+ * 填表项（每项地址 0xFEE0100n、数据 0x40 + n），打开 Bus Master，最后清
+ * Function Mask。表项各自的 Mask 位还是复位值 1。 */
+static void msix_program(void)
+{
+    unsigned n;
+
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE | PCI_MSIX_FLAGS_MASKALL);
+    for (n = 0; n < MX_N; n++) {
+        tbl_w(n, PCI_MSIX_ENTRY_LOWER_ADDR, 0xFEE01000u + 4 * n);
+        tbl_w(n, PCI_MSIX_ENTRY_UPPER_ADDR, 0);
+        tbl_w(n, PCI_MSIX_ENTRY_DATA, 0x40 + n);
+    }
+    cfg_w(MX_SLOT, PCI_COMMAND, 2, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE);
+}
+
+static void unmask(unsigned n)
+{
+    tbl_w(n, PCI_MSIX_ENTRY_VECTOR_CTRL, 0);
+}
+
+static void mask(unsigned n)
+{
+    tbl_w(n, PCI_MSIX_ENTRY_VECTOR_CTRL, PCI_MSIX_ENTRY_CTRL_MASKBIT);
+}
+
+static void case_msix_cap(void)
+{
+    struct pci_device bad;
+    uint32_t t, p;
+
+    T_CASE("MSI-X capability：链表、Table Size、BIR 与偏移、只读位（PCI 3.0 第 6.8.2.1 至 6.8.2.5 节）");
+    setup_msix();
+
+    CHECK_U64(find_cap(MX_SLOT, PCI_CAP_ID_MSI), 0x40, "MSI first, at 0x40");
+    CHECK_U64(find_cap(MX_SLOT, PCI_CAP_ID_MSIX), 0x50, "MSI-X after the 0x0E-byte MSI, DWORD aligned");
+    CHECK_U64(g_mx.msix_cap, 0x50, "core records the offset");
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_CAP_LIST_NEXT, 1), 0, "MSI-X is the last capability");
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_MSIX_FLAGS, 2), MX_N - 1,
+              "control after reset: table size N-1, disabled, not function-masked");
+    CHECK(!pci_msix_enabled(&g_mx), "MSI-X disabled after reset");
+
+    t = cfg_r(MX_SLOT, 0x50 + PCI_MSIX_TABLE, 4);
+    p = cfg_r(MX_SLOT, 0x50 + PCI_MSIX_PBA, 4);
+    CHECK_U64(t & PCI_MSIX_TABLE_BIR, MX_BAR, "table BIR");
+    CHECK_U64(t & PCI_MSIX_TABLE_OFFSET, PCI_MSIX_BAR_TABLE, "table offset");
+    CHECK_U64(p & PCI_MSIX_PBA_BIR, MX_BAR, "PBA BIR");
+    CHECK_U64(p & PCI_MSIX_PBA_OFFSET, PCI_MSIX_BAR_PBA, "PBA offset");
+    cfg_w(MX_SLOT, 0x50 + PCI_MSIX_TABLE, 4, 0xFFFFFFFFu);
+    cfg_w(MX_SLOT, 0x50 + PCI_MSIX_PBA, 4, 0);
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_MSIX_TABLE, 4), t, "table offset/BIR is read-only");
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_MSIX_PBA, 4), p, "PBA offset/BIR is read-only");
+
+    cfg_w(MX_SLOT, 0x50 + PCI_MSIX_FLAGS, 2, 0xFFFF);
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_MSIX_FLAGS, 2),
+              PCI_MSIX_FLAGS_ENABLE | PCI_MSIX_FLAGS_MASKALL | (MX_N - 1),
+              "only Enable and Function Mask are writable, bits 13:11 reserved");
+    cfg_w(MX_SLOT, 0x50 + PCI_MSIX_FLAGS, 2, 0);
+    CHECK_U64(cfg_r(MX_SLOT, 0x50 + PCI_MSIX_FLAGS, 2), MX_N - 1, "and they clear again");
+
+    CHECK_U64(linux_bar_size(MX_SLOT, MX_BAR), PCI_MSIX_BAR_SIZE, "MSI-X BAR sized by the core");
+    CHECK_U64(linux_bar_size(MX_SLOT, 0), 0x1000, "the device's own BAR0 untouched");
+    cfg_w(MX_SLOT, PCI_COMMAND, 2, 0xFFFF);
+    CHECK_U64(cfg_r(MX_SLOT, PCI_COMMAND, 2) & PCI_COMMAND_MASTER, PCI_COMMAND_MASTER,
+              "MSI-X makes Bus Master writable");
+
+    /* 设备的声明有错时注册失败，不悄悄改别的 BAR */
+    setup();
+    memset(&bad, 0, sizeof(bad));
+    bad.name = "bad";
+    bad.msix_vectors = 1;
+    bad.msix_bar = 0;
+    bad.bars[0].type = PCI_BAR_MEM32;
+    bad.bars[0].size = 0x1000;
+    CHECK_U64(pci_register_device(&g_bus, &bad), VMM_ERR_INVAL, "MSI-X BAR already used by the device");
+    CHECK(strstr(g_last_log, "BAR0 is in use") != NULL, "%s", g_last_log);
+    memset(&bad, 0, sizeof(bad));
+    bad.name = "bad";
+    bad.msix_vectors = PCI_MSIX_MAX_VECTORS + 1;
+    CHECK_U64(pci_register_device(&g_bus, &bad), VMM_ERR_INVAL, "more entries than the core supports");
+}
+
+static void case_msix_table(void)
+{
+    uint64_t base;
+    unsigned n;
+
+    T_CASE("MSI-X table 与 PBA：复位值、读写属性、访问宽度（第 6.8.2 节及实现注记）");
+    setup_msix();
+    base = mx_bar();
+
+    for (n = 0; n < MX_N; n++) {
+        CHECK_U64(tbl_r(n, PCI_MSIX_ENTRY_LOWER_ADDR), 0, "entry %u address resets to 0", n);
+        CHECK_U64(tbl_r(n, PCI_MSIX_ENTRY_DATA), 0, "entry %u data resets to 0", n);
+        CHECK_U64(tbl_r(n, PCI_MSIX_ENTRY_VECTOR_CTRL), PCI_MSIX_ENTRY_CTRL_MASKBIT,
+                  "entry %u is masked after reset", n);
+    }
+    CHECK_U64(pba(), 0, "no pending bits after reset");
+
+    tbl_w(1, PCI_MSIX_ENTRY_LOWER_ADDR, 0xFFFFFFFFu);
+    CHECK_U64(tbl_r(1, PCI_MSIX_ENTRY_LOWER_ADDR), 0xFFFFFFFCu, "address bits 1:0 read as 0");
+    tbl_w(1, PCI_MSIX_ENTRY_UPPER_ADDR, 0x89ABCDEFu);
+    CHECK_U64(tbl_r(1, PCI_MSIX_ENTRY_UPPER_ADDR), 0x89ABCDEFu, "upper address is RW");
+    tbl_w(1, PCI_MSIX_ENTRY_DATA, 0xDEADBEEFu);
+    CHECK_U64(tbl_r(1, PCI_MSIX_ENTRY_DATA), 0xDEADBEEFu, "data is a full 32 bits");
+    tbl_w(1, PCI_MSIX_ENTRY_VECTOR_CTRL, 0xFFFFFFFEu);
+    CHECK_U64(tbl_r(1, PCI_MSIX_ENTRY_VECTOR_CTRL), 0, "only the Mask bit is writable");
+    CHECK_U64(tbl_r(0, PCI_MSIX_ENTRY_DATA), 0, "neighbour entry untouched");
+
+    mmio_w64(base + 2 * PCI_MSIX_ENTRY_SIZE, 0x00000001FEE02008ULL);
+    CHECK_U64(tbl_r(2, PCI_MSIX_ENTRY_LOWER_ADDR), 0xFEE02008u, "QWORD write: address");
+    CHECK_U64(tbl_r(2, PCI_MSIX_ENTRY_UPPER_ADDR), 1, "QWORD write: upper address");
+    mmio_w64(base + 2 * PCI_MSIX_ENTRY_SIZE + PCI_MSIX_ENTRY_DATA, 0x0000000100000055ULL);
+    CHECK_U64(tbl_r(2, PCI_MSIX_ENTRY_DATA), 0x55, "QWORD write: data");
+    CHECK_U64(tbl_r(2, PCI_MSIX_ENTRY_VECTOR_CTRL), 1, "QWORD write: vector control");
+    CHECK_U64(mmio_r64(base + 2 * PCI_MSIX_ENTRY_SIZE), 0x00000001FEE02008ULL, "QWORD read");
+
+    g_last_log[0] = 0;
+    CHECK_U64(mmio_r(base + 2 * PCI_MSIX_ENTRY_SIZE, 2), 0xFFFF, "2-byte read returns all ones");
+    CHECK(strstr(g_last_log, "2-byte MSI-X read at BAR2+0x020 returns all ones") != NULL,
+          "bad access is logged: %s", g_last_log);
+    g_last_log[0] = 0;
+    mmio_w(base + 2 * PCI_MSIX_ENTRY_SIZE + 1, 4, 0);
+    CHECK_U64(tbl_r(2, PCI_MSIX_ENTRY_LOWER_ADDR), 0xFEE02008u, "unaligned write dropped");
+    CHECK_U64(g_last_log[0], 0, "logged only once");
+    CHECK_U64(mmio_r64(base + 4), ~0ULL, "QWORD read not QWORD-aligned returns all ones");
+
+    mmio_w64(base + PCI_MSIX_BAR_PBA, ~0ULL);
+    CHECK_U64(pba(), 0, "PBA is read-only");
+    CHECK_U64(mmio_r(base + PCI_MSIX_BAR_TABLE + MX_N * PCI_MSIX_ENTRY_SIZE, 4), 0,
+              "past the last entry reads 0");
+    mmio_w(base + PCI_MSIX_BAR_TABLE + MX_N * PCI_MSIX_ENTRY_SIZE + 0xC, 4, 0);
+    CHECK_U64(mmio_r(base + PCI_MSIX_BAR_SIZE - 4, 4), 0, "end of the BAR reads 0");
+}
+
+static void case_msix_send(void)
+{
+    T_CASE("MSI-X 发消息：每项用自己的地址和完整 32 位数据，屏蔽时置 pending");
+    setup_msix();
+    msix_program();
+    CHECK(pci_msix_enabled(&g_mx), "MSI-X enabled");
+
+    pci_msix_notify(&g_mx, 1);
+    MSI_LOG("", "entry 1 still masked: nothing sent");
+    CHECK_U64(pba(), 1u << 1, "its pending bit is set");
+    unmask(1);
+    MSI_LOG("fee01004:41", "unmasking sends the pending message with entry 1's address/data");
+    CHECK_U64(pba(), 0, "and clears the pending bit");
+
+    unmask(0);
+    unmask(2);
+    pci_msix_notify(&g_mx, 2);
+    pci_msix_notify(&g_mx, 0);
+    MSI_LOG("fee01004:41 fee01008:42 fee01000:40", "unmasked entries send at once, each its own message");
+    pci_msix_notify(&g_mx, 2);
+    MSI_LOG("fee01004:41 fee01008:42 fee01000:40 fee01008:42", "each notify is one message");
+    CHECK_U64(g_mx.msi_sent, 4, "counted as sent");
+
+    g_msi_log[0] = 0;
+    tbl_w(2, PCI_MSIX_ENTRY_DATA, 0x12340042u);
+    pci_msix_notify(&g_mx, 2);
+    MSI_LOG("fee01008:12340042", "the 32-bit data is sent unmodified (6.8.2.8)");
+
+    g_msi_log[0] = 0;
+    pci_msix_notify(&g_mx, MX_N);
+    MSI_LOG("", "entry out of range: not sent");
+    CHECK(strstr(g_last_log, "pci_msix_notify(4) with 4 entries") != NULL, "bug is logged: %s", g_last_log);
+    mx_ctrl(0);
+    pci_msix_notify(&g_mx, 0);
+    MSI_LOG("", "MSI-X disabled: not sent");
+    CHECK(strstr(g_last_log, "MSI-X disabled") != NULL, "bug is logged: %s", g_last_log);
+    CHECK_U64(pba(), 0, "and nothing becomes pending");
+
+    /* 发不出去的原因和 MSI 一样记日志 */
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE);
+    cfg_w(MX_SLOT, PCI_COMMAND, 2, PCI_COMMAND_MEMORY);
+    pci_msix_notify(&g_mx, 0);
+    MSI_LOG("", "bus master off: not sent");
+    CHECK(strstr(g_last_log, "MSI-X entry 0 address 0xfee01000 data 0x0040 not delivered: "
+                 "bus master disabled") != NULL, "diagnostic names the entry: %s", g_last_log);
+}
+
+static void case_msix_mask(void)
+{
+    T_CASE("MSI-X 屏蔽：单项 Mask、Function Mask、补发、清 pending（第 6.8.3.5 节）");
+    setup_msix();
+    msix_program();
+    unmask(0);
+    unmask(1);
+    unmask(2);
+
+    /* Function Mask 屏蔽全部项，不改各项自己的 Mask 位 */
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE | PCI_MSIX_FLAGS_MASKALL);
+    pci_msix_notify(&g_mx, 0);
+    pci_msix_notify(&g_mx, 2);
+    pci_msix_notify(&g_mx, 3);
+    MSI_LOG("", "function mask: nothing sent");
+    CHECK_U64(pba(), 0xD, "entries 0, 2, 3 pending");
+    CHECK_U64(tbl_r(0, PCI_MSIX_ENTRY_VECTOR_CTRL), 0, "function mask leaves entry 0's Mask bit");
+    CHECK_U64(tbl_r(3, PCI_MSIX_ENTRY_VECTOR_CTRL), 1, "and entry 3's");
+    pci_msix_notify(&g_mx, 2);
+    CHECK_U64(pba(), 0xD, "a second event on a pending entry stays one pending bit");
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE);
+    MSI_LOG("fee01000:40 fee01008:42", "clearing function mask sends the pending, unmasked entries once each");
+    CHECK_U64(pba(), 1u << 3, "entry 3 is still masked by its own bit and stays pending");
+    unmask(3);
+    MSI_LOG("fee01000:40 fee01008:42 fee0100c:43", "then unmasking entry 3 sends it");
+    CHECK_U64(pba(), 0, "nothing pending");
+
+    /* 原因在屏蔽期间被软件处理掉：清 pending，解除屏蔽时不补发 */
+    g_msi_log[0] = 0;
+    mask(1);
+    pci_msix_notify(&g_mx, 1);
+    CHECK_U64(pba(), 1u << 1, "masked entry 1 pending");
+    pci_msix_clear_pending(&g_mx, 1);
+    CHECK_U64(pba(), 0, "device clears it once the cause is gone");
+    unmask(1);
+    MSI_LOG("", "no spurious message after unmask");
+    pci_msix_clear_pending(&g_mx, 1);
+    CHECK_U64(pba(), 0, "clearing a bit that is not pending is harmless");
+
+    /* 屏蔽期间改了地址和数据：补发用解除屏蔽时 table 里的值 */
+    mask(0);
+    pci_msix_notify(&g_mx, 0);
+    tbl_w(0, PCI_MSIX_ENTRY_LOWER_ADDR, 0xFEE03000u);
+    tbl_w(0, PCI_MSIX_ENTRY_DATA, 0x77);
+    unmask(0);
+    MSI_LOG("fee03000:77", "replay uses the address and data current at unmask");
+
+    /* MSI-X 关着时 pending 留着，打开时补发 */
+    g_msi_log[0] = 0;
+    mask(0);
+    pci_msix_notify(&g_mx, 0);
+    mx_ctrl(0);
+    unmask(0);
+    MSI_LOG("", "MSI-X disabled: unmasking sends nothing");
+    CHECK_U64(pba(), 1, "still pending");
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE);
+    MSI_LOG("fee03000:77", "enabling MSI-X sends it");
+
+    /* QWORD 写 Data + Vector Control 解除屏蔽：数据先生效（第 6.8.2 节实现注记） */
+    g_msi_log[0] = 0;
+    mask(2);
+    pci_msix_notify(&g_mx, 2);
+    mmio_w64(mx_bar() + 2 * PCI_MSIX_ENTRY_SIZE + PCI_MSIX_ENTRY_DATA, 0x99);
+    MSI_LOG("fee01008:99", "QWORD write data+unmask: the replay already carries the new data");
+}
+
+static void case_msix_intx(void)
+{
+    T_CASE("MSI-X Enable 与 INTx 互斥（第 6.8.3.3 节），复位回到初始状态");
+    setup_msix();
+
+    pci_set_irq(&g_mx, true);
+    IRQ_LOG("18=1", "INTx before MSI-X");
+    msix_program();
+    IRQ_LOG("18=1 18=0", "enabling MSI-X takes the request off the INTx line");
+    pci_set_irq(&g_mx, false);
+    pci_set_irq(&g_mx, true);
+    IRQ_LOG("18=1 18=0", "level changes while MSI-X is on stay off the line");
+    mx_ctrl(0);
+    IRQ_LOG("18=1 18=0 18=1", "disabling MSI-X puts the pending request back on INTx");
+
+    mx_ctrl(PCI_MSIX_FLAGS_ENABLE);
+    unmask(1);
+    mask(2);
+    pci_msix_notify(&g_mx, 2);
+    pci_bus_reset(&g_bus);
+    CHECK(!pci_msix_enabled(&g_mx), "reset disables MSI-X");
+    CHECK_U64(cfg_r(MX_SLOT, g_mx.msix_cap + PCI_MSIX_FLAGS, 2), MX_N - 1, "control back to its reset value");
+    CHECK_U64(tbl_r(1, PCI_MSIX_ENTRY_VECTOR_CTRL), 1, "reset masks every entry");
+    CHECK_U64(tbl_r(0, PCI_MSIX_ENTRY_LOWER_ADDR), 0, "and clears addresses");
+    CHECK_U64(pba(), 0, "and pending bits");
+}
+
 int main(int argc, char **argv)
 {
     int i;
@@ -947,5 +1294,10 @@ int main(int argc, char **argv)
     case_msi_intx();
     case_msi_send();
     case_msi_invalid();
+    case_msix_cap();
+    case_msix_table();
+    case_msix_send();
+    case_msix_mask();
+    case_msix_intx();
     return T_SUMMARY();
 }

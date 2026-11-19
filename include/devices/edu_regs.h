@@ -11,8 +11,12 @@
  * ---- PCI 身份 ----
  *
  *   vendor 0x1234  device 0x0003  class 0xFF0000（不属于任何已定义类别）
- *   INTA 引脚，一个 MSI capability（单向量、64 位地址）
- *   BAR0  32 位、不可预取的 MMIO，8 KiB
+ *   INTA 引脚，一个 MSI capability（单向量、64 位地址），一个 MSI-X
+ *   capability（EDU_MSIX_VECTORS 项）
+ *   BAR0  32 位、不可预取的 MMIO，8 KiB，设备寄存器和缓冲区
+ *   BAR1  32 位、不可预取的 MMIO，只放 MSI-X table 和 PBA；它们在 BAR1 里的
+ *         位置由 MSI-X capability 的 Table/PBA Offset 给出，驱动按 PCI 规范
+ *         从 capability 读，不要写死
  *
  * 0x1234 不在 PCI-SIG 的 vendor 分配表里。Linux 里按这个 vendor 匹配的只有
  * bochs 显卡驱动（device 0x1111），不会和本设备冲突。
@@ -77,7 +81,14 @@
  *     消息。已经置位、还没被确认的原因再次发生不再发消息，驱动处理时读到
  *     的 INT_STATUS 里已经有它。驱动在中断处理里只清自己读到的那些位，处理
  *     过程中新到的原因留在 INT_STATUS 里，不会丢。
- * 打开 MSI 之后 INTA 不再拉起，这是 PCI 规范对 MSI 的要求。
+ *   - MSI-X：INT_STATUS 按字节分给 EDU_MSIX_VECTORS 个表项，第 n 个字节
+ *     （EDU_INT_VEC_MASK(n)）的原因走第 n 项：DMA 完成在第 0 项，软件中断按
+ *     所在字节落在第 1 到 3 项。某个字节里多出一个原来为 0 的位，设备就用
+ *     对应的那一项发一条消息，规则和 MSI 相同，只是每个字节各算各的。那一项
+ *     被屏蔽时消息记在 PBA 里，解除屏蔽时补发；屏蔽期间软件经 INT_ACK 把
+ *     这个字节清成 0，原因已经没有了，设备清掉这一项的 pending 位，解除屏蔽
+ *     时不再补发。驱动的每个中断处理函数只读、只清自己那个字节。
+ * 打开 MSI 或 MSI-X 之后 INTA 不再拉起，这是 PCI 规范的要求。
  *
  * ---- 复位 ----
  *
@@ -91,6 +102,8 @@
 #define EDU_CLASS_CODE          0xFF0000
 
 #define EDU_BAR0_SIZE           0x2000
+#define EDU_MSIX_BAR            1
+#define EDU_MSIX_VECTORS        4
 #define EDU_BUF_OFFSET          0x1000
 #define EDU_BUF_SIZE            0x1000
 
@@ -112,6 +125,8 @@
 
 #define EDU_INT_DMA             0x00000001   /* DMA 命令完成（命令带 IRQ 位时） */
 #define EDU_INT_SOFT_MASK       0xFFFFFF00   /* 留给软件经 INT_RAISE 使用的位 */
+/* MSI-X 第 n 项负责的 INT_STATUS 位 */
+#define EDU_INT_VEC_MASK(n)     (0xFFu << (8 * (n)))
 
 #define EDU_DMA_CMD_START       0x1
 #define EDU_DMA_CMD_TO_RAM      0x2

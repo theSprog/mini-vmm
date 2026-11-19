@@ -29,7 +29,7 @@
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
 | 8 | monitor ✓ · pvpanic ✓ · edu-dev ✓ · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
-| 9 | acpi-events ✓ · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
+| 9 | acpi-events ✓ · pci-msix ✓ · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
 | 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
@@ -227,9 +227,9 @@ guest 侧内核模块这条线的起点。设备的寄存器规范由本项目�
 
 依赖: edu-dev · 参考: PCI Local Bus Spec 3.0 MSI-X 章节
 
-- [ ] PCI 层提供通用的 MSI-X capability，table 和 PBA 位于 BAR 中
-- [ ] edu-dev 驱动用 `pci_alloc_irq_vectors` 申请多个 vector，每个 vector 独立计数
-- [ ] 单个 vector 的 mask、function mask 和 pending 位语义正确：mask 期间到来的中断在 unmask 后补发
+- [x] PCI 层提供通用的 MSI-X capability，table 和 PBA 位于 BAR 中
+- [x] edu-dev 驱动用 `pci_alloc_irq_vectors` 申请多个 vector，每个 vector 独立计数
+- [x] 单个 vector 的 mask、function mask 和 pending 位语义正确：mask 期间到来的中断在 unmask 后补发
 
 ### pcie-ecam — PCIe 扩展配置空间
 

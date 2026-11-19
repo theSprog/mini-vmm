@@ -86,8 +86,8 @@ MUTANTS = [
         name="pci-intx-while-msi",
         breaks="PCI 3.0 6.8.3.3: INTx is not used while MSI Enable is set",
         file="src/pci/pci.c",
-        old="&&\n           !pci_msi_enabled(d);",
-        new=";",
+        old="           !pci_msi_enabled(d) && !pci_msix_enabled(d);",
+        new="           !pci_msix_enabled(d);",
         tests=["pci_bus_test"],
     ),
     dict(
@@ -110,8 +110,8 @@ MUTANTS = [
         name="pci-enable-read-only",
         breaks="PCI 3.0 6.8.1.3: MSI Enable is read/write",
         file="src/pci/pci.c",
-        old="wmask_set16(d, MSI_CTRL, PCI_MSI_FLAGS_ENABLE | PCI_MSI_FLAGS_QSIZE);",
-        new="wmask_set16(d, MSI_CTRL, PCI_MSI_FLAGS_QSIZE);",
+        old="wmask_set16(d, MSI_CTRL(d), PCI_MSI_FLAGS_ENABLE | PCI_MSI_FLAGS_QSIZE);",
+        new="wmask_set16(d, MSI_CTRL(d), PCI_MSI_FLAGS_QSIZE);",
         tests=["pci_bus_test"],
     ),
     dict(

@@ -15,25 +15,20 @@
 #   ./tests/e2e/edu-dev.sh -a    只跑自动用例
 #   ./tests/e2e/edu-dev.sh -m    只看人工指引
 #
-# 需要 tools/build_arch_image.sh 生成的镜像（默认 arch-image/，可用
-# ARCH_IMAGE 指定），镜像里要有 gcc、make 和 linux-headers；host 上要有
-# debugfs（e2fsprogs），用它把驱动源码写进磁盘镜像的副本。
+# 镜像和 host 工具的要求见 tests/edu_guest.sh。
 #
 # 寄存器语义、DMA 的三种结果、MSI 什么时候发、复位丢弃命令由单元测试
 # edu_test 逐条验证；这里验证的是一个真实的 Linux 驱动按规范把设备用起来。
 
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+source "$ROOT/tests/edu_guest.sh"
 
-IMG="${ARCH_IMAGE:-$ROOT/arch-image}"
-SRC="$ROOT/tools/guest/edu"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# edu 是第一个 --device，落在 slot 1；INTA 按 VMM 的 swizzle 接到
-# 16 + ((1 + 1 - 1) & 3) = GSI 17
-BDF=0000:00:01.0
-INTX_GSI=17
+BDF=$EDU_BDF
+INTX_GSI=$EDU_INTX_GSI
 ROUNDS=20
 CYCLES=100
 LEAK_CYCLES=10
@@ -90,7 +85,8 @@ EOF
 }
 
 # 驱动占用的每一样资源各打一行。加载时打一次，证明这些检查看得见资源；
-# 卸载后再打，证明全部还回去了。
+# 卸载后再打，证明全部还回去了。pci_request_regions 占的是设备的全部 BAR：
+# BAR0 和放 MSI-X table 的 BAR1，所以 /proc/iomem 里有两项。
 write_state_script() {
 cat > "$1" <<'EOF'
 # 用法: state.sh TAG
@@ -111,70 +107,41 @@ EOF
 }
 
 # 漏掉 remove 里 dma_free_coherent 的驱动副本。按文字定位那一处（前一行
-# 是 pci_free_irq_vectors，probe 出错路径里的那一处前面是标号），找不到时
+# 是 edu_teardown_irqs，probe 出错路径里的那一处前面是标号），找不到时
 # 打印 STALE，对照用例因此失败，而不是悄悄跑一个没改过的驱动。
 make_leaky_copy() {
     local dst="$1"
     mkdir -p "$dst"
-    cp "$SRC/Makefile" "$SRC/edu_ioctl.h" "$ROOT/include/devices/edu_regs.h" "$dst/"
-    python3 - "$SRC/edu.c" "$dst/edu.c" <<'EOF'
+    cp "$EDU_SRC/Makefile" "$EDU_SRC/edu_ioctl.h" "$ROOT/include/devices/edu_regs.h" "$dst/"
+    python3 - "$EDU_SRC/edu.c" "$dst/edu.c" <<'EOF'
 import sys
 s = open(sys.argv[1]).read()
-old = ("\tpci_free_irq_vectors(pdev);\n"
+old = ("\tedu_teardown_irqs(e);\n"
        "\tdma_free_coherent(&pdev->dev, EDU_BUF_SIZE, e->dma_buf, e->dma_handle);\n"
        "\tpci_clear_master(pdev);\n")
 if s.count(old) != 1:
     print("STALE: edu_remove no longer matches the leaky-copy pattern")
     sys.exit(1)
-open(sys.argv[2], "w").write(s.replace(old, "\tpci_free_irq_vectors(pdev);\n\tpci_clear_master(pdev);\n"))
+open(sys.argv[2], "w").write(s.replace(old, "\tedu_teardown_irqs(e);\n\tpci_clear_master(pdev);\n"))
 EOF
 }
 
 auto_tests() {
-local f disk uuid cmds
+local f
 head1 "Arch guest 里编译加载 edu 驱动"
-for f in disk.img vmlinuz-linux initramfs-linux.img packages.txt; do
-    if [ ! -f "$IMG/$f" ]; then
-        skip_case "edu 驱动用例" "$IMG/$f missing: run tools/build_arch_image.sh (needs network) or set ARCH_IMAGE=/path"
-        return
-    fi
-done
-if ! grep -q '^linux-headers ' "$IMG/packages.txt"; then
-    skip_case "edu 驱动用例" "$IMG has no linux-headers: rerun tools/build_arch_image.sh (the package list now includes gcc, make, linux-headers)"
-    return
-fi
-if ! command -v debugfs >/dev/null; then
-    skip_case "edu 驱动用例" "debugfs missing (e2fsprogs)"
-    return
-fi
-
-mkdir -p "$ROOT/build"
-disk="$(mktemp "$ROOT/build/edu-dev.XXXXXX.img")"
-cp --sparse=always "$IMG/disk.img" "$disk"
-uuid="$(blkid -p -o value -s UUID "$disk")"
 
 write_cycle_script "$WORK/cycle.sh"
 write_state_script "$WORK/state.sh"
 make_leaky_copy "$WORK/leak" > "$WORK/leak.log" 2>&1
-cmds="$WORK/debugfs.cmds"
 {
-    echo "mkdir /root/edu"
-    for f in "$SRC/edu.c" "$SRC/edu_ioctl.h" "$SRC/eductl.c" "$SRC/Makefile" \
-             "$ROOT/include/devices/edu_regs.h" "$WORK/cycle.sh" "$WORK/state.sh"; do
-        echo "write $f /root/edu/$(basename "$f")"
-    done
     echo "mkdir /root/edu-leak"
     for f in "$WORK"/leak/*; do
         echo "write $f /root/edu-leak/$(basename "$f")"
     done
-} > "$cmds"
-if ! debugfs -w -f "$cmds" "$disk" > "$WORK/debugfs.log" 2>&1; then
-    skip_case "edu 驱动用例" "debugfs could not write the sources into $disk: $(tail -1 "$WORK/debugfs.log")"
-    rm -f "$disk"
-    return
-fi
+} > "$WORK/leak.cmds"
+edu_guest_prepare "edu 驱动用例" "$WORK/leak.cmds" "$WORK/cycle.sh" "$WORK/state.sh" || return
 
-BOOT_OUT="$(python3 "$GUEST_SHELL" --timeout 900 --login root \
+BOOT_OUT="$(edu_guest_boot \
     --cmd "cd /root/edu && make 2>&1 | tail -3; echo BUILD-RC-\${PIPESTATUS[0]}" \
     --cmd "echo VERMAGIC-\$([ \"\$(modinfo -F vermagic edu.ko | cut -d' ' -f1)\" = \"\$(uname -r)\" ] && echo match || echo mismatch)" \
     --cmd "insmod edu.ko; echo INSMOD-RC-\$?; dmesg | grep -a 'edu $BDF'" \
@@ -186,14 +153,8 @@ BOOT_OUT="$(python3 "$GUEST_SHELL" --timeout 900 --login root \
     --cmd "bash cycle.sh /root/edu/edu.ko $CYCLES CYC" \
     --cmd "bash state.sh AFTER" \
     --cmd "make -C /root/edu-leak modules > /dev/null 2>&1; echo LEAKBUILD-RC-\$?" \
-    --cmd "bash cycle.sh /root/edu-leak/edu.ko $LEAK_CYCLES LEAK" \
-    --stop "exec systemctl poweroff" \
-    -- "$VMM" --mode linux --smp 2 --mem 1G --device edu \
-          --device ahci,drive=d0 --drive id=d0,file="$disk" \
-          --initrd "$IMG/initramfs-linux.img" \
-          --append "root=UUID=$uuid rw" "$IMG/vmlinuz-linux" 2>&1)"
+    --cmd "bash cycle.sh /root/edu-leak/edu.ko $LEAK_CYCLES LEAK")"
 BOOT_RC=$?
-rm -f "$disk"
 
 check_case "guest 用 linux-headers 编出模块和 eductl，vermagic 与运行中的内核一致"
 expect_rc 0
@@ -210,7 +171,7 @@ expect_re "PCI-MSI-$BDF +0-edge +edu"
 expect_has "LOADED-MOD-1"
 expect_has "LOADED-CDEV-present"
 expect_has "LOADED-IRQ-1"
-expect_has "LOADED-IOMEM-1"
+expect_has "LOADED-IOMEM-2"
 expect_has "LOADED-DRV-edu"
 expect_has "LOADED-ENABLE-1"
 expect_has "LOADED-BUSMASTER-1 LOADED-MSIEN-1"

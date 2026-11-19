@@ -15,8 +15,8 @@ MUTANTS = [
         name="msi-on-every-update",
         breaks="edu_regs.h: one MSI per INT_STATUS bit that goes from 0 to 1, none on ACK",
         file=DEV,
-        old="    if ((e->int_status & ~old) && pci_msi_enabled(&e->pci))\n",
-        new="    if (pci_msi_enabled(&e->pci))\n",
+        old="    } else if (rise && pci_msi_enabled(&e->pci)) {\n",
+        new="    } else if (pci_msi_enabled(&e->pci)) {\n",
         tests=["edu_test"],
     ),
     dict(
@@ -64,9 +64,10 @@ MUTANTS = [
         name="msi-never-sent",
         breaks="with MSI enabled the device must signal completions by message",
         file=DEV,
-        old="    if ((e->int_status & ~old) && pci_msi_enabled(&e->pci))\n"
-            "        pci_msi_notify(&e->pci);\n",
-        new="",
+        old="    } else if (rise && pci_msi_enabled(&e->pci)) {\n"
+            "        pci_msi_notify(&e->pci);\n"
+            "    }\n",
+        new="    }\n",
         suite="edu-dev",
     ),
     dict(

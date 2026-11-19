@@ -6,7 +6,9 @@
  *
  * 判据全部来自 include/devices/edu_regs.h 写下的规范：寄存器的访问语义、
  * DMA 的三种结果和完成时的状态变化、INTx 电平等于 INT_STATUS != 0、MSI 在
- * INT_STATUS 每多出一个原来为 0 的位时发一条、复位丢弃执行中的命令。
+ * INT_STATUS 每多出一个原来为 0 的位时发一条、MSI-X 按字节分项各自发、
+ * 字节清 0 时清对应项的 pending、复位丢弃执行中的命令。屏蔽和补发本身是
+ * PCI 核心的事，由 pci_bus_test 测。
  */
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -120,6 +122,42 @@ void pci_msi_notify(struct pci_device *dev)
     g_msi_sent++;
 }
 
+/* MSI-X 桩：记下每一项发了几条，按次序记成 "n n ..." 的串；pending 位由
+ * 用例直接摆好，看设备在哪些时候让核心清掉它们 */
+static bool     g_msix_on;
+static unsigned g_msix_sent[EDU_MSIX_VECTORS];
+static char     g_msix_log[256];
+static unsigned g_msix_pend;
+
+bool pci_msix_enabled(const struct pci_device *dev)
+{
+    (void)dev;
+    return g_msix_on;
+}
+
+void pci_msix_notify(struct pci_device *dev, unsigned n)
+{
+    size_t l = strlen(g_msix_log);
+
+    (void)dev;
+    if (!g_msix_on || n >= EDU_MSIX_VECTORS) {
+        printf("FAIL: pci_msix_notify(%u) with MSI-X %s\n", n, g_msix_on ? "on" : "off");
+        exit(1);
+    }
+    g_msix_sent[n]++;
+    snprintf(g_msix_log + l, sizeof(g_msix_log) - l, "%s%u", l ? " " : "", n);
+}
+
+void pci_msix_clear_pending(struct pci_device *dev, unsigned n)
+{
+    (void)dev;
+    if (n >= EDU_MSIX_VECTORS) {
+        printf("FAIL: pci_msix_clear_pending(%u)\n", n);
+        exit(1);
+    }
+    g_msix_pend &= ~(1u << n);
+}
+
 static struct pci_device *g_registered;
 
 int pci_register_device(struct pci_bus *bus, struct pci_device *dev)
@@ -164,6 +202,10 @@ static void fresh(void)
     g_irq_edges = 0;
     g_msi_on = false;
     g_msi_sent = 0;
+    g_msix_on = false;
+    memset(g_msix_sent, 0, sizeof(g_msix_sent));
+    g_msix_log[0] = 0;
+    g_msix_pend = 0;
     g_dma_calls = 0;
     g_registered = NULL;
     g_wake_fn = NULL;
@@ -228,6 +270,9 @@ static void test_identity(void)
     CHECK_U64(g_registered->class_code, 0xFF0000, "class");
     CHECK_U64(g_registered->intx_pin, 1, "INTA");
     CHECK(g_registered->msi, "MSI capability");
+    CHECK_U64(g_registered->msix_vectors, EDU_MSIX_VECTORS, "MSI-X entries");
+    CHECK_U64(g_registered->msix_bar, 1, "MSI-X table in BAR1");
+    CHECK_U64(g_registered->bars[1].type, PCI_BAR_UNUSED, "BAR1 left for the PCI core");
     CHECK(g_registered->bus_master, "Bus Master writable");
     CHECK_U64(bar0()->type, PCI_BAR_MEM32, "BAR0 type");
     CHECK_U64(bar0()->size, 0x2000, "BAR0 size");
@@ -326,6 +371,60 @@ static void test_msi(void)
     dma(0, 0, 16, EDU_DMA_CMD_IRQ);
     run_io();
     CHECK_U64(g_msi_sent, 4, "DMA completion with IRQ sends one message");
+}
+
+#define MSIX_LOG(want, msg)  CHECK(!strcmp(g_msix_log, (want)), \
+                                   "%s: MSI-X log \"%s\", want \"%s\"", \
+                                   (msg), g_msix_log, (want))
+
+static void test_msix(void)
+{
+    T_CASE("MSI-X：INT_STATUS 按字节分项，每个字节多出新位时用自己那一项发一条");
+    fresh();
+    g_msi_on = true;
+    g_msix_on = true;
+    wr(EDU_REG_INT_RAISE, 0x100);
+    MSIX_LOG("1", "byte 1 goes to entry 1");
+    CHECK_U64(g_msi_sent, 0, "MSI-X takes precedence: no MSI message");
+    wr(EDU_REG_INT_RAISE, 0x100);
+    MSIX_LOG("1", "same pending cause again: no message");
+    wr(EDU_REG_INT_RAISE, 0x01010000);
+    MSIX_LOG("1 2 3", "new bits in bytes 2 and 3: one message on each entry");
+    wr(EDU_REG_INT_RAISE, 0x200);
+    MSIX_LOG("1 2 3 1", "a new bit in a byte that already has one still sends");
+    dma(0, 0, 16, EDU_DMA_CMD_IRQ);
+    run_io();
+    MSIX_LOG("1 2 3 1 0", "DMA completion goes to entry 0");
+    wr(EDU_REG_INT_ACK, 0xFFFFFFFF);
+    MSIX_LOG("1 2 3 1 0", "ACK sends nothing");
+    CHECK(g_irq == false, "INTx level still follows INT_STATUS");
+
+    g_msix_on = false;
+    wr(EDU_REG_INT_RAISE, 0x100);
+    CHECK_U64(g_msi_sent, 1, "MSI-X off, MSI on: back to MSI");
+    MSIX_LOG("1 2 3 1 0", "and no MSI-X message");
+}
+
+static void test_msix_pending(void)
+{
+    T_CASE("MSI-X：一个字节被 ACK 成 0 时清掉那一项的 pending 位");
+    fresh();
+    g_msix_on = true;
+    wr(EDU_REG_INT_RAISE, 0x01000300);
+    g_msix_pend = 0xF;
+    wr(EDU_REG_INT_ACK, 0x100);
+    CHECK_U64(g_msix_pend & 0xA, 0xA, "bytes 1 and 3 still have causes: pending kept");
+    wr(EDU_REG_INT_ACK, 0x200);
+    CHECK_U64(g_msix_pend, 0x8, "byte 1 now 0: entry 1 cleared; empty bytes 0 and 2 cleared too");
+    wr(EDU_REG_INT_ACK, 0x01000000);
+    CHECK_U64(g_msix_pend, 0, "byte 3 acked: entry 3 cleared");
+
+    /* MSI-X 关着时也清：打开之后不该为一个已经不存在的原因补发 */
+    g_msix_on = false;
+    wr(EDU_REG_INT_RAISE, 0x100);
+    g_msix_pend = 0x2;
+    wr(EDU_REG_INT_ACK, 0x100);
+    CHECK_U64(g_msix_pend, 0, "cleared while MSI-X is off as well");
 }
 
 static void test_dma_async(void)
@@ -469,6 +568,8 @@ int main(int argc, char **argv)
     test_buffer_mmio();
     test_intx();
     test_msi();
+    test_msix();
+    test_msix_pending();
     test_dma_async();
     test_dma_to_ram();
     test_dma_snapshot();
