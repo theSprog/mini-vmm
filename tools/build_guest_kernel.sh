@@ -21,7 +21,9 @@ readonly EXIT_INTERRUPTED=130   # shell 对 SIGINT 的约定 128+2
 # 而不是某个 LTS，是为了让 guest 侧的新行为和上游回归尽早暴露；钉住 commit
 # 是为了让同一份仓库在任何时候构建出同一个内核。升级时改这两行，重新构建，
 # 跑一遍完整的 make test 和 IRQCHIP=split make test，逐条确认变红的期望是
-# 内核措辞变了还是 VMM 出了问题。
+# 内核措辞变了还是 VMM 出了问题。文档和注释里的内核源码引用用
+# tools/kernel_bump.py 迁移和复核：remap（需要旧版本的源码树）、refs、logs、
+# expect-not，用法见它的 --help。
 readonly KERNEL_VERSION="7.4.0-rc2"
 readonly KERNEL_COMMIT="7e1392a42ea288d70a266f6553fe06f57f8647ea"
 readonly BASE_DEFCONFIG="x86_64_defconfig"

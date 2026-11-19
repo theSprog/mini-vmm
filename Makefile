@@ -144,7 +144,7 @@ clean:
 	rm -rf $(BUILD) compile_commands.json
 # ---- 验收测试 ----
 #
-#   make test              默认集合：unit negctl tables gshell milestones 加所有 e2e
+#   make test              默认集合：unit negctl tables gshell milestones kbump 加所有 e2e
 #   make test linux-boot   只跑一个 suite（e2e suite 以里程碑 ID 命名）
 #   make test unit fuzz    跑多个
 #   make test all          默认集合 + fuzz
@@ -154,7 +154,7 @@ clean:
 # tests/ 负责“判断产物对不对”。所以这里只有构建规则和一次转发，
 # 断言逻辑一行都不放在 Makefile 里。
 
-TEST_SUITES := all offline e2e unit negctl tables gshell milestones fuzz \
+TEST_SUITES := all offline e2e unit negctl tables gshell milestones kbump fuzz \
                kvm-basics linux-boot smp legacy-devices guest-memory \
                event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub \
                system-reset arch-distro monitor split-irqchip \

@@ -44,6 +44,7 @@ suite_script() {
     fuzz)   echo "offline/fuzz.sh" ;;
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
+    kbump)  echo "offline/kernel_bump.sh" ;;
     kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events|pvpanic) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
@@ -64,6 +65,7 @@ suite_desc() {
     fuzz)   echo "vmlinux / bzImage 加载器的 libFuzzer 跑批（按时间计费）" ;;
     gshell) echo "e2e 驱动脚本 guest_shell.py 自测（假 guest）" ;;
     milestones) echo "MILESTONES.md 依赖关系与层级表一致" ;;
+    kbump)  echo "换内核时核对文档引用的 tools/kernel_bump.py 自测（假内核树）" ;;
     kvm-basics)     echo "实模式、长模式页表、错误路径诊断" ;;
     linux-boot)     echo "8250 UART、vmlinux/bzImage 直启、initramfs shell" ;;
     smp)            echo "SMP：多 vCPU 启动、CPUID 拓扑、停机" ;;
@@ -87,8 +89,8 @@ suite_desc() {
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
 E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset monitor split-irqchip acpi-events pvpanic arch-distro"
-ALL_SUITES="unit negctl tables gshell milestones fuzz $E2E_SUITES"
-DEFAULT_SUITES="unit negctl tables gshell milestones $E2E_SUITES"
+ALL_SUITES="unit negctl tables gshell milestones kbump fuzz $E2E_SUITES"
+DEFAULT_SUITES="unit negctl tables gshell milestones kbump $E2E_SUITES"
 
 usage() {
     echo "用法: $0 [--list|--manual] [suite...]"
@@ -113,7 +115,7 @@ while [ $# -gt 0 ]; do
     --auto|-a)   MODE="-a" ;;
     -h|--help)   usage; exit 0 ;;
     all)         SELECTED="$SELECTED $ALL_SUITES" ;;
-    offline)     SELECTED="$SELECTED unit negctl tables gshell milestones fuzz" ;;
+    offline)     SELECTED="$SELECTED unit negctl tables gshell milestones kbump fuzz" ;;
     e2e)         SELECTED="$SELECTED $E2E_SUITES" ;;
     -*)          echo "未知选项: $1" >&2; usage >&2; exit 2 ;;
     *)

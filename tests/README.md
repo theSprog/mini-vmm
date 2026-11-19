@@ -3,7 +3,7 @@
 <!-- tests/README.md -->
 
 ```
-make test                 默认集合：unit negctl tables gshell milestones 加所有 e2e
+make test                 默认集合：unit negctl tables gshell milestones kbump 加所有 e2e
 make test linux-boot      只跑一个 suite
 make test unit fuzz       跑多个
 make test all             默认集合 + fuzz
@@ -39,6 +39,7 @@ tests/
 │   ├── guest_shell.sh  guest_shell.py 的自测
 │   ├── fake_guest.py   冒充 VMM+guest：启动期间丢弃输入，给上面那条用
 │   ├── milestones.sh   MILESTONES.md 依赖与层级表检查，外加注入错误的对照
+│   ├── kernel_bump.sh  tools/kernel_bump.py 的自测：现场造两棵小内核树，逐项核对每种输出
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
 │   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh  monitor.sh  split-irqchip.sh  acpi-events.sh  pvpanic.sh  arch-distro.sh
@@ -83,6 +84,7 @@ tests/
 | `tables` | 否 | 否 | iasl（ACPICA）反汇编，外部 oracle |
 | `gshell` | 否 | 否 | 假 guest 复现“启动期间输入丢失”，先证明固定延迟会丢，再要求 `guest_shell.py` 不丢 |
 | `milestones` | 否 | 否 | `tools/check_milestones.py` 按依赖重算的层级表；对照用例注入错误后必须变红 |
+| `kbump` | 否 | 否 | 手工构造的新旧两棵小内核树，行号偏移、原文改动、函数挪文件各有一处，期望输出由构造直接推出 |
 | `fuzz` | 否 | 否（有则用作种子） | ASan/UBSan + “必须有限时间内返回” |
 | `kvm-basics` | 是 | 否 | VMM 日志 + payload 自检码 |
 | `linux-boot` | 是 | 是 | guest Linux 的启动日志 |
