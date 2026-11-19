@@ -5,6 +5,7 @@
 
 #include "vmm.h"
 #include "devices/device.h"
+#include "boot/acpi.h"
 #include "devices/pvpanic.h"
 
 /* 日志里把事件位写成名字，"events 0x03: PANICKED|CRASH_LOADED" */
@@ -67,15 +68,15 @@ static int pvpanic_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int pvpanic_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                          struct pci_bus *bus, struct event_loop *loop)
+static int pvpanic_attach(const struct vmm_device *d,
+                          const struct vmm_attach_ctx *ctx)
 {
-    (void)loop;
+    struct vmm_vm *vm = ctx->vm;
     struct vmm_io_dev dev;
     int r;
 
-    (void)d; (void)bus;
-    if (vm->pvpanic) {
+    (void)d;
+    if (ctx->acpi->pvpanic) {
         vmm_err("--device pvpanic: only one pvpanic device (port 0x%x) is supported",
                 PVPANIC_PORT);
         return VMM_ERR_INVAL;
@@ -89,7 +90,7 @@ static int pvpanic_attach(const struct vmm_device *d, struct vmm_vm *vm,
     dev.write  = pvpanic_write;
     r = vmm_register_pio(vm, &dev);
     if (r == VMM_OK)
-        vm->pvpanic = true;
+        ctx->acpi->pvpanic = true;
     return r;
 }
 

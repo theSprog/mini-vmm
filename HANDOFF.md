@@ -55,23 +55,24 @@ arch-distro 里程碑用 Arch 官方内核作为第二份配置，正是为了�
 
 | 区域 | 代码 | 笔记 |
 |---|---|---|
-| vCPU 运行、世界切换 | `src/vm.c`、`src/arch/amd/` | `learning-note/01`、`03` |
+| vCPU 运行、世界切换 | `src/vcpu.c`、`src/vm.c`、`src/arch/amd/` | `learning-note/01`、`03` |
 | guest 内存、memslot、MMIO hole | `src/mem.c` | `blog/13`、`learning-note/02`、`learning-note/05` 4.4 节 |
 | 中断控制器、中断注入 | `src/devices/irqchip.c`；split 模式另有 `src/devices/split_irqchip.c`（主板接线、KVM 接口、补发）和 `ioapic.c`、`i8259.c` | `learning-note/04`、`blog/34`–`36` |
+| 启动流程：命令行、板级装配、装载器 | `src/config.c`、`src/machine.c`、`src/main.c`、`src/boot/linux_boot.c`、`src/boot/payload.c` | `learning-note/05` |
 | boot_params、E820、MP/ACPI 表 | `src/boot/` | `learning-note/05` |
-| SMP、CPUID 拓扑、停机协调 | `src/smp.c`、`src/vm.c` | `learning-note/06` |
+| SMP、CPUID 拓扑、停机协调 | `src/smp.c`、`src/vcpu.c` | `learning-note/06` |
 | PIT、TSC 校准、kvmclock 的发现（hypervisor CPUID 位） | `src/devices/irqchip.c`、split 模式的 `src/devices/i8254.c`、`src/arch/amd/svm.c` | `blog/05`、`blog/37`、`learning-note/07` |
-| 16550A、RTC、i8042、ACPI PM、未注册端口 | `src/devices/`、`src/boot/acpi.c`、`src/vm.c` | `learning-note/07` |
+| 16550A、RTC、i8042、ACPI PM、未注册端口 | `src/devices/`、`src/boot/acpi.c`、`src/io_bus.c` | `learning-note/07` |
 | I/O 线程、后端 fd、加锁顺序 | `src/io/event_loop.c`、`src/console.c` | `blog/14` |
-| exit 统计、KVM 二进制统计 | `src/exit_stats.c`、`src/kvm_stats.c`、`src/vm.c` 分发路径 | `blog/15` |
+| exit 统计、KVM 二进制统计 | `src/exit_stats.c`、`src/kvm_stats.c`、`src/vcpu.c` 和 `src/io_bus.c` 的分发路径 | `blog/15` |
 | PCI 总线、BAR 路由、PCI0 的 `_CRS`/`_PRT`、AML 编码 | `src/pci/`、`src/boot/aml.c`、`src/boot/acpi.c`、`src/boot/mptable.c` | `blog/16`、`blog/17` |
-| gdb 远程协议、整机暂停、guest debug 与断点 | `src/gdb/`、`src/vm.c` 的 `KVM_EXIT_DEBUG`、`src/smp.c` 的 `vm_request_stop` | `blog/30` |
-| monitor 协议与命令注册、vCPU 工作队列（`vcpu_queue_work`）、运行中读统计 | `src/monitor.c`、`src/monitor_cmds.c`、`src/smp.c`、`src/vm.c` 运行循环的 `EINTR` 分支 | `blog/33` |
+| gdb 远程协议、整机暂停、guest debug 与断点 | `src/gdb/`、`src/vcpu.c` 的 `KVM_EXIT_DEBUG`、`src/smp.c` 的 `vm_request_stop` | `blog/30` |
+| monitor 协议与命令注册、vCPU 工作队列（`vcpu_queue_work`）、运行中读统计 | `src/monitor.c`、`src/monitor_cmds.c`、`src/smp.c`、`src/vcpu.c` 运行循环的 `EINTR` 分支 | `blog/33` |
 
 ## 已知的小缺口
 
 这些不属于任何里程碑，但碰到相关代码时要知道：
 
-- `src/boot/cmdline.c` 是空占位，不在 `SRCS` 里，内核命令行拼接目前在 `src/main.c`。等出现第二个使用者再独立出来。
+- `src/boot/cmdline.c` 是空占位，不在 `SRCS` 里，内核命令行拼接目前在 `src/config.c`。等出现第二个使用者再独立出来。
 - RTC 只读，不产生 IRQ 8（见 cmos-rtc 里程碑）；i8042 的键盘只应答命令，没有 host 按键输入。
 - 没有内核态 irqchip 的裸 payload 模式下，所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时开跑，所以 `--smp` 大于 1 只允许 `--mode linux`。

@@ -333,8 +333,8 @@ static void build_pvpanic(struct aml *a)
  * Linux poweroff 时查 \_S5 拿 SLP_TYP，然后写 PM1a_CNT = SLP_TYP<<10 | SLP_EN。
  * 找到 PNP0A03 后 Linux 的 acpi_pci_root 驱动接管 bus 0 的枚举，资源窗口
  * 取自 _CRS，INTx 路由取自 _PRT。 */
-static int build_dsdt(const struct vmm_vm *vm, uint8_t *out, size_t cap,
-                      size_t *len)
+static int build_dsdt(const struct acpi_devices *devs, uint8_t *out,
+                      size_t cap, size_t *len)
 {
     static uint8_t buf[DSDT_AML_MAX];
     struct aml a;
@@ -359,7 +359,7 @@ static int build_dsdt(const struct vmm_vm *vm, uint8_t *out, size_t cap,
     build_pci0_crs(&a);
     build_pci0_prt(&a);
     aml_close(&a, dev);
-    if (vm->pvpanic)
+    if (devs->pvpanic)
         build_pvpanic(&a);
     aml_close(&a, sb);
 
@@ -430,7 +430,8 @@ static uint32_t tables_signature(const uint8_t *p, size_t len)
     return h;
 }
 
-int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
+int acpi_setup(struct vmm_vm *vm, int nr_cpus,
+               const struct acpi_devices *devs, uint64_t *rsdp_gpa)
 {
     enum gpa_status gs;
     uint8_t *base;
@@ -461,7 +462,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
 
     /* DSDT */
     h = (struct acpi_header *)(base + dsdt_off);
-    r = build_dsdt(vm, (uint8_t *)(h + 1),
+    r = build_dsdt(devs, (uint8_t *)(h + 1),
                    ACPI_TABLES_MAX - dsdt_off - sizeof(*h), &aml_len);
     if (r != VMM_OK)
         return r;
@@ -524,7 +525,7 @@ int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa)
     }
     /* ISA IRQ 0-15 与 GSI 恒等映射，不需要 Interrupt Source Override：
      * Linux 在没有 override 时默认就是恒等；kernel irqchip 时 KVM 的默认路由
-     * 也是恒等，split irqchip 时 split_irqchip_set_irq 按同样的恒等关系接线。
+     * 也是恒等，split irqchip 时 split_set_irq（split_irqchip.c）按同样的恒等关系接线。
      * SCI（IRQ 9）同样不需要：ISO 只用于非恒等映射或极性不合标准的输入
      * （ACPI 6.5 5.2.12.5），SCI 的标准属性是 level、active low（FADT
      * SCI_INT），Linux 没看到 ISO 时就按这个配置引脚

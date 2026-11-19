@@ -217,7 +217,7 @@ static void fresh(void)
     opts_free(&o);
     d.type = &edu_device_type;
     d.dev = dev;
-    if (edu_device_type.attach(&d, &g_vm, NULL, NULL) != VMM_OK || !g_wake_fn) {
+    if (edu_device_type.attach(&d, &(struct vmm_attach_ctx){ .vm = &g_vm }) != VMM_OK || !g_wake_fn) {
         printf("fixture: attach failed: %s\n", g_last_log);
         exit(1);
     }

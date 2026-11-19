@@ -87,12 +87,12 @@ out:
     return r;
 }
 
-int vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                      struct pci_bus *bus, struct event_loop *loop)
+int vmm_device_attach(const struct vmm_device *d,
+                      const struct vmm_attach_ctx *ctx)
 {
-    int r = d->type->attach(d, vm, bus, loop);
+    int r = d->type->attach(d, ctx);
 
     if (r == VMM_OK && d->type->reset)
-        r = vmm_register_reset(vm, d->type->name, d->type->reset, d->dev);
+        r = vmm_register_reset(ctx->vm, d->type->name, d->type->reset, d->dev);
     return r;
 }

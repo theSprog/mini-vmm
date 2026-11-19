@@ -1,7 +1,7 @@
 /* tests/unit/pci_bus_test.c — PCI 总线：conf1 端口、配置空间语义、BAR decode
  *
  * 所有访问都从 io_bus_dispatch_pio/mmio 进去，也就是 vCPU 陷出后走的同一条
- * 路径：conf1 端口、BAR 表项都是真实注册在 src/vm.c 的设备表里的，BAR 搬家
+ * 路径：conf1 端口、BAR 表项都是真实注册在 src/io_bus.c 的地址表里的，BAR 搬家
  * 之后查找结果是否跟着变，测的是 vmm_io_move 和查找的真实组合。
  *
  * 判据来源：
@@ -25,7 +25,7 @@
  *     第 6.8.3.3 节，屏蔽、pending 置位、解除屏蔽补发、原因消失时清
  *     pending 是第 6.8.3.5 节；表项的复位值是第 6.8.2.6 至 6.8.2.10 节
  *
- * 不碰 /dev/kvm：src/vm.c 里用到的 kvm_* 全部是桩。
+ * 不碰 /dev/kvm：pci.c 用到的中断注入接口全部是桩。
  */
 #define _GNU_SOURCE
 #include <stdarg.h>
@@ -44,7 +44,7 @@
 #include "harness.h"
 
 /* ------------------------------------------------------------------ */
-/* 桩：vm.c 引用到的外部符号                                            */
+/* 桩：pci.c、pci_test.c 和 io_bus.c 引用到的外部符号                   */
 /* ------------------------------------------------------------------ */
 
 int vmm_log_level = -1;
@@ -66,39 +66,6 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
     if (level <= vmm_log_level)
         fprintf(stderr, "       [vmm] %s\n", g_last_log);
 }
-
-int  mem_init(struct vmm_vm *vm, uint64_t sz)   { (void)vm; (void)sz; return VMM_OK; }
-void mem_destroy(struct vmm_vm *vm)             { (void)vm; }
-void vm_power_on_free(struct vmm_vm *vm)        { (void)vm; }
-
-int  kvm_open(void)                             { return -1; }
-int  kvm_get_api_version(int f)                 { (void)f; return 12; }
-int  kvm_check_extension(int f, int c)          { (void)f; (void)c; return 1; }
-int  kvm_get_vcpu_mmap_size(int f)              { (void)f; return 4096; }
-int  kvm_create_vm(int f)                       { (void)f; return -1; }
-int  kvm_create_vcpu(int f, int id)             { (void)f; (void)id; return -1; }
-int  kvm_get_stats_fd(int f)                   { (void)f; return -1; }
-struct kvm_run *kvm_mmap_run(int f, size_t s)   { (void)f; (void)s; return NULL; }
-int  kvm_get_regs(int f, struct kvm_regs *r)    { (void)f; (void)r; return VMM_ERR_SYS; }
-int  kvm_set_regs(int f, const struct kvm_regs *r)   { (void)f; (void)r; return VMM_OK; }
-int  kvm_get_sregs(int f, struct kvm_sregs *s)  { (void)f; (void)s; return VMM_ERR_SYS; }
-int  kvm_set_sregs(int f, const struct kvm_sregs *s) { (void)f; (void)s; return VMM_OK; }
-int  kvm_run(int f)                             { (void)f; return VMM_ERR_SYS; }
-int  kvm_get_mp_state(int f, uint32_t *st)      { (void)f; (void)st; return VMM_ERR_SYS; }
-const char *kvm_mp_state_str(uint32_t st)       { (void)st; return "?"; }
-const struct arch_cpu_ops *arch_probe(void)     { return NULL; }
-int  irqchip_create(struct vmm_vm *vm)          { (void)vm; return VMM_OK; }
-/* vm.c 的运行循环引用 gdbstub；这里不跑 vCPU，桩函数不会被调用 */
-void gdbstub_vcpu_interrupted(struct vmm_vcpu *v) { (void)v; }
-int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v)  { (void)v; return VMM_ERR_GUEST; }
-/* vm.c 的运行循环在 KVM_RUN 被打断后执行 vCPU 工作队列（smp.c），同样不会被调用 */
-void vcpu_run_work(struct vmm_vcpu *v) { (void)v; }
-/* vm.c 在 cfg->irqchip 为 split 时改走 split_irqchip.c；这里的 VM 用默认的内核模式，
- * 运行循环也不跑，这些桩不会被调用 */
-int  split_irqchip_create(struct vmm_vm *vm)    { (void)vm; return VMM_ERR_SYS; }
-int  split_irqchip_pre_run(struct vmm_vcpu *v)  { (void)v; return VMM_OK; }
-int  split_irqchip_eoi(struct vmm_vcpu *v, uint8_t vector) { (void)v; (void)vector; return VMM_OK; }
-void split_irqchip_destroy(struct vmm_vm *vm)   { (void)vm; }
 
 /* KVM_IRQ_LINE 的记录：每次调用追加一条 "gsi=level"，用例比对整串序列，
  * 多发、漏发、发错线都会体现在字符串里 */

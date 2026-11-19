@@ -17,6 +17,8 @@
 #include <linux/kvm.h>
 
 #include "memory.h"
+#include "config.h"
+#include "io_bus.h"
 #include "devices/device.h"
 #include "reset.h"
 
@@ -24,20 +26,12 @@
 /* 常量与错误码                                                        */
 /* ------------------------------------------------------------------ */
 
-#define VMM_MAX_VCPUS        32
 #define VMM_MAX_PIO_DEVS     16
 #define VMM_MAX_MMIO_DEVS    32
-/* --device 的上限：PCI 总线 32 个 slot 去掉 host bridge（pci/pci.h） */
-#define VMM_MAX_DEVICES      31
 
 /* 按 exit_reason 计数的格数。<linux/kvm.h> 里 KVM_EXIT_* 目前不到 50 个，
  * 留出余量；超出的值都记进最后一格，不会越界。 */
 #define VMM_EXIT_REASON_SLOTS 64
-
-/* 默认 guest RAM：128 MiB。
- * 注意：长模式 payload 要往 GPA 0x500000 (5 MiB) 写数据，2 MiB 内存是不够的，
- * 所以 --mem 是命令行可调的，只有实模式 payload 才用 2M。 */
-#define VMM_DEFAULT_RAM_SIZE (128ULL << 20)
 
 enum vmm_errno {
     VMM_OK              =  0,
@@ -78,164 +72,7 @@ struct vmm_vcpu;
 struct arch_cpu_ops;
 struct gdbstub;
 struct split_irqchip;
-
-/* ------------------------------------------------------------------ */
-/* IO 总线（PIO / MMIO 统一抽象）                                       */
-/* ------------------------------------------------------------------ */
-/*
- * 设计意图：KVM_EXIT_IO 和 KVM_EXIT_MMIO 的语义高度同构——
- * “某个地址区间上发生了一次 size 字节的读或写”。用同一个 vmm_io_dev
- * 描述二者，可以让 8250 串口（PIO 0x3f8）和后面的 PCI BAR、
- * virtio-mmio 等 MMIO 设备复用同一套注册/查找/分发路径。
- *
- * 回调里传的是 offset（相对 base 的偏移）而不是绝对地址，
- * 这样设备实现不需要知道自己被挂在哪里 —— virtio-mmio 有多个实例时
- * 这一点是必需的。
- */
-struct vmm_io_dev {
-    const char *name;
-    uint64_t    base;
-    uint64_t    len;
-    void       *opaque;            /* 指向具体设备实例 */
-
-    /* 返回 VMM_OK 表示已处理；返回负值表示错误。
-     * data 由调用方提供，长度为 size（1/2/4/8）。 */
-    int (*read)(void *opaque, uint64_t offset, uint32_t size, void *data);
-    int (*write)(void *opaque, uint64_t offset, uint32_t size,
-                 const void *data);
-};
-
-/* 一个设备（或一类未注册地址）引起的用户态 exit 次数，按方向分开。
- * 一次 KVM_EXIT_IO / KVM_EXIT_MMIO 记一次：ins/outs 一次 exit 里带的
- * 多次访问只算一次，因为这里要回答的是“exit 的开销花在了哪个设备上”，
- * 而开销按 exit 计，不按访问计。由 vm->io_lock 保护。 */
-struct vmm_io_stats {
-    uint64_t reads;
-    uint64_t writes;
-};
-
-/* IO 总线分发。handle_io()/handle_mmio() 只是它们在 KVM_EXIT 路径上的
- * 薄封装——从 kvm_run 里取出字段，然后调这里。
- *
- * 单独暴露出来有两个理由：一是这条路径是所有设备（含后续每一个 VirtIO
- * transport）唯一的入口，值得能在不启动 VM 的情况下直接驱动它做单元测试
- * （见 tests/unit/io_bus_test.c）；二是 event-loop 里程碑的事件循环也要复用它。
- *
- * data 的长度：PIO 是 size * count（串操作逐次前进 size 字节），
- * MMIO 是 len。返回值语义同设备回调：VMM_OK 表示已处理，
- * VMM_ERR_EXIT 是 guest 请求停机的约定信号，其余负值是错误。 */
-int  io_bus_dispatch_pio(struct vmm_vcpu *vcpu, uint16_t port, bool is_write,
-                         uint32_t size, uint32_t count, uint8_t *data);
-int  io_bus_dispatch_mmio(struct vmm_vcpu *vcpu, uint64_t addr, bool is_write,
-                          uint32_t len, uint8_t *data);
-
-int  vmm_register_pio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
-int  vmm_register_mmio(struct vmm_vm *vm, const struct vmm_io_dev *dev);
-
-/* 地址由 guest 编程的区域（PCI BAR）。
- *
- * 和上面的静态注册不同，这类区域的位置在 guest 运行中会变：guest 写 BAR
- * 或开关 command 寄存器的 decode 位，区域就搬家或消失。所以分两步：
- * vmm_io_reserve 先占一个表项，dev->base/len 被忽略，表项以 len = 0 登记
- * （查不到、也不参与冲突检查），*slot 返回表项下标；之后 vmm_io_move
- * 改它的基址和长度，len = 0 表示停止响应。
- *
- * 表项占位而不是增删，是因为 exit 统计按表项下标记账（pio_stats 与
- * pio_devs 同下标），删掉再插入会让计数挪到别的设备名下。
- *
- * vmm_io_move 不做冲突检查：guest 可以把 BAR 编到任何位置，真实硬件上
- * 地址重叠的结果是未定义的，VMM 能做的只是给出确定的行为——查找按注册
- * 顺序取第一个命中的表项，先注册的静态设备优先。重叠时打一条 warn。
- *
- * 调用时机：guest 启动前（单线程），或者在持有 vm->io_lock 的分发路径里
- * （配置空间写由 exit 分发进来，本来就持锁）。查找也只在持锁时发生，
- * 所以表项改动对 vCPU 线程是原子可见的。 */
-enum vmm_io_space { VMM_IO_PIO, VMM_IO_MMIO };
-
-int  vmm_io_reserve(struct vmm_vm *vm, enum vmm_io_space space,
-                    const struct vmm_io_dev *dev, int *slot);
-void vmm_io_move(struct vmm_vm *vm, enum vmm_io_space space, int slot,
-                 uint64_t base, uint64_t len);
-const struct vmm_io_dev *vmm_lookup_pio(struct vmm_vm *vm, uint64_t port);
-const struct vmm_io_dev *vmm_lookup_mmio(struct vmm_vm *vm, uint64_t addr);
-
-/* ------------------------------------------------------------------ */
-/* 运行模式与配置                                                      */
-/* ------------------------------------------------------------------ */
-
-enum vmm_boot_mode {
-    VMM_BOOT_REAL16 = 0,  /* 16 位实模式 payload，CS:IP = 0000:entry */
-    VMM_BOOT_LONG64,      /* 直接进 64 位长模式的 payload */
-    VMM_BOOT_LINUX,       /* Linux 直启：vmlinux/bzImage + zeropage */
-};
-
-/* 取值沿用 QEMU 的 kernel-irqchip=on|split|off。off（LAPIC 也在用户态）
- * 属于 user-lapic 里程碑，命令行解析时拒绝 */
-enum vmm_irqchip_mode {
-    VMM_IRQCHIP_ON = 0,     /* PIC、IOAPIC、PIT、LAPIC 全在 KVM */
-    VMM_IRQCHIP_SPLIT,      /* 只有 LAPIC 在 KVM */
-};
-
-struct vmm_config {
-    enum vmm_boot_mode mode;
-    uint64_t    ram_size;      /* 字节 */
-    int         nr_vcpus;
-    const char *payload_path;  /* 裸机器码 .bin，或 vmlinux/bzImage */
-    uint64_t    payload_gpa;   /* 载入地址；实模式 payload 为 0x0 */
-    uint64_t    entry_gpa;     /* 首条指令的 GPA，默认 = payload_gpa */
-    int         log_level;
-    bool        dump_on_exit;  /* 退出时 dump 一段 guest 内存（验证长模式 payload 用） */
-    uint64_t    dump_gpa;
-    size_t      dump_len;
-
-    /* Linux 直启 */
-    const char *initrd_path;
-    const char *cmdline;
-
-    /* 把每一次陷出到用户态的 PIO 访问写进这个文件（--trace-pio）。
-     * 用来回答“驱动到底按什么顺序读写了哪些寄存器”，见 learning-note 卷七。 */
-    const char *trace_pio_path;
-    /* 同上，记录陷出到用户态的 MMIO 访问（--trace-mmio） */
-    const char *trace_mmio_path;
-
-    /* VM 停下后把 exit 统计写到这里（--exit-stats），"-" 表示 stderr */
-    const char *exit_stats_path;
-
-    /* --device 给出的 PCI 设备，按命令行顺序占 slot 1 起的位置。
-     * 上限是总线上除 host bridge 之外的 slot 数。 */
-    struct vmm_device devices[VMM_MAX_DEVICES];
-    int         nr_devices;
-
-    /* --netdev 给出的网络后端。每个后端恰好接一个网卡，所以上限和设备数
-     * 相同；对象在解析阶段分配，见 net/netdev.h */
-    struct netdev *netdevs[VMM_MAX_DEVICES];
-    int         nr_netdevs;
-
-    /* --drive 给出的磁盘后端，道理同 netdevs，见 block/blockdev.h */
-    struct blockdev *drives[VMM_MAX_DEVICES];
-    int         nr_drives;
-
-    /* --gdb 的 TCP 端口，0 表示由内核分配，-1 表示不启用 gdbstub */
-    int         gdb_port;
-
-    /* --no-reboot：guest 请求复位时 VMM 退出，而不是复位后再启动 */
-    bool        no_reboot;
-
-    /* --monitor 的 unix socket 路径，NULL 表示不启用，见 monitor.h */
-    const char *monitor_path;
-
-    /* --kernel-irqchip：PIC/IOAPIC/PIT 在 KVM 里还是在用户态 */
-    enum vmm_irqchip_mode irqchip;
-
-    /* --pit-reinject：PIT 通道 0 的 tick 因为 guest 没及时确认而积压时，
-     * true 逐个补发（KVM 内核 PIT 的默认），false 合并成一次。两种 irqchip
-     * 模式语义相同，见 devices/split_irqchip.h */
-    bool pit_reinject;
-};
-
-void vmm_config_default(struct vmm_config *cfg);
-int  vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv);
-void vmm_usage(const char *prog);
+struct irqchip_ops;
 
 /* ------------------------------------------------------------------ */
 /* vCPU                                                                */
@@ -314,14 +151,11 @@ struct vmm_vm {
 
     const struct arch_cpu_ops *arch;   /* 运行时探测出的 CPU 厂商后端 */
 
-    /* KVM 里有 LAPIC、能投递 MSI：KVM_CREATE_IRQCHIP 或 KVM_CAP_SPLIT_IRQCHIP
-     * 已完成。split 时 split 非 NULL，PIC/IOAPIC/PIT 在用户态，
-     * 见 devices/split_irqchip.h */
-    bool            has_irqchip;
+    /* 中断控制器的放置方式，创建成功后才非 NULL；裸 payload 模式为 NULL。
+     * 非 NULL 就说明 KVM 里有 LAPIC、能投递 MSI，见 devices/irqchip.h */
+    const struct irqchip_ops *irqchip;
+    /* irqchip_split_ops 的私有状态，只有 split_irqchip.c 使用 */
     struct split_irqchip *split;
-    /* 挂了 --device pvpanic，boot/acpi.c 据此在 DSDT 里描述它，
-     * 见 devices/pvpanic.h */
-    bool            pvpanic;
 
     struct vmm_io_dev pio_devs[VMM_MAX_PIO_DEVS];
     int               nr_pio_devs;
@@ -353,7 +187,7 @@ struct vmm_vm {
     volatile bool   user_stop;         /* Ctrl-A x 触发的停机 */
     /* monitor quit 置位，之后不再清零。vm_reset 会清掉每个 vCPU 的
      * should_stop，quit 恰好落在复位过程中时，停机请求会被这次清零抹掉，
-     * main 的复位循环在复位前后都检查这个标志，见 main.c */
+     * main.c 的 run_guest 在复位前后都检查这个标志 */
     bool            quit_requested;
     int             exit_code;         /* 取值约定见 VMM_EXIT_* */
     struct timespec started;           /* 第一次进入 guest 的时刻（CLOCK_MONOTONIC） */

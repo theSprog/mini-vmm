@@ -20,10 +20,17 @@ SRCS := \
 	src/kvm_wrappers.c \
 	src/mem.c \
 	src/vm.c \
+	src/vcpu.c \
+	src/io_bus.c \
 	src/main.c \
+	src/machine.c \
+	src/config.c \
 	src/arch/arch_detect.c \
 	src/arch/amd/svm.c \
 	src/boot/gdt_pgtable.c \
+	src/boot/payload.c \
+	src/boot/linux_boot.c \
+	src/devices/debug_port.c \
 	src/devices/serial8250.c \
 	src/devices/irqchip.c \
 	src/devices/split_irqchip.c \
@@ -242,7 +249,8 @@ $(BUILD)/tests/mem_test: tests/unit/mem_test.c tests/unit/mem_mutants.c \
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/io_bus_test: tests/unit/io_bus_test.c \
-                            tests/unit/io_bus_mutants.c src/vm.c
+                            tests/unit/io_bus_mutants.c src/io_bus.c \
+                            src/vcpu.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
@@ -257,7 +265,7 @@ $(BUILD)/tests/event_loop_test: tests/unit/event_loop_test.c \
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 
 $(BUILD)/tests/pci_bus_test: tests/unit/pci_bus_test.c src/pci/pci.c \
-                             src/devices/pci_test.c src/vm.c
+                             src/devices/pci_test.c src/io_bus.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^) -lpthread
 

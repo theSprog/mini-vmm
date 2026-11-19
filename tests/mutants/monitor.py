@@ -76,7 +76,7 @@ MUTANTS = [
         name="work-not-run-on-kick",
         breaks="smp.h: a kicked vCPU runs its queued work before going back "
                "into the guest; an idle vCPU sits in HLT and never would",
-        file="src/vm.c",
+        file="src/vcpu.c",
         old="            vcpu_run_work(vcpu);\n",
         new="",
         suite="monitor",
@@ -85,7 +85,7 @@ MUTANTS = [
         name="immediate-exit-not-cleared",
         breaks="smp.h: after a work kick the vCPU returns to the guest; left "
                "set, immediate_exit keeps it out of KVM_RUN for good",
-        file="src/vm.c",
+        file="src/vcpu.c",
         old="                __atomic_store_n(&vcpu->run->immediate_exit, 0,\n"
             "                                 __ATOMIC_SEQ_CST);\n",
         new="                ;\n",

@@ -6,7 +6,7 @@
  *     且 KVM 要求先用 KVM_SET_TSS_ADDR 划一块 3 页的 TSS 区域，
  *     用 EPT 时还要 KVM_SET_IDENTITY_MAP_ADDR。
  *   - AMD (SVM)：SVM 天生能直接跑实模式，上面两个 ioctl 都不需要。
- * 如果不抽象，这些差异会以 #ifdef 的形式散落在 vm.c 里。
+ * 如果不抽象，这些差异会以 #ifdef 的形式散落在 vm.c 和 vcpu.c 里。
  *
  * 关键决策：运行时 CPUID 探测，不用编译期 #ifdef。
  * 原因是同一份二进制要能在不同机器上跑，而且海光 CPU 的 vendor string

@@ -14,6 +14,7 @@
 #include "kvm_wrappers.h"
 #include "reset.h"
 #include "io/event_loop.h"
+#include "devices/irqchip.h"
 #include "devices/split_irqchip.h"
 
 #define ISA_IRQS 16
@@ -156,16 +157,20 @@ static void set_line_locked(struct split_irqchip *s, int gsi, int level)
     ioapic_set_irq(&s->ioapic, gsi, level);
 }
 
-void split_irqchip_set_irq(struct split_irqchip *s, int gsi, int level)
+/* irqchip_set_irq 在 split 模式下的实现，调用方不能持有 lock */
+static int split_set_irq(struct vmm_vm *vm, int gsi, int level)
 {
+    struct split_irqchip *s = vm->split;
+
     if (gsi < 0 || gsi >= IOAPIC_NUM_PINS) {
         vmm_err("split-irqchip: GSI %d is outside the IOAPIC's %d pins",
                 gsi, IOAPIC_NUM_PINS);
-        return;
+        return VMM_OK;
     }
     pthread_mutex_lock(&s->lock);
     set_line_locked(s, gsi, level);
     pthread_mutex_unlock(&s->lock);
+    return VMM_OK;
 }
 
 static void timer_arm(struct split_irqchip *s, uint64_t when)
@@ -378,7 +383,8 @@ static void split_irqchip_reset(void *opaque)
     pthread_mutex_unlock(&s->lock);
 }
 
-int split_irqchip_create(struct vmm_vm *vm)
+/* 开 KVM_CAP_SPLIT_IRQCHIP，初始化三颗芯片并提交初始路由，置 vm->split */
+static int split_create(struct vmm_vm *vm)
 {
     struct split_irqchip *s;
     struct kvm_enable_cap cap;
@@ -428,13 +434,13 @@ int split_irqchip_create(struct vmm_vm *vm)
     }
 
     vm->split = s;
-    vm->has_irqchip = true;
     vmm_info("split irqchip: LAPIC in KVM, PIC + IOAPIC + PIT in user space "
              "(reinject %s)", s->pit_reinject ? "on" : "off");
     return VMM_OK;
 }
 
-int split_irqchip_attach(struct vmm_vm *vm, struct event_loop *loop)
+/* 注册 PIO/MMIO、PIT 定时器（I/O 线程）和复位回调 */
+static int split_attach(struct vmm_vm *vm, struct event_loop *loop)
 {
     struct split_irqchip *s = vm->split;
     int r;
@@ -472,7 +478,9 @@ int split_irqchip_attach(struct vmm_vm *vm, struct event_loop *loop)
     return evl_add(loop, s->timer_fd, EPOLLIN, pit_timer_cb, s);
 }
 
-int split_irqchip_pre_run(struct vmm_vcpu *vcpu)
+/* PIC 有中断时按就绪状态注入，或者请求中断窗口。PIC 的输出只接 vCPU 0
+ * 的 LINT0，其他 vCPU 直接返回 */
+static int split_pre_run(struct vmm_vcpu *vcpu)
 {
     struct split_irqchip *s = vcpu->vm->split;
     struct kvm_run *run = vcpu->run;
@@ -480,6 +488,8 @@ int split_irqchip_pre_run(struct vmm_vcpu *vcpu)
     uint64_t acked0;
     int pending;
 
+    if (vcpu->id != 0)
+        return VMM_OK;
     if (!__atomic_load_n(&s->pic_int, __ATOMIC_SEQ_CST)) {
         run->request_interrupt_window = 0;
         return VMM_OK;
@@ -519,7 +529,7 @@ int split_irqchip_pre_run(struct vmm_vcpu *vcpu)
     return VMM_OK;
 }
 
-int split_irqchip_eoi(struct vmm_vcpu *vcpu, uint8_t vector)
+static int split_eoi(struct vmm_vcpu *vcpu, uint8_t vector)
 {
     struct split_irqchip *s = vcpu->vm->split;
 
@@ -534,8 +544,10 @@ int split_irqchip_eoi(struct vmm_vcpu *vcpu, uint8_t vector)
     return VMM_OK;
 }
 
-void split_irqchip_report(struct split_irqchip *s, FILE *f)
+/* 补发策略、PIT/PIC/IOAPIC 计数 */
+static void split_report(struct vmm_vm *vm, FILE *f)
 {
+    struct split_irqchip *s = vm->split;
     int irq;
 
     pthread_mutex_lock(&s->lock);
@@ -564,7 +576,7 @@ void split_irqchip_report(struct split_irqchip *s, FILE *f)
     pthread_mutex_unlock(&s->lock);
 }
 
-void split_irqchip_destroy(struct vmm_vm *vm)
+static void split_destroy(struct vmm_vm *vm)
 {
     struct split_irqchip *s = vm->split;
 
@@ -576,3 +588,14 @@ void split_irqchip_destroy(struct vmm_vm *vm)
     free(s);
     vm->split = NULL;
 }
+
+const struct irqchip_ops irqchip_split_ops = {
+    .kvm_owns_chips = false,
+    .create         = split_create,
+    .attach         = split_attach,
+    .set_irq        = split_set_irq,
+    .pre_run        = split_pre_run,
+    .eoi            = split_eoi,
+    .report         = split_report,
+    .destroy        = split_destroy,
+};

@@ -5,8 +5,8 @@
  *   解析阶段（vmm_config_parse_args 里）：解析参数值、按 driver 找到类型、
  *     检查属性名、调 create 读属性并分配设备对象。拼错的属性、非法的值
  *     都在这一步报出来，VM 还没创建。
- *   挂载阶段（boot_linux 里，PCI 总线建好之后）：调 attach 把设备注册到
- *     总线上。
+ *   挂载阶段（machine.c 装配 PC 平台时，PCI 总线建好之后）：调 attach
+ *     把设备注册到总线上。
  *
  * 分两阶段是因为属性错误应当在启动前发现，而挂载要等总线存在。设备对象
  * 由 create 分配，生命周期覆盖整个进程，不释放：它注册进总线后，vCPU
@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 
+struct acpi_devices;
 struct blockdev;
 struct event_loop;
 struct netdev;
@@ -25,6 +26,18 @@ struct pci_bus;
 struct vmm_device;
 struct vmm_vm;
 
+/* attach 能用到的板级资源，由 machine.c 填好。设备需要新的共享服务时加
+ * 在这里，不必改每个设备的 attach 签名 */
+struct vmm_attach_ctx {
+    struct vmm_vm     *vm;
+    struct pci_bus    *pci;     /* 已初始化的 PCI 总线 */
+    /* 还没启动的事件循环，设备要在 I/O 线程上做事（例如异步完成命令）时
+     * 在这里登记自己的 fd */
+    struct event_loop *loop;
+    /* 要在 ACPI DSDT 里描述自己的设备在这里登记，装载 Linux 时生成 DSDT */
+    struct acpi_devices *acpi;
+};
+
 struct vmm_device_type {
     const char *name;              /* driver= 的值 */
     const char *desc;              /* --device help 里的一行说明 */
@@ -32,10 +45,9 @@ struct vmm_device_type {
     /* o 在 create 返回后释放，要保留的字符串自己拷贝 */
     int  (*create)(const struct opts *o, void **dev);
     /* d->dev 是 create 分配的对象；有 netdev= / drive= 属性的设备从
-     * d->net / d->blk 拿后端。loop 是还没启动的事件循环，设备要在 I/O 线程
-     * 上做事（例如异步完成命令）时在这里登记自己的 fd */
-    int  (*attach)(const struct vmm_device *d, struct vmm_vm *vm,
-                   struct pci_bus *bus, struct event_loop *loop);
+     * d->net / d->blk 拿后端 */
+    int  (*attach)(const struct vmm_device *d,
+                   const struct vmm_attach_ctx *ctx);
     /* 整机复位（reset.h）时调用，参数是 d->dev。attach 成功后由
      * vmm_device_attach 登记；NULL 表示设备没有需要复位的状态 */
     void (*reset)(void *dev);
@@ -60,8 +72,8 @@ struct vmm_device {
 int  vmm_device_parse(const char *arg, struct vmm_device *out);
 
 /* 挂载阶段 */
-int  vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                       struct pci_bus *bus, struct event_loop *loop);
+int  vmm_device_attach(const struct vmm_device *d,
+                       const struct vmm_attach_ctx *ctx);
 
 /* --device help 的输出 */
 void vmm_device_list_types(FILE *f);

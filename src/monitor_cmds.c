@@ -17,7 +17,7 @@
 #include "monitor.h"
 #include "monitor_cmds.h"
 #include "exit_stats.h"
-#include "devices/split_irqchip.h"
+#include "devices/irqchip.h"
 
 static double uptime(struct vmm_vm *vm)
 {
@@ -258,16 +258,9 @@ static int info_irqchip(struct mon_req *req, int argc, char **argv)
     struct vmm_vm *vm = mon_req_opaque(req);
 
     (void)argc; (void)argv;
-    if (vm->split) {
-        split_irqchip_report(vm->split, mon_out(req));
-        return MON_OK;
-    }
-    if (!vm->has_irqchip)
+    if (!vm->irqchip)
         return mon_err(req, "no interrupt controller (bare payload mode)");
-    /* KVM 不导出内核 PIT/PIC/IOAPIC 的中断计数，guest 的 /proc/interrupts
-     * 是唯一的来源 */
-    fprintf(mon_out(req), "kernel irqchip: PIC + IOAPIC + PIT + LAPIC in KVM\n");
-    fprintf(mon_out(req), "pit: reinject %s\n", vm->cfg.pit_reinject ? "on" : "off");
+    vm->irqchip->report(vm, mon_out(req));
     return MON_OK;
 }
 

@@ -102,13 +102,19 @@ guest 完全控制这些地址和长度，漏检一处就是 host 进程的任�
 
 ```text
 src/
-  main.c, vm.c, smp.c   命令行、VM/vCPU 生命周期、PIO/MMIO 分发、run loop、停机协调
+  main.c                进程入口：按阶段装配、运行、报告、释放
+  config.c              命令行解析成 struct vmm_config
+  machine.c             板级装配：裸机或 PC 平台挂哪些设备、用哪个装载器
+  vm.c                  VM 创建与销毁：KVM 能力、guest 内存、中断控制器、vCPU
+  vcpu.c                vCPU 运行循环与 exit 分发
+  io_bus.c              PIO/MMIO 地址表与分发
+  smp.c                 多 vCPU 线程、停机协调、vCPU 工作队列
   mem.c                 guest 内存区域与 GPA → HVA
   kvm_wrappers.c        KVM ioctl 封装
   console.c             host stdin → 串口
   arch/                 vendor 相关（amd/ 同时服务 AMD 和海光）
-  boot/                 内核装载、boot_params/E820、MP table、ACPI 表、页表
-  devices/              传统设备与 irqchip
+  boot/                 payload 与 Linux 装载器、boot_params/E820、MP table、ACPI 表、页表
+  devices/              传统设备、irqchip、--device 设备类型表
   virtio/               virtqueue、transport、设备语义
   io/                   事件循环、异步 I/O 后端
   vhost/  vfio/  snapshot/

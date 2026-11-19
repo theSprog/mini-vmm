@@ -1338,13 +1338,11 @@ static int ahci_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int ahci_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus,
-                       struct event_loop *loop)
+static int ahci_attach(const struct vmm_device *d, const struct vmm_attach_ctx *ctx)
 {
-    (void)loop;
     struct ahci *s = d->dev;
 
-    s->vm = vm;
+    s->vm = ctx->vm;
     ahci_init(s, d->blk);
     if (d->blk) {
         vmm_info("ahci: port 0 drive %s (%llu sectors%s)", d->blk->id,
@@ -1356,7 +1354,7 @@ static int ahci_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci
     }
     else
         vmm_info("ahci: no drive, all %d ports empty", AHCI_NR_PORTS);
-    return pci_register_device(bus, &s->pci);
+    return pci_register_device(ctx->pci, &s->pci);
 }
 
 const struct vmm_device_type ahci_device_type = {

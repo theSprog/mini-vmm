@@ -1168,14 +1168,12 @@ static int e1000_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int e1000_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus,
-                        struct event_loop *loop)
+static int e1000_attach(const struct vmm_device *d, const struct vmm_attach_ctx *ctx)
 {
-    (void)loop;
     struct e1000 *s = d->dev;
     struct pci_device *p = &s->pci;
 
-    s->vm  = vm;
+    s->vm  = ctx->vm;
     s->net = d->net;
     p->name             = "e1000";
     p->vendor_id        = E1000_VENDOR_ID;
@@ -1192,7 +1190,7 @@ static int e1000_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pc
     netdev_set_frontend(s->net, e1000_receive, s);
     vmm_info("e1000: mac %02x:%02x:%02x:%02x:%02x:%02x, netdev %s", s->mac[0], s->mac[1],
              s->mac[2], s->mac[3], s->mac[4], s->mac[5], s->net->id);
-    return pci_register_device(bus, p);
+    return pci_register_device(ctx->pci, p);
 }
 
 /* 整机复位等同于上电：CTRL.RST 的效果加上 PCI 配置空间复位（后者由 PCI

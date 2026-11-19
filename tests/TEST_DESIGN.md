@@ -72,7 +72,7 @@ mini-vmm 的测试同时用来检验它下面的 KVM。设计里程碑的验收�
 
 - **P1a** `src/boot/elf_loader.c`、`src/boot/bzimage.c` 的畸形输入路径（libFuzzer + ASan + UBSan）。
 - **P1b** `src/mem.c` 的 `gpa_to_hva()` / `mem_read` / `mem_write` / `mem_add_region` / `mem_find_slot`。
-- **P1c** `src/vm.c` 的 `vmm_register_pio/mmio`、`vmm_lookup_pio/mmio`、`handle_io()`、`handle_mmio()`。
+- **P1c** `src/io_bus.c` 的 `vmm_register_pio/mmio`、`vmm_lookup_pio/mmio`，`src/vcpu.c` 的 `handle_io()`、`handle_mmio()`。
 
 ### 明确不覆盖
 
@@ -175,7 +175,7 @@ mini-vmm 的测试同时用来检验它下面的 KVM。设计里程碑的验收�
 - **O3 — 多内核配置矩阵还没有搭。**
   e2e 只能覆盖手头那一个 guest 内核的配置，而 VMM 的目标是换一个 vmlinux 也能启动。会让 guest 走不同路径的配置项见 `HANDOFF.md`「guest 内核配置兼容」。理想做法是 `tests/run.sh` 接受多个 `VMLINUX`，对每个内核跑 linux-boot / smp / legacy-devices、结果按内核分列；候选内核是发行版式的大配置（大量 `=m`、`ACPI_REDUCED_HARDWARE_ONLY=y`）、`make defconfig` + `kvm_guest.config`、以及不开 `HYPERVISOR_GUEST` 的精简配置。卡在手头没有这么多内核，每份要单独编译。在搭起来之前，配置相关的设备语义优先用单元测试按内核源码回放（如 `serial8250_test.c`）。
 - **O2 — 分发接口（已解决）。**
-  已把分发提成 `io_bus_dispatch_pio()` / `io_bus_dispatch_mmio()`（`include/vmm.h` 声明，`src/vm.c` 实现），`handle_io()` / `handle_mmio()` 退化成从 `kvm_run` 取字段的薄封装。`io_bus_test.c` 不再 `#include src/vm.c`，改为正常链接并通过公开接口调用。
+  已把分发提成 `io_bus_dispatch_pio()` / `io_bus_dispatch_mmio()`（`include/io_bus.h` 声明，`src/io_bus.c` 实现），`handle_io()` / `handle_mmio()` 退化成从 `kvm_run` 取字段的薄封装。`io_bus_test.c` 不再 `#include src/vm.c`，改为正常链接并通过公开接口调用。
   代价要记下来：**KVM_EXIT 路径上从 `kvm_run` 取字段那几行现在没有单元测试覆盖**，尤其是“必须按 `io.data_offset` 定位缓冲区、不能假设它紧跟结构体”这一条。它只由 e2e 覆盖（任何一次 guest IO 都会走到）。
 
 ---
@@ -289,7 +289,7 @@ E5 的最小复现输入是一个 177 字节的 ELF：`e_phoff = 0xFFFFFFFFFFFFF
 - **arch-distro 的关机用例绕开了一个 guest 侧竞态，不覆盖“登录 shell 活到关机”这条路径。** bash 5.3 / readline 8.3 在 `rl_getc()` 里会丢掉落在“循环开头转交信号”和“进入 pselect”之间的 SIGHUP，串口上登录的 bash 不退出，systemd 等满 90 秒停止超时，关机超过 `SHUTDOWN_MAX`，几十次关机撞上一次。这是 guest 用户态的问题：卡住时 vCPU 全部空闲、ttyS0 没有新中断，signal tracepoint 显示 SIGHUP 已经送达、bash 的处理函数也跑了（机制见 `tests/e2e/arch-distro.sh` 里 `REBOOT_CMD` 的注释）。suite 用 `exec systemctl reboot/poweroff` 让 shell 在关机前退出。readline 开发分支已修，guest 镜像换到带修复的版本后去掉 `exec`，循环重启上百次看关机耗时来重新判断。
 - **arch-distro 联网用例的一次失败原因未查明。** 有一次 pacman 那条用例没有 `PACMAN-RC-0` 和 `INSTALLED`，而 guest 正常关机、没有签名错误，与 pacman 返回非 0（例如下载失败）相符，但那次的完整输出没有保留，之后单独和整套连跑二十次都通过。用例失败时 `end_case` 会打印完整串口输出，再出现时从 pacman 的报错行查起。
 - **arch-distro 的 dmesg 允许清单随 host 变化。** 清单里的 TSC P0、SRSO 两条取决于 host 内核和 CPU 微码，换一台 host 可能消失（允许而不要求出现，不会因此变红），也可能出现清单之外的新警告而变红，那时要逐条查明是不是 VMM 的问题再决定加不加进清单。
-- **vCPU 工作队列有两处顺序要求只靠推导，没有测试能挡住。** 一处是 vCPU 被踢出后先清 `immediate_exit` 再看队列（反过来时，工作恰好在“看完队列”和“清零”之间排进来，这次踢的效果被清掉，空闲 vCPU 睡回 HLT，工作要等下一个中断）；另一处是 vCPU 线程退出时先关队列再执行剩下的工作（否则一个与停机同时到达的查询永远没有回复）。两者都要求一个请求恰好落进几条指令宽的窗口，e2e 无法稳定制造，理由写在 `src/smp.c` 的 `vcpu_kick()` 和 `vcpu_thread()` 旁。`quit` 恰好落在整机复位过程中的处理（`main.c` 复位循环前后都检查 `quit_requested`）同理没有测试。
+- **vCPU 工作队列有两处顺序要求只靠推导，没有测试能挡住。** 一处是 vCPU 被踢出后先清 `immediate_exit` 再看队列（反过来时，工作恰好在“看完队列”和“清零”之间排进来，这次踢的效果被清掉，空闲 vCPU 睡回 HLT，工作要等下一个中断）；另一处是 vCPU 线程退出时先关队列再执行剩下的工作（否则一个与停机同时到达的查询永远没有回复）。两者都要求一个请求恰好落进几条指令宽的窗口，e2e 无法稳定制造，理由写在 `src/smp.c` 的 `vcpu_kick()` 和 `vcpu_thread()` 旁。`quit` 恰好落在整机复位过程中的处理（`main.c` 的 `run_guest` 在复位前后都检查 `quit_requested`）同理没有测试。
 - **exit 计数在运行中读取时不是同一时刻的快照。** 各格、各 vCPU 分别是 relaxed 原子读，`info exit-stats` 的分项之和可能和同一份报告里的 total 差几次 exit；测试只断言总数随时间增长，不断言运行中的分项和总数相等（停机后生成的 `--exit-stats` 报告仍由 `exit-stats` suite 逐项核对）。
 - **split 模式加 `--pit-reinject on` 在开了 AVIC 的 AMD host 上没有验证。** IOAPIC 路径的 tick 确认靠 pin 0 向量的 EOI exit（路由里标成 level），AVIC 对 TMR=0 的中断由硬件完成 EOI、不退出；KVM 自己的 PIT 在补发打开时禁用 APICv（`APICV_INHIBIT_REASON_PIT_REINJ`），但它不知道用户态在补发。开发机 `kvm_amd avic=N`，这个组合跑不到；症状会是第一个 tick 之后积压只增不减，`info irqchip` 的 `acks` 停住。Intel APICv 的 EOI-exit bitmap 由 `ioapic_handled_vectors` 装载，不受影响。
 - **“host 过载”用 SIGSTOP 一秒代替。** 里程碑的验收写的是 host 过载下比较补发策略；stress-ng 抢 CPU 欠下的 tick 数取决于核数和调度器，判据没法写成确定的数，所以 suite 停 VMM 一秒造出确定的 1000 个欠 tick。真实过载的步骤在 `tests/run.sh --manual split-irqchip`，只作人工观察。

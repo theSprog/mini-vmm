@@ -149,7 +149,7 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 90 --stop 'reboot -f' \
     -- "$VMM" --mode linux --no-reboot --mem "$MEM" --trace-pio "$TRACE" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
 CUR_RC=$?
-# trace 的最后一行就是触发退出的那次写，见 vm.c 里 pio_trace() 的位置
+# trace 的最后一行就是触发退出的那次写，见 io_bus.c 里 io_bus_dispatch_pio 记 trace 的位置
 CUR_OUT="$CUR_OUT
 LAST-$(awk '{ print $2 "-" $3 "-" $4 "-" $5 }' "$TRACE" | tail -1)"
 expect_rc 0
@@ -188,7 +188,7 @@ cat /proc/tty/driver/serial_8250" \
 如果 IRQ 4 恒为 0，检查 MCR.OUT2 门控和 IIR 的 THRI 语义"
 
 guide "不模拟 RTC 的代价（改代码后重编，仅供对照）" \
-"# 把 src/main.c 里的 rtc_attach(vm) 去掉再编译，然后：
+"# 把 src/machine.c 里的 rtc_attach(vm) 去掉再编译，然后：
 ./build/vmm --mode linux --mem 512M --trace-pio /tmp/pio-nortc.txt \\
     --initrd build/initramfs.cpio.gz \$VMLINUX" \
 "多出约 8 万次 0x70/0x71 访问、启动慢约 2 秒

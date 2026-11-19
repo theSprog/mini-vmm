@@ -204,7 +204,7 @@ int vm_power_on_save(struct vmm_vm *vm)
 
     /* split 时 PIC/IOAPIC/PIT 在用户态，由它们的复位回调负责；KVM 里只有
      * LAPIC，随 vCPU 状态一起存 */
-    po->has_irqchip = vm->has_irqchip && !vm->split;
+    po->has_irqchip = vm->irqchip && vm->irqchip->kvm_owns_chips;
     if (po->has_irqchip) {
         for (i = 0; i < 3; i++) {
             po->chip[i].chip_id = (uint32_t)i;

@@ -312,10 +312,10 @@ static int edu_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int edu_dev_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                          struct pci_bus *bus, struct event_loop *loop)
+static int edu_dev_attach(const struct vmm_device *d,
+                          const struct vmm_attach_ctx *ctx)
 {
-    return edu_attach(d->dev, vm, bus, loop);
+    return edu_attach(d->dev, ctx->vm, ctx->pci, ctx->loop);
 }
 
 static const char *const edu_props[] = { "driver", NULL };

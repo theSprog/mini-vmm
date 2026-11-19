@@ -152,7 +152,7 @@ static void fresh(void)
     d.type = &e1000_device_type;
     d.dev = dev;
     d.net = &g_net;
-    e1000_device_type.attach(&d, &g_vm, NULL, NULL);
+    e1000_device_type.attach(&d, &(struct vmm_attach_ctx){ .vm = &g_vm });
     S = dev;
 }
 

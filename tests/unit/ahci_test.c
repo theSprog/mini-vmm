@@ -176,7 +176,7 @@ static void fresh_with(struct blockdev *blk)
     d.type = &ahci_device_type;
     d.dev = dev;
     d.blk = blk;
-    if (ahci_device_type.attach(&d, &g_vm, NULL, NULL) != VMM_OK) {
+    if (ahci_device_type.attach(&d, &(struct vmm_attach_ctx){ .vm = &g_vm }) != VMM_OK) {
         printf("fixture: attach failed: %s\n", g_last_log);
         exit(1);
     }

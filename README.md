@@ -40,7 +40,7 @@ tools/build_guest_kernel.sh --src ~/linux-guest
 
 guest 内核的配置是 `x86_64_defconfig` 加 `tools/guest-kernel.config`，片段里每一项的理由写在它的注释里。源码树需要是 Linux 6.6.x，且不能有树内构建产物。
 
-默认内核命令行是 `console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1`，每一项的作用见 `src/main.c` 的 `DEFAULT_LINUX_CMDLINE`。完整选项见 `./build/vmm -h`。
+默认内核命令行是 `console=ttyS0 earlyprintk=serial,ttyS0,115200 reboot=k panic=-1`，每一项的作用见 `src/config.c` 的 `DEFAULT_LINUX_CMDLINE`。完整选项见 `./build/vmm -h`。
 
 用 `timeout` 包着运行时要加 `--foreground`，否则 VMM 处于后台进程组，guest 输入会被禁用。
 

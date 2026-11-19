@@ -27,8 +27,8 @@
  *
  * guest 驱动经 ACPI 发现它：DSDT 里的 Device 带 _HID "QEMU0001" 和一个 IO
  * 资源，Linux 的 pvpanic-mmio 按 _HID 绑定，从 _CRS 拿端口。这是一个可选
- * 设备（--device pvpanic），挂上时置 vm->pvpanic，boot/acpi.c 据此在 DSDT 里
- * 描述它。可选的理由：挂上后 panic 不再走 panic=-1 的复位路径，而复位路径
+ * 设备（--device pvpanic），挂上时在 struct acpi_devices 里登记，boot/acpi.c
+ * 据此在 DSDT 里描述它。可选的理由：挂上后 panic 不再走 panic=-1 的复位路径，而复位路径
  * 本身也要能测（system-reset 等 suite 用 VFS panic 触发复位）。
  */
 #ifndef DEVICES_PVPANIC_H

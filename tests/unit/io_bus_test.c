@@ -5,11 +5,8 @@
  * 传统设备间接覆盖，而那四个设备恰好都“按 offset 分派、忽略 size”，
  * 把这一层自身的边界行为完全遮住了。
  *
- * 取巧之处（有意为之）：handle_io() / handle_mmio() 在 src/vm.c 里是
- * static，本文件直接 #include 整个 vm.c，从而在不改动生产代码的前提下
- * 调到真实的分发路径。代价是要把 vm.c 引用的外部符号全部桩掉，见下。
- * 换成“把分发逻辑提取成公开函数”会更干净，但那是生产代码改动，
- * 需要单独批准，见 TEST_DESIGN.md 的 open question O2。
+ * 链接真实的 src/io_bus.c（地址表与分发）和 src/vcpu.c（exit 分发
+ * vcpu_handle_exit），它们引用的外部符号在下面桩掉。
  *
  * 不碰 /dev/kvm：所有 kvm_* 都是桩，kvm_run 页由本文件伪造。
  */
@@ -27,7 +24,7 @@
 #include "harness.h"
 
 /* ------------------------------------------------------------------ */
-/* 桩：vm.c 引用到的所有外部符号                                        */
+/* 桩：io_bus.c 和 vcpu.c 引用到的外部符号                              */
 /* ------------------------------------------------------------------ */
 
 int vmm_log_level = -1;
@@ -46,42 +43,20 @@ void vmm_log(int level, const char *file, int line, const char *fmt, ...)
     va_end(ap);
 }
 
-int  mem_init(struct vmm_vm *vm, uint64_t sz)   { (void)vm; (void)sz; return VMM_OK; }
-void mem_destroy(struct vmm_vm *vm)             { (void)vm; }
-void vm_power_on_free(struct vmm_vm *vm)        { (void)vm; }
-
-int  kvm_open(void)                             { return -1; }
-int  kvm_get_api_version(int f)                 { (void)f; return 12; }
-int  kvm_check_extension(int f, int c)          { (void)f; (void)c; return 1; }
-int  kvm_get_vcpu_mmap_size(int f)              { (void)f; return 4096; }
-int  kvm_create_vm(int f)                       { (void)f; return -1; }
-int  kvm_create_vcpu(int f, int id)             { (void)f; (void)id; return -1; }
-int  kvm_get_stats_fd(int f)                   { (void)f; return -1; }
-struct kvm_run *kvm_mmap_run(int f, size_t s)   { (void)f; (void)s; return NULL; }
 int  kvm_get_regs(int f, struct kvm_regs *r)    { (void)f; (void)r; return VMM_ERR_SYS; }
-int  kvm_set_regs(int f, const struct kvm_regs *r)   { (void)f; (void)r; return VMM_OK; }
 int  kvm_get_sregs(int f, struct kvm_sregs *s)  { (void)f; (void)s; return VMM_ERR_SYS; }
-int  kvm_set_sregs(int f, const struct kvm_sregs *s) { (void)f; (void)s; return VMM_OK; }
 int  kvm_run(int f)                             { (void)f; return VMM_ERR_SYS; }
 int  kvm_get_mp_state(int f, uint32_t *st)      { (void)f; (void)st; return VMM_ERR_SYS; }
 const char *kvm_mp_state_str(uint32_t st)       { (void)st; return "?"; }
-const struct arch_cpu_ops *arch_probe(void)     { return NULL; }
-int  irqchip_create(struct vmm_vm *vm)          { (void)vm; return VMM_OK; }
-/* vm.c 的运行循环引用 gdbstub；这里不跑 vCPU，桩函数不会被调用 */
+/* vcpu.c 的运行循环引用 gdbstub；这里不跑 vCPU，桩函数不会被调用 */
 void gdbstub_vcpu_interrupted(struct vmm_vcpu *v) { (void)v; }
 int  gdbstub_vcpu_debug_exit(struct vmm_vcpu *v)  { (void)v; return VMM_ERR_GUEST; }
-/* vm.c 的运行循环在 KVM_RUN 被打断后执行 vCPU 工作队列（smp.c），同样不会被调用 */
+/* vcpu.c 的运行循环在 KVM_RUN 被打断后执行 vCPU 工作队列（smp.c），同样不会被调用 */
 void vcpu_run_work(struct vmm_vcpu *v) { (void)v; }
-/* vm.c 在 cfg->irqchip 为 split 时改走 split_irqchip.c；这里的 VM 用默认的内核模式，
- * 运行循环也不跑，这些桩不会被调用 */
-int  split_irqchip_create(struct vmm_vm *vm)    { (void)vm; return VMM_ERR_SYS; }
-int  split_irqchip_pre_run(struct vmm_vcpu *v)  { (void)v; return VMM_OK; }
-int  split_irqchip_eoi(struct vmm_vcpu *v, uint8_t vector) { (void)v; (void)vector; return VMM_OK; }
-void split_irqchip_destroy(struct vmm_vm *vm)   { (void)vm; }
 
 #include "mutants.h"
 
-/* 被测函数走一层指针：默认是 src/vm.c 里真实的 io_bus_dispatch_*，
+/* 被测函数走一层指针：默认是 src/io_bus.c 里真实的 io_bus_dispatch_*，
  * --mutant N 时换成 tests/unit/io_bus_mutants.c 里故意写错的那一份。 */
 static pio_dispatch_fn  g_pio  = io_bus_dispatch_pio;
 static mmio_dispatch_fn g_mmio = io_bus_dispatch_mmio;

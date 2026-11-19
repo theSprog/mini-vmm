@@ -115,6 +115,7 @@ struct platform {
  * 覆盖 pin 不是 A、slot 不连续的情况。 */
 static struct pci_device g_pci_devs[3];
 static struct pci_bus g_pci;
+static struct acpi_devices g_acpi;
 
 static void fake_pci_setup(void)
 {
@@ -703,7 +704,7 @@ static int build_all(struct vmm_vm *vm, int nr_cpus, const char *cmdline,
     memset(&zc, 0, sizeof(zc));
     if (mptable_setup(vm, nr_cpus, &g_pci) != VMM_OK)
         return -1;
-    if (acpi_setup(vm, nr_cpus, rsdp) != VMM_OK)
+    if (acpi_setup(vm, nr_cpus, &g_acpi, rsdp) != VMM_OK)
         return -1;
     zc.cmdline    = cmdline;
     zc.acpi_rsdp  = *rsdp;
@@ -737,7 +738,7 @@ static void check_bzimage_header(struct vmm_vm *vm)
     kh.init_size        = 0x1c66000;
 
     memset(g_ram, 0, RAM_SIZE);
-    CHECK(acpi_setup(vm, 1, &rsdp) == VMM_OK, "acpi_setup");
+    CHECK(acpi_setup(vm, 1, &g_acpi, &rsdp) == VMM_OK, "acpi_setup");
     memset(&zc, 0, sizeof(zc));
     zc.cmdline        = "console=ttyS0";
     zc.acpi_rsdp      = rsdp;
@@ -906,12 +907,12 @@ int main(int argc, char **argv)
         g_ctx = "build";
         /* 1 个 CPU 的那轮不挂 pvpanic，其余挂上；--dump 取 4 个 CPU 那轮，
          * iasl 往返检查因此也覆盖 pvpanic 的 Device */
-        vm.pvpanic = n > 1;
+        g_acpi.pvpanic = n > 1;
         CHECK(build_all(&vm, n, cmdline, &rsdp) == 0, "builders failed");
         check_mptable(n, &mp);
         check_acpi(rsdp, n, &acpi);
         check_consistency(&mp, &acpi, n);
-        check_pvpanic(&acpi, vm.pvpanic);
+        check_pvpanic(&acpi, g_acpi.pvpanic);
         check_boot_params(&vm, rsdp, cmdline);
         if (dump_dir && n == 4)
             dump_tables(dump_dir, rsdp);

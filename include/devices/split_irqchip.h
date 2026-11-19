@@ -134,26 +134,7 @@ struct split_irqchip {
     uint8_t  pit_seen_isr0, pit_seen_pic_masked, pit_seen_io_masked;
 };
 
-/* vm_create 里、创建 vCPU 之前调用：开 KVM_CAP_SPLIT_IRQCHIP，初始化三颗
- * 芯片并提交初始路由，置 vm->split 和 vm->has_irqchip */
-int  split_irqchip_create(struct vmm_vm *vm);
-
-/* guest 启动前调用：注册 PIO/MMIO、PIT 定时器（I/O 线程）和复位回调。
- * 复位回调要先于其他设备登记，见 reset.h 对中断线电平的要求 */
-int  split_irqchip_attach(struct vmm_vm *vm, struct event_loop *loop);
-
-/* irqchip_set_irq 在 split 模式下的实现，调用方不能持有 lock */
-void split_irqchip_set_irq(struct split_irqchip *s, int gsi, int level);
-
-/* vCPU 0 每次进 KVM_RUN 之前调用：PIC 有中断时按就绪状态注入或请求中断窗口 */
-int  split_irqchip_pre_run(struct vmm_vcpu *vcpu);
-
-/* KVM_EXIT_IOAPIC_EOI 的处理 */
-int  split_irqchip_eoi(struct vmm_vcpu *vcpu, uint8_t vector);
-
-/* monitor 的 info irqchip：补发策略、PIT/PIC/IOAPIC 计数 */
-void split_irqchip_report(struct split_irqchip *s, FILE *f);
-
-void split_irqchip_destroy(struct vmm_vm *vm);
+/* 对外只有 devices/irqchip.h 里的 irqchip_split_ops，vm_create 按
+ * --kernel-irqchip split 选它 */
 
 #endif /* DEVICES_SPLIT_IRQCHIP_H */

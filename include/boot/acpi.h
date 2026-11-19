@@ -14,6 +14,8 @@
 #ifndef BOOT_ACPI_H
 #define BOOT_ACPI_H
 
+#include <stdbool.h>
+
 #include <stdint.h>
 
 struct vmm_vm;
@@ -42,7 +44,15 @@ struct vmm_vm;
 #define ACPI_SLEEP_STS_PORT 0x607
 #define ACPI_PM_IO_LEN      8     /* [0x600, 0x608)：PM1a EVT + CNT + 扩展睡眠 */
 
+/* 板上可选、要在 DSDT 里描述的设备。设备 attach 成功时在这里登记
+ * （devices/device.h 的 struct vmm_attach_ctx），acpi_setup 按它生成对应的
+ * Device 对象 */
+struct acpi_devices {
+    bool pvpanic;          /* --device pvpanic，见 devices/pvpanic.h */
+};
+
 /* 构建全部表，返回 RSDP 的 GPA */
-int acpi_setup(struct vmm_vm *vm, int nr_cpus, uint64_t *rsdp_gpa);
+int acpi_setup(struct vmm_vm *vm, int nr_cpus,
+               const struct acpi_devices *devs, uint64_t *rsdp_gpa);
 
 #endif /* BOOT_ACPI_H */

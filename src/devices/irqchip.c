@@ -1,4 +1,4 @@
-/* src/devices/irqchip.c — 内置 PIC/IOAPIC/LAPIC + PIT 初始化、中断线 */
+/* src/devices/irqchip.c — 内核态中断控制器（irqchip_kernel_ops），以及设备拉线、发 MSI 的公共入口 */
 #define _GNU_SOURCE
 #include <string.h>
 #include <errno.h>
@@ -7,9 +7,8 @@
 #include "vmm.h"
 #include "kvm_wrappers.h"
 #include "devices/irqchip.h"
-#include "devices/split_irqchip.h"
 
-int irqchip_create(struct vmm_vm *vm)
+static int kernel_create(struct vmm_vm *vm)
 {
     struct kvm_pit_config pit;
     struct kvm_reinject_control reinject;
@@ -62,22 +61,14 @@ int irqchip_create(struct vmm_vm *vm)
         return VMM_ERR_SYS;
     }
 
-    vm->has_irqchip = true;
     vmm_info("in-kernel irqchip: PIC + IOAPIC + LAPIC, PIT on GSI 0 "
              "(reinject %s)", vm->cfg.pit_reinject ? "on" : "off");
     return VMM_OK;
 }
 
-int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
+static int kernel_set_irq(struct vmm_vm *vm, int gsi, int level)
 {
     struct kvm_irq_level il;
-
-    if (!vm->has_irqchip || gsi < 0)
-        return VMM_OK;
-    if (vm->split) {
-        split_irqchip_set_irq(vm->split, gsi, level);
-        return VMM_OK;
-    }
 
     il.irq   = (uint32_t)gsi;
     il.level = level;
@@ -87,6 +78,30 @@ int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
         return VMM_ERR_SYS;
     }
     return VMM_OK;
+}
+
+/* KVM 不导出内核 PIT/PIC/IOAPIC 的中断计数，guest 的 /proc/interrupts
+ * 是唯一的来源 */
+static void kernel_report(struct vmm_vm *vm, FILE *out)
+{
+    fprintf(out, "kernel irqchip: PIC + IOAPIC + PIT + LAPIC in KVM\n");
+    fprintf(out, "pit: reinject %s\n", vm->cfg.pit_reinject ? "on" : "off");
+}
+
+/* 中断注入、EOI 都在 KVM 里完成，芯片随 VM fd 一起释放，所以 pre_run、
+ * eoi、attach、destroy 都不需要 */
+const struct irqchip_ops irqchip_kernel_ops = {
+    .kvm_owns_chips = true,
+    .create         = kernel_create,
+    .set_irq        = kernel_set_irq,
+    .report         = kernel_report,
+};
+
+int irqchip_set_irq(struct vmm_vm *vm, int gsi, int level)
+{
+    if (!vm->irqchip || gsi < 0)
+        return VMM_OK;
+    return vm->irqchip->set_irq(vm, gsi, level);
 }
 
 void irqchip_irq_cb(void *opaque, int gsi, int level)
@@ -111,7 +126,7 @@ int irqchip_signal_msi(struct vmm_vm *vm, uint64_t addr, uint32_t data,
     struct kvm_msi msi;
     int r;
 
-    if (!vm->has_irqchip) {
+    if (!vm->irqchip) {
         *why = "no in-kernel irqchip";
         return VMM_ERR_SYS;
     }
