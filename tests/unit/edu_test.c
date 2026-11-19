@@ -278,6 +278,14 @@ static void test_buffer_mmio(void)
     c = 0xEE;
     bar0()->write(bar0()->opaque, EDU_BUF_OFFSET + EDU_BUF_SIZE - 1, 1, &c);
     CHECK_U64(E->buf[EDU_BUF_SIZE - 1], 0xEE, "last byte of the buffer");
+
+    /* MMIO 分发只看起始地址，越过 BAR 结尾的那部分要由设备挡住 */
+    q = 0x0102030405060708ULL;
+    bar0()->write(bar0()->opaque, EDU_BAR0_SIZE - 4, 8, &q);
+    CHECK_U64(E->buf[EDU_BUF_SIZE - 4], 0, "write past the end of BAR0 is dropped");
+    got = 0;
+    bar0()->read(bar0()->opaque, EDU_BAR0_SIZE - 4, 8, &got);
+    CHECK_U64(got, ~0ULL, "read past the end of BAR0 returns all ones");
 }
 
 static void test_intx(void)

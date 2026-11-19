@@ -17,6 +17,7 @@
 enum {
     W_REG_WIDTH  = 1u << 0,
     W_BUSY_WRITE = 1u << 1,
+    W_BAR_END    = 1u << 2,
 };
 static unsigned g_warned;
 
@@ -125,16 +126,30 @@ static void edu_reg_write(struct edu *e, uint32_t off, uint32_t v)
     }
 }
 
+/* 缓冲区访问的结束地址要自己检查：MMIO 分发只保证起始地址落在 BAR 里，
+ * 一次从缓冲区末尾几个字节开始的 8 字节访问会越过 BAR 的结尾，直接 memcpy
+ * 就读写到 struct edu 之外的 host 堆上。越界的访问按规范读回全 1、写丢弃。 */
+static bool buf_access_ok(uint64_t off, uint32_t size)
+{
+    if (size <= EDU_BAR0_SIZE - off)
+        return true;
+    warn_once(W_BAR_END,
+              "edu: %u-byte access at 0x%04llx runs past the end of BAR0, ignored",
+              size, (unsigned long long)off);
+    return false;
+}
+
 static int edu_mmio_read(void *opaque, uint64_t off, uint32_t size, void *data)
 {
     struct edu *e = opaque;
     uint32_t v;
 
     if (off >= EDU_BUF_OFFSET) {
-        uint64_t o = off - EDU_BUF_OFFSET;
-
-        /* BAR 大小 8 KiB，exit 分发保证 off + size 不超出 BAR */
-        memcpy(data, e->buf + o, size);
+        if (!buf_access_ok(off, size)) {
+            memset(data, 0xFF, size);
+            return VMM_OK;
+        }
+        memcpy(data, e->buf + (off - EDU_BUF_OFFSET), size);
         return VMM_OK;
     }
     if (size != 4 || (off & 3)) {
@@ -156,7 +171,8 @@ static int edu_mmio_write(void *opaque, uint64_t off, uint32_t size,
     uint32_t v;
 
     if (off >= EDU_BUF_OFFSET) {
-        memcpy(e->buf + (off - EDU_BUF_OFFSET), data, size);
+        if (buf_access_ok(off, size))
+            memcpy(e->buf + (off - EDU_BUF_OFFSET), data, size);
         return VMM_OK;
     }
     if (size != 4 || (off & 3)) {

@@ -53,6 +53,14 @@ MUTANTS = [
         tests=["edu_test"],
     ),
     dict(
+        name="buf-past-bar-end",
+        breaks="MMIO dispatch only bounds the start address; the device must stop accesses that run past BAR0",
+        file=DEV,
+        old="    if (size <= EDU_BAR0_SIZE - off)\n",
+        new="    if (1)\n",
+        tests=["edu_test"],
+    ),
+    dict(
         name="msi-never-sent",
         breaks="with MSI enabled the device must signal completions by message",
         file=DEV,
