@@ -114,6 +114,20 @@ expect_has "use --load to move the payload above"
 expect_not "entering guest"
 end_case
 
+# 帮助文字写着 -vv 等于 -v -v，解析器必须认合写的形式
+run_case "-vv 合写与 -v -v 等价，打开 DEBUG" \
+    "$VMM" --mode real16 --mem 2M -vv "$P16"
+expect_rc 0
+expect_has "[DBG ]"
+expect_not "unknown option"
+end_case
+
+run_case "-v 后面混了别的字母仍是未知选项" \
+    "$VMM" --mode real16 --mem 2M -vx "$P16"
+expect_rc 1
+expect_has "unknown option"
+end_case
+
 run_case "未知选项" \
     "$VMM" --mode real16 --nonsense "$P16"
 expect_rc 1

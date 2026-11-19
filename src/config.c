@@ -119,7 +119,8 @@ void vmm_usage(const char *prog)
 "                           one controller. The image is locked while the VM\n"
 "                           runs\n"
 "  --walk GVA             Print the 4-level page walk for GVA before starting\n"
-"  -v                     Raise log level, repeatable (-vv enables DEBUG)\n"
+"  -v                     Raise log level by one: the default is INFO, one -v\n"
+"                           reaches DEBUG (the highest). -vv equals -v -v\n"
 "  -q                     Errors only\n"
 "  -h                     Show this help\n"
 "\n"
@@ -202,8 +203,10 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
         if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
             vmm_usage(argv[0]);
             exit(0);
-        } else if (!strcmp(a, "-v")) {
-            cfg->log_level++;
+        } else if (a[0] == '-' && a[1] == 'v' &&
+                   strspn(a + 1, "v") == strlen(a + 1)) {
+            /* -v 可以重复，也可以合写成 -vv：每个 v 提高一级 */
+            cfg->log_level += (int)strlen(a + 1);
         } else if (!strcmp(a, "-q")) {
             cfg->log_level = 0;
         } else if (!strcmp(a, "--mode")) {
