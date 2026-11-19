@@ -1,6 +1,7 @@
 /* src/boot/bzimage.c — 按 64 位启动协议加载 bzImage
  *
- * bzImage 的文件结构（arch/x86/boot/header.S、tools/build.c）：
+ * bzImage 的文件结构（arch/x86/boot/header.S；拼接方式见 arch/x86/boot/Makefile
+ * 的 cmd_image：setup.bin 补齐到 4K 边界，后面接 vmlinux.bin）：
  *
  *   [0, 512)                 传统引导扇区；0x1f1 起是 setup header
  *   [512, (setup_sects+1)*512) 16 位 setup 代码（调 BIOS 用，这里不执行）
