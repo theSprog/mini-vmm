@@ -188,7 +188,9 @@ cmd_run() {
     local work
     work="$(mktemp -d)"
     # QEMU 的子进程在中断时也要收掉，否则留下一台没人管的虚拟机
-    trap 'rm -rf "$work"' EXIT
+    # 路径在设 trap 时就展开：EXIT trap 在函数返回之后才跑，那时 local 的
+    # work 已经不存在，set -u 下引用它会报 unbound variable 并漏删目录
+    trap "rm -rf -- $(printf '%q' "$work")" EXIT
     trap 'printf "nested_kvm: interrupted\n" >&2; kill "${qpid:-}" 2>/dev/null; exit $EXIT_INTERRUPTED' INT TERM
 
     # 9p 共享：host 的 / 只读，仓库和 --rw 目录读写，挂在 L1 里同样的路径上

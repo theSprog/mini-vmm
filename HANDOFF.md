@@ -17,7 +17,7 @@
 
 **guest 内核跟上游 mainline，查 guest 行为看钉住的那个 commit。** 用最新上游而不是 LTS，是为了让 guest 侧的新行为和上游回归尽早暴露；钉住 commit 让任何时候构建出的都是同一个内核，测试期望里的 dmesg 措辞和 sysfs 取值以它为准。升级的步骤写在 `tools/build_guest_kernel.sh` 的 `KERNEL_COMMIT` 旁边。
 
-**要回答“这在最新 KVM 上还成不成立”时用 `tools/nested_kvm.sh`。** mini-vmm 的 CPU 虚拟化全部交给 host 内核的 KVM，WSL 的 6.6 只能代表 KVM 6.6。这个脚本用 QEMU 起一台虚拟机跑被测内核（kvm-x86/next 或打了补丁的分支），把 host 的 `/` 经 9p 只读共享进去、仓库读写共享在同一路径，在里面直接跑 `make test`，用法见 `--help`。guest 处在第三层，启动和 I/O 慢好几倍，对时间敏感的用例可能要放宽余量；L1 默认占 4G 内存，这台机器一共约 7G，同一时间只跑一台 L1。它不是日常测试环境，只在怀疑问题出在 KVM、或者要验证 KVM 补丁时用。
+**要回答“这在最新 KVM 上还成不成立”时用 `tools/nested_kvm.sh`。** mini-vmm 的 CPU 虚拟化全部交给 host 内核的 KVM，WSL 的 6.6 只能代表 KVM 6.6。这个脚本用 QEMU 起一台虚拟机跑被测内核（kvm-x86/next 或打了补丁的分支），把 host 的 `/` 经 9p 只读共享进去、仓库读写共享在同一路径，在里面直接跑 `make test`，用法见 `--help`。guest 处在第三层，Linux guest 从上电到切换 clocksource 要 20 秒左右（WSL 上直接跑不到 1 秒），启动 Linux 的 e2e 用例几乎全部撞上 `guest_shell.py` 的等待超时，整套 `make test` 两小时跑不完；不启动 Linux 的 suite（unit、tables、negctl、kvm-basics、exit-stats、emu-net 等）照常通过。所以在 L1 里只跑和问题直接相关的 suite 或单个裸 payload 用例，把 Linux 用例的失败先当成慢，确认没超时再当成行为差异。L1 默认占 4G 内存，这台机器一共约 7G，同一时间只跑一台 L1。它不是日常测试环境，只在怀疑问题出在 KVM、或者要验证 KVM 补丁时用。
 
 **跑测试之前先 `make`。** `make test` 只构建测试二进制，不保证 `build/vmm` 是最新的，直接跑会用到旧二进制。
 
