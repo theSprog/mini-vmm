@@ -30,6 +30,33 @@ SMP=4
 SMP_MANY="${SMP_MANY:-16}"
 MEM_MANY=1024M
 
+# guest 里 cpuidprobe 对每颗 CPU 打印一行 VMM 交给它的原始 CPUID 拓扑字段
+# （格式见 tools/guest/cpuidprobe.c）。期望值按 1 socket × n core × 1 thread、
+# APIC ID = vCPU 序号从规范推出来，和 src/smp.c 的实现无关：
+#   CPUID.1:EBX[31:24] = i，[23:16] = n
+#   0xB 子叶 0 SMT：移位 0、1 个处理器、类型 1（ECX = 0 | 1<<8 = 256）
+#       子叶 1 Core：移位 ceil(log2 n)、n 个、类型 2（ECX = 1 | 2<<8 = 513）
+#       子叶 2 终止：类型 0（ECX = 2），每个子叶 EDX = i
+#   0x80000008:ECX = ApicIdSize<<12 | (n-1)
+#   0x8000001E = EAX i、EBX i（核号 i、每核 1 线程）、ECX 0（单节点）
+#   0x8000001D 的 L3 由 n 个线程共享
+# guest 内核会用后读的叶子覆盖先读的（0xB 的 EDX 盖掉 CPUID.1 的 APIC ID），
+# 只看 /proc/cpuinfo 时，被盖住的字段填错了也看不出来，所以逐项比原始值。
+# host 的最大基本叶小于 0xB 时 KVM 不给 0xB，guest 也读不到它。
+expect_cpuid_topology() {
+    local n="$1" i order=0 b level
+    while [ $(( 1 << order )) -lt "$n" ]; do order=$(( order + 1 )); done
+    level="$(awk -F: '/^cpuid level/ { print $2 + 0; exit }' /proc/cpuinfo)"
+    for (( i = 0; i < n; i++ )); do
+        if [ "${level:-0}" -ge 11 ]; then
+            b="B0=0,1,256,$i B1=$order,$n,513,$i B2=0,0,2,$i"
+        else
+            b="B0=- B1=- B2=-"
+        fi
+        expect_has "CPUID-$i L1=$i,$n $b E8=$(( (order << 12) | (n - 1) )) E1E=$i,$i,0 L3=$n"
+    done
+}
+
 # ------------------------------------------------------------------
 auto_tests() {
 
@@ -107,6 +134,7 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
     --cmd 'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
     --cmd 'echo L3-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
     --cmd 'echo L2-$(cat /sys/devices/system/cpu/cpu1/cache/index2/shared_cpu_list)' \
+    --cmd 'cpuidprobe' \
     --stop 'poweroff -f' \
     -- "$VMM" --mode linux --smp "$SMP" --mem "$MEM" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
@@ -120,6 +148,7 @@ expect_has "CORE-0-1-2-3-"
 expect_has "PKG-0-"
 expect_has "L3-0-3"
 expect_has "L2-1"
+expect_cpuid_topology "$SMP"
 expect_has "guest requested poweroff via ACPI S5"
 expect_not "Kernel panic"
 expect_not "stopped with error"
@@ -135,6 +164,7 @@ CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 120 \
     --cmd 'echo PKG-$(sed -n "s/^physical id.*: //p" /proc/cpuinfo | sort -u | tr "\n" -)' \
     --cmd 'echo L3A-$(cat /sys/devices/system/cpu/cpu0/cache/index3/shared_cpu_list)' \
     --cmd "echo L3B-\$(cat /sys/devices/system/cpu/cpu$(( SMP_MANY - 1 ))/cache/index3/shared_cpu_list)" \
+    --cmd 'cpuidprobe' \
     --stop 'poweroff -f' \
     -- "$VMM" --mode linux --smp "$SMP_MANY" --mem "$MEM_MANY" \
           --initrd "$INITRD" "$VMLINUX" 2>&1)"
@@ -152,12 +182,27 @@ expect_not "APIC ID mismatch"
 expect_not "TSC synchronization"
 expect_not "Kernel panic"
 expect_not "stopped with error"
-# LLC 域：VMM 在 CPUID 0x8000001D 里报的是所有 vCPU 共享 L3，但海光
-# model < 5 的 guest 内核根本不看这个字段，而是直接
-#   per_cpu(cpu_llc_id, cpu) = c->apicid >> 3   (cacheinfo_hygon_init_llc_id)
-# 于是按 8 个 APIC ID 一组切开。两种结果都是已知且正确的行为，用
-# expect_any 同时接受；VMM 侧对应 smp.c 的 smp_warn_llc_split()。
-expect_any "L3A-0-$(( SMP_MANY - 1 ))" "L3A-0-7"
+expect_cpuid_topology "$SMP_MANY"
+# LLC 域：VMM 在 CPUID 0x8000001D 里报的是所有 vCPU 共享 L3，Zen2 之后的
+# AMD guest 按它算 LLC 域，所有 vCPU 在同一个域里。海光和 AMD Zen1 上
+# Linux 不看这个字段，直接 llc_id = apicid >> 3（cacheinfo.c 的
+# cacheinfo_hygon_init_llc_id()、cacheinfo_amd_init_llc_id()），按 8 个
+# APIC ID 一组切开，这时 VMM 的 smp_warn_llc_split() 会打印一行警告。
+# 哪一种由 host 的 CPU 型号决定，以 VMM 是否警告为准：警告了却没切开、
+# 或者切开了却没警告，都说明 VMM 对 guest 行为的判断错了。
+if [ "$SMP_MANY" -gt 8 ] && grep -q "derives the LLC id from APIC ID bit 3" <<<"$CUR_OUT"; then
+    expect_has "L3A-0-7"
+    # cpulist 格式：只有一颗时不写成区间
+    llc_first=$(( (SMP_MANY - 1) / 8 * 8 ))
+    if [ "$llc_first" -eq $(( SMP_MANY - 1 )) ]; then
+        expect_has "L3B-$llc_first"
+    else
+        expect_has "L3B-$llc_first-$(( SMP_MANY - 1 ))"
+    fi
+else
+    expect_has "L3A-0-$(( SMP_MANY - 1 ))"
+    expect_has "L3B-0-$(( SMP_MANY - 1 ))"
+fi
 expect_has "guest requested poweroff via ACPI S5"
 end_case
 

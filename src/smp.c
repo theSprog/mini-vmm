@@ -131,18 +131,20 @@ static void cpuid_fill_topology_leaf(struct kvm_cpuid2 *cpuid,
 }
 
 /*
- * vCPU 数超过 8 时提醒一句：部分 guest 内核不看 CPUID 0x8000001D 报的
- * 缓存共享关系，而是直接拿 APIC ID 的某一位当核簇号。海光 model < 5
- * （mini-vmm 在 soc63 上引导的正是这一类）走的是
- *   Linux arch/x86/kernel/cpu/cacheinfo.c cacheinfo_hygon_init_llc_id()
- *     c->topo.llc_id = c->topo.apicid >> 3;
- * 而 mini-vmm 让 APIC ID 等于 vCPU 序号，于是 vCPU 超过 8 个时 guest 会
- * 按 8 个一组切出多个 LLC 域（实测 --smp 16 得到 0-7 和 8-15 两块），
- * 尽管 CPUID 里报的是所有 vCPU 共享同一个 L3。
+ * vCPU 数超过 8 时提醒一句：部分 guest CPU 上 Linux 不看 CPUID 0x8000001D
+ * 报的缓存共享关系，而是直接拿 APIC ID 的第 3 位往上当核簇（CCX）号：
+ *   Linux 7.4 arch/x86/kernel/cpu/cacheinfo.c
+ *     cacheinfo_hygon_init_llc_id()：所有海光型号
+ *     cacheinfo_amd_init_llc_id()：AMD family 0x17 model <= 0x1f（Zen1）
+ *       c->topo.llc_id = c->topo.apicid >> 3;
+ * mini-vmm 让 APIC ID 等于 vCPU 序号，于是 vCPU 超过 8 个时 guest 会按 8 个
+ * 一组切出多个 LLC 域（--smp 16 得到 0-7 和 8-15 两块），尽管 CPUID 里报的
+ * 是所有 vCPU 共享同一个 L3。更新的 AMD 按 0x8000001D 的共享线程数算，
+ * 没有这个问题。guest 看到的 family/model 就是 host 的，所以按 host 判断。
  *
  * 功能上没有问题，但会改变调度域的形状，拿 mini-vmm 做调度或缓存亲和性
- * 实验时必须知道，所以这里只提示、不改行为——改 CPUID 里的 model 确实能
- * 绕开这条捷径，但会连带影响 guest 的一堆勘误判断，代价更大。
+ * 实验时必须知道，所以这里只提示、不改行为：要绕开只能把 APIC ID 改成
+ * 稀疏编号，MADT、MP 表、CPUID、KVM LAPIC 四处都得跟着换算。
  */
 #define LLC_APICID_GROUP_SIZE  8
 
@@ -156,7 +158,7 @@ static void smp_warn_llc_split(int nr_vcpus)
         return;
 
     v = arch_detect_vendor(vendor);
-    if (v != ARCH_VENDOR_HYGON)
+    if (v != ARCH_VENDOR_HYGON && v != ARCH_VENDOR_AMD)
         return;
 
     arch_cpuid(0x1, 0, r);
@@ -167,10 +169,10 @@ static void smp_warn_llc_split(int nr_vcpus)
     if (family >= 0xf)
         model |= ((r[0] >> 16) & 0xf) << 4;
 
-    if (model >= 0x5 && !(model >= 0x10 && model <= 0x1f))
+    if (v == ARCH_VENDOR_AMD && !(family == 0x17 && model <= 0x1f))
         return;
 
-    vmm_warn("%d vCPUs: this guest CPU model derives the LLC id from "
+    vmm_warn("%d vCPUs: Linux on this CPU model derives the LLC id from "
              "APIC ID bit 3, so the guest will split the vCPUs into "
              "%d-CPU last-level-cache domains regardless of what CPUID "
              "leaf 0x8000001D reports", nr_vcpus, LLC_APICID_GROUP_SIZE);

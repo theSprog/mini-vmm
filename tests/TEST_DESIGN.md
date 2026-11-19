@@ -53,6 +53,16 @@ mini-vmm 的测试同时用来检验它下面的 KVM。设计里程碑的验收�
 - 判定为 KVM 问题之前，先在最新上游 KVM 上复现，因为 host 发行版内核里看到的问题上游可能已经修了。
 - 已确认由 host KVM bug 导致失败的组合，在“没有验证的内容和剩余风险”里写明机理和修复状态，host 带上修复后再放回矩阵。
 
+## 长期原则：换 guest 内核时复核反向断言
+
+匹配 guest 内核日志原文的 `expect_not` 依赖那一版内核的措辞。内核改了打印格式之后，这条断言永远匹配不到任何东西，测试照样通过，但它已经挡不住它要挡的回归。正向的 `expect_has` 失配会让测试变红，换内核时自然会被修掉；反向断言失效没有任何信号，只能专门去查。
+
+所以升级 `tools/build_guest_kernel.sh` 钉住的内核时，判据是：
+
+- 每条匹配 guest 内核消息的 `expect_not`，都能在新内核源码里找到产生它的格式串（`git grep` 去掉其中的变量部分）。找不到的，按新格式改写；VMM 自己打印的消息不受影响，不用查。
+- 改写后的断言要先看到它变红：构造一个会让 guest 打出那条消息的坏 VMM 副本（例如改坏 CPUID、挪动 `_CRS` 窗口），确认用例失败，再确认原 VMM 通过。只看字符串对得上不够，因为同一条消息可能换了打印的条件或位置。
+- `tests/mutants/<suite>.py` 里已有的 mutant 能覆盖的断言，用 `tests/mutate.py <suite>` 代替手工构造。
+
 ---
 
 ## 这次会测什么、不测什么
@@ -209,6 +219,7 @@ mini-vmm 的测试同时用来检验它下面的 KVM。设计里程碑的验收�
 | E33 | 用户态中断控制器（`ioapic_test`、`pic_test`、`pit_test` 和 `split-irqchip` suite，判据是 82093AA、8259A、82C54、PIIX4 数据手册，KVM 6.6 的 `kvm_scan_ioapic_routes` 与 `KVM_INTERRUPT` 语义，guest 的 `/proc/interrupts`、`/proc/timer_list`、dmesg）：三个芯片各自不依赖 KVM 单测：IOAPIC 的寄存器窗口、只读位、边沿与电平投递、remote IRR 只由 EOI 清、EOI 时仍有效就重投、RTE 改成边沿清 remote IRR、RTE 到 MSI 的换算；8259A 的 ICW 序列、IRR 由线电平与 armed 位决定、优先级与特殊屏蔽、级联、AEOI、轮转、OCW3、伪中断、ELCR；8254 用假时钟检查六种模式的 OUT 波形与上升沿计数、写入下一拍装载、GATE、锁存与 read-back、BCD、运行中改写的生效时刻，0x61 的 GATE2/OUT2/刷新位。`IRQCHIP=split` 时全部 e2e suite（含 arch-distro）以 split 模式跑通。suite 本身：`--kernel-irqchip off`/非法值/payload 模式的报错；两种模式各一次 `pci=nomsi` 启动，AHCI INTx 走 IO-APIC 17-fasteoi、无超时，split 下 EOI exit 与 pin 17 投递数不少于 AHCI 中断数，exit 统计里有 IOAPIC_EOI 与用户态 PIT/PIC/IOAPIC 访问而内核模式没有，guest 里重放 PIT 校准（pitprobe）得到的 TSC 频率与 kvmclock 相差 <1%；`noapic` 下 timer 和 ttyS0 走 XT-PIC、split 下注入过 ExtINT；`no-kvmclock` 下 TSC 校准落在三种合法结局之一；`noapictimer nohz=off highres=off` 时 SIGSTOP VMM 一秒，补发 on 的 |漂移| ≤ 50 ms、off 的漂移 ≥ 500 ms、IRQ0 增量等于 jiffies 增量，split 下 on 不合并、积压清空，off 合并 ≥ 500 个 | **PASS** — `ioapic_test` 115 checks / 17 cases，`pic_test` 94 / 24，`pit_test` 145 / 18；`split-irqchip` 16/16。对照：53 个源码 mutant 全部变红（`tests/mutate.py split-irqchip`），芯片模型的 45 个由单测挡住；主板接线的 8 个各让一条 e2e 用例变红：RTE 改了不同步路由、忽略 EOI exit、IRQ0 脉冲以低电平结束（只有 `noapic` 用例能发现）、pin 0 路由不标 level、补发丢积压、策略被忽略、解除屏蔽不清积压、内核 PIT 不下发 `KVM_REINJECT_CONTROL`。记录而不判定的数字（blog 34、37）：默认启动 split 比内核 irqchip 多约 1600 次用户态 exit（IOAPIC MMIO 1212、EOI 281、PIC/PIT 端口约 120），VM exit 总数几乎不变；`no-kvmclock` 连续 10 次启动，内核 irqchip 3 次 `Using PIT calibration value`、7 次 `Unable`，split 10 次全部 `Using PIT`；`noapic` 下补发 on 也丢掉停顿的一秒（Linux 每个 PIC 中断都解除一次屏蔽，触发清积压）。内核 irqchip 加 `noapic noapictimer` 约五分之一的启动卡住，原因在 host KVM 的 in-kernel PIC（见剩余风险），这个组合不在本 suite 的用例里 | `make test unit split-irqchip`；`IRQCHIP=split make test`；`tests/mutate.py split-irqchip` |
 | E34 | ACPI 固定电源按钮与 SCI（`acpi_pm_test`、`boot_tables_test` 和 `acpi-events` suite，判据是 ACPI 6.5 的 4.8.2.2.1、4.8.3.1、Table 4.11-4.13、5.2.9-5.2.10、5.2.12.5，guest 的 `/proc/interrupts`、`/sys/firmware/acpi/interrupts/ff_pwr_btn`、evdev 事件和 systemd-logind 日志）：寄存器层面，STS 只由硬件置位、写 1 清，SCI 是 `STS & EN` 的电平且只在变化时通知 irqchip，先按后使能也拉起 SCI，关使能或清状态都落下，按住期间再按不产生新边沿；未实现位读 0、写无效，GBL_EN 能写进去且不发 SCI；STS、EN、CNT 的高低字节可以单独读写；PM1_CNT 的 SCI_EN 恒 1、GBL_RLS 和 SLP_EN 只写、15:14 读 0；S5 经 PM1_CNT 字写、高字节单写和 SLEEP_CONTROL 三种写法都识别，其他 SLP_TYP 报告忽略；复位清寄存器并落下 SCI。表层面，FADT `PWR_BUTTON` 清 0，FACS 64 字节对齐、落在表区、FIRMWARE_CTRL 与 X_FIRMWARE_CTRL 一致、版本 3、hardware signature 等于前面全部表字节的 FNV-1a，MP table 的 IRQ 9 是 level/active low。guest 层面，两种 irqchip 下各一次：只有一个 `LNXPWRBN`，IRQ 9 是 `9-fasteoi acpi`，没有全局锁报错，monitor 两次按键各得到一对 `KEY_POWER` 1/0，SCI 计数和 `ff_pwr_btn` 每次正好加 1；`acpi=off` 时只锁存不发 SCI；Arch 的 logind 收到按键后正常关机经 S5 退出 | **PASS** — `acpi_pm_test` 54 checks / 11 cases，`boot_tables_test` 998 checks；`acpi-events` 4/4（Arch 7.2.11 内核从按键到 `reboot: Power down` 约 1.8 s）。对照：16 个源码 mutant 全部变红（`tests/mutate.py acpi-events`），寄存器与表的 12 个由单测挡住；接线的 4 个（SCI 接错 GSI、W1C 后 SCI 不落、monitor 绕过寄存器模型不拉 SCI、S5 被忽略）各让 e2e 变红。记录而不判定：guest 启动时 ACPICA 为 RTC 闹钟写 RTC_EN 读回 0，打印一次 `Could not enable RealTimeClock event`，pci-bus 的 ACPI Error 计数和 arch-distro 的 dmesg 清单都按预期排除这一条 | `make test unit acpi-events pci-bus`；`tests/mutate.py acpi-events` |
 | E35 | pvpanic（`boot_tables_test`、`aml_test` 和 `pvpanic` suite，判据是 QEMU `docs/specs/pvpanic.rst`、Linux `include/uapi/misc/pvpanic.h`、Linux 7.x 的 `drivers/misc/pvpanic/`、`kernel/panic.c`、`include/linux/reboot.h`，ACPI 6.5 的 6.1.5、6.3.7、6.4.2.5、20.2.3）：表层面，挂设备时 DSDT 里有逐字节写出的 `Name(_HID, "QEMU0001")` 和 `IO(Decode16, 0x505, 0x505, 1, 1)`，不挂时不出现这个 ID，iasl 往返一致；`aml_string` 以 0x0D 开头、NUL 结尾。guest 层面，BusyBox guest 的内建驱动绑定 `QEMU0001:00`、capability/events 为 7，`/dev/port` 读出 0x07，未知位被忽略、只剩 `CRASH_LOADED` 时 guest 继续，sysrq-c 退出码 3 且没有复位请求；两个对照组（不挂设备、guest 把 events 清零）同一个 panic 走复位、退出码 0；`SHUTDOWN` 退出码 0，`PANICKED|SHUTDOWN` 退出码 3；重复的设备启动前被拒；Arch 7.x 的驱动模块自动加载、capability 7，poweroff 经 S5、不发 SHUTDOWN，sysrq-c 退出码 3 | **PASS** — `boot_tables_test` 1005 checks，`aml_test` 50 checks / 5 cases；`pvpanic` 8/8。对照：10 个源码 mutant 全部变红（`tests/mutate.py pvpanic`），DSDT 与 AML 的 4 个由单测挡住，设备与接线的 6 个各让 e2e 里对应的那一条用例变红。记录而不判定：一次启动加 panic，pvpanic 端口上只有 1 次读（驱动 probe）和 1 次写（panic 通知） | `make test unit tables pvpanic`；`tests/mutate.py pvpanic` |
+| E36 | CPUID 拓扑叶的逐 vCPU 取值（`smp` suite 里 guest 工具 `cpuidprobe` 把每个在线 CPU 的原始 CPUID 打印出来，判据是 Intel SDM Vol. 2A CPUID leaf 01H、0BH 和 AMD APM Vol. 3 的 CPUID Fn8000_0008、Fn8000_001D、Fn8000_001E，期望值按“1 socket × n core × 1 thread”的拓扑算出，不照抄 VMM 的输出）：4 vCPU 和 16 vCPU 各一次，leaf 1 的初始 APIC ID 与逻辑处理器数，0xB 三个 subleaf 的 shift、数量、层级类型和 x2APIC ID（host 的最大基本叶不到 0xB 时不检查），0x80000008 的 ApicIdSize 与 NC，0x8000001E 的扩展 APIC ID、每核线程数和 node，0x8000001D 报的 L3 共享数；LLC 分组按 VMM 是否打印“derives the LLC id from APIC ID bit 3”分两支判定 sysfs 的 `shared_cpu_list` | **PASS** — `smp` 6/6。对照：11 个源码 mutant 全部变红（`tests/mutate.py smp`），每个只改一个字段，都由 `cpuidprobe` 那一行或 LLC 分组挡住；Linux 自己的拓扑解析对其中几种错误不敏感（例如 leaf 1 的 APIC ID 写错，guest 仍然从 LAPIC 拿到正确 ID），只看 `/proc/cpuinfo` 和 sysfs 时它们会漏过。记录而不判定：本机（AMD Zen3）上清零 0x1F 和 LLC 警告两处改动是等价 mutant，Hygon 或 Zen1 host 上才有区别 | `make test smp`；`tests/mutate.py smp` |
 | E12 | 三处修复与分发接口提取之后，真实 Linux 仍能正常启动关机 | **PASS** — `kvm-basics` 7/7、`linux-boot` 8/8、`legacy-devices` 3/3（vmlinux 直启、bzImage 解压、initramfs shell、ACPI S5 关机、i8042 reset、四个设备探测无超时、PIO trace 结构） | `make test kvm-basics linux-boot legacy-devices` |
 
 ### 复现命令
@@ -229,6 +240,8 @@ make test acpi-events              # E34（Arch 用例需要 tools/build_arch_im
 tests/mutate.py acpi-events        # E34 对照
 make test pvpanic                  # E35（Arch 用例需要 tools/build_arch_image.sh 生成的镜像）
 tests/mutate.py pvpanic            # E35 对照
+make test smp                      # E36
+tests/mutate.py smp                # E36 对照
 make test arch-distro              # E31（需要 tools/build_arch_image.sh 生成的镜像）
 ARCH_DISTRO_BASELINE=1 tests/e2e/arch-distro.sh -a   # E31 基线
 ARCH_DISTRO_ONLINE=1 tests/e2e/arch-distro.sh -a     # E31 真实外网（需要 pasta）

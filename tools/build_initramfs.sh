@@ -11,6 +11,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+case "${1:-}" in
+    -h|--help)
+        echo "usage: tools/build_initramfs.sh [OUTPUT]   (default build/initramfs.cpio.gz)"
+        echo "Pack static busybox plus every tools/guest/*.c (compiled with \$CC, static) into a gzip cpio."
+        echo "Environment: BUSYBOX=/path/to/static/busybox, CC=compiler."
+        exit 0 ;;
+    -*)
+        echo "unknown option: $1 (see --help)" >&2
+        exit 2 ;;
+esac
 OUT="${1:-$ROOT/build/initramfs.cpio.gz}"
 BUSYBOX="${BUSYBOX:-$(command -v busybox || true)}"
 
@@ -131,6 +141,12 @@ cat > "$STAGE.mtree" <<'EOF'
 EOF
 trap 'rm -rf "$STAGE" "$STAGE.mtree"' EXIT
 
+# 先写同目录的临时文件再 rename：别的测试进程可能正拿着旧的 initramfs 启动
+# guest，直接覆盖会让它读到写了一半的文件；rename 之后已打开的读者仍然看到
+# 旧内容，新启动的读者看到完整的新文件。
 mkdir -p "$(dirname "$OUT")"
-( cd "$STAGE" && bsdtar --format newc -cf - . "@$STAGE.mtree" ) | gzip -9 > "$OUT"
+TMP_OUT="$OUT.tmp.$$"
+trap 'rm -rf "$STAGE" "$STAGE.mtree" "$TMP_OUT"' EXIT
+( cd "$STAGE" && bsdtar --format newc -cf - . "@$STAGE.mtree" ) | gzip -9 > "$TMP_OUT"
+mv -f "$TMP_OUT" "$OUT"
 echo "wrote $OUT ($(stat -c %s "$OUT") bytes)"

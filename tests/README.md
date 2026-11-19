@@ -26,7 +26,7 @@ tests/
 ├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── net_peer.py     host 侧 TCP 对端：HTTP 提供随机数据、接收一次上传并算哈希，listen 好之后才报 ready
 ├── mutate.py       源码层 mutant 的运行器：在源码副本里替换一段文字，重新构建单元测试，看它红没红
-├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py、system-reset.py、monitor.py、split-irqchip.py、acpi-events.py、pvpanic.py）
+├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py、system-reset.py、monitor.py、split-irqchip.py、acpi-events.py、pvpanic.py、smp.py）
 ├── gdb_session.py  gdbstub e2e 的协调者：起 VMM 和 gdb，从 host 侧探测 vCPU 线程停在哪，gdb 退出后经串口关机
 ├── gdb_checks.py   gdbstub e2e 里由 gdb -x 执行的检查脚本，每项打一行 GDBCHECK ok/FAIL
 ├── vmm_irqchip.sh  IRQCHIP=on|split 时代替 build/vmm 被调用：给 --mode linux 的启动补上 --kernel-irqchip，命令行里已经写了就不动
@@ -86,7 +86,7 @@ tests/
 | `fuzz` | 否 | 否（有则用作种子） | ASan/UBSan + “必须有限时间内返回” |
 | `kvm-basics` | 是 | 否 | VMM 日志 + payload 自检码 |
 | `linux-boot` | 是 | 是 | guest Linux 的启动日志 |
-| `smp` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑 |
+| `smp` | 是 | 是 | guest 的 `/proc/cpuinfo`、`/sys` 拓扑；`cpuidprobe` 在每个 vCPU 上读出的原始 CPUID 拓扑叶，期望值按 SDM/APM 的字段定义从 vCPU 数算出 |
 | `legacy-devices` | 是 | 是 | guest 驱动探测结论 + PIO trace 结构 |
 | `guest-memory` | 是 | 布局用例否，guest 用例是 | VMM 的 memslot/E820 日志 + guest 的 dmesg、`/proc/zoneinfo` |
 | `event-loop` | 是 | 是 | host 的 `/proc/<pid>/task/*/{comm,wchan}` + guest shell 回显 + VMM 日志 |
@@ -107,7 +107,7 @@ tests/
 
 `arch-distro` 不用 `guest-kernel/` 的内核，而是 `tools/build_arch_image.sh` 生成在 `arch-image/` 里的整套发行版（要联网、几分钟、不需要 root，`ARCH_IMAGE=` 可指向别处），没有时 SKIP；它还需要非特权 user namespace 和 dnsmasq。网络在 `unshare -rn` 里离线完成，结果不随外网和上游版本变化。设 `ARCH_DISTRO_BASELINE=1` 时额外跑 fio 和 iperf3 的固定负载基线（需要 host 装 iperf3），打印每次 I/O、每帧的 exit 数；没设时不跑也不计 SKIP，因为它多三次启动，而且给出的是供对照的数字，不是通过与否的判据。设 `ARCH_DISTRO_ONLINE=1` 时再跑真实外网的 `pacman -Syu`（需要 host 装 passt 包里的 pasta）：脚本在 pasta 建的 namespace 里把 pasta 的 tap 接口 `pst0` 和 VMM 的 `tap0` 挂进同一个 bridge，guest 的 DHCP 由 pasta 应答，拿到和 host 相同的地址，pacman 用镜像自带的 mirrorlist；结果取决于外网和软件源，所以不进默认用例，没设时不跑也不计 SKIP。
 
-`IRQCHIP=on|split` 让所有 suite 的 Linux 模式启动都带上对应的 `--kernel-irqchip`，用来确认两种中断控制器模式下现有设备的中断都对（split-irqchip 里程碑的第一条验收）；不设时 VMM 用默认的内核态 irqchip，取其他值时每个 suite 在 source `lib.sh` 时以退出码 2 退出。`split-irqchip` suite 自己显式指定模式，不受它影响。`tools/guest/` 下的程序（例如 `devmem`、`pitprobe`、`evkey`）编进 initramfs，改了之后下一个 suite 会按 mtime 发现 initramfs 过期并重新打包。
+`IRQCHIP=on|split` 让所有 suite 的 Linux 模式启动都带上对应的 `--kernel-irqchip`，用来确认两种中断控制器模式下现有设备的中断都对（split-irqchip 里程碑的第一条验收）；不设时 VMM 用默认的内核态 irqchip，取其他值时每个 suite 在 source `lib.sh` 时以退出码 2 退出。`split-irqchip` suite 自己显式指定模式，不受它影响。`tools/guest/` 下的程序（例如 `devmem`、`pitprobe`、`evkey`、`cpuidprobe`）编进 initramfs，改了之后下一个 suite 会按 mtime 发现 initramfs 过期并重新打包。
 
 `gdbstub` 还要求 PATH 里有 gdb，没有时 gdb 用例 SKIP。检查只用到 vmlinux 的符号表，不需要 DWARF。读 vCPU 线程的 `/proc/<pid>/task/*/syscall` 由 `gdb_session.py` 做而不是放进 gdb 脚本：Yama `ptrace_scope=1` 时只有 VMM 的祖先进程能读它，gdb 是 VMM 的兄弟进程。
 
