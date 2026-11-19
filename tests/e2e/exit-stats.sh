@@ -50,7 +50,7 @@ head1 "裸 payload：报告里的每个数都能从源码数出来"
 
 # real_mode_stub.S：out 0x10、in 0x10、out 0x10、hlt
 run_case "real16: 3 IO + 1 HLT, all on dbg-port" \
-    "$VMM" --mem 2M --exit-stats - "$PAYLOAD16"
+    "$VMM" --mode real16 --mem 2M --exit-stats - "$PAYLOAD16"
 expect_rc 0
 expect_re '^  IO +3 +3$'
 expect_re '^  HLT +1 +1$'

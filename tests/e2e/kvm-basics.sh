@@ -32,7 +32,7 @@ head1 "16 位实模式"
 # 只验第一个的话，IN 方向写错（比如没按 data_offset 定位缓冲区）
 # 也一样能过，所以这里两个都查。
 run_case "real16: OUT/IN + HLT" \
-    "$VMM" --mem 2M "$P16"
+    "$VMM" --mode real16 --mem 2M "$P16"
 expect_rc 0
 expect_has "16-bit real mode, CS:IP = 0000:0000"
 expect_has "guest wrote port 0x10: 0x42"
@@ -47,7 +47,7 @@ end_case
 # 2MiB 是实模式 payload 设计的最小内存。能跑说明我们没有偷偷
 # 依赖低端内存里的其它东西（BIOS/IVT/页表都不需要）。
 run_case "real16: 入口地址显式指定" \
-    "$VMM" --mem 2M --load 0 --entry 0 "$P16"
+    "$VMM" --mode real16 --mem 2M --load 0 --entry 0 "$P16"
 expect_rc 0
 expect_has "guest wrote port 0x10: 0x42"
 end_case
@@ -115,7 +115,7 @@ expect_not "entering guest"
 end_case
 
 run_case "未知选项" \
-    "$VMM" --nonsense "$P16"
+    "$VMM" --mode real16 --nonsense "$P16"
 expect_rc 1
 expect_has "unknown option"
 end_case
@@ -134,14 +134,14 @@ sudo dmesg | grep -i 'SVM\|kvm'" \
 如果看到的是 kvm_intel，说明机器认错了，本项目的 arch 后端会拒绝启动。"
 
 guide "用 KVM 的 tracepoint 核对 exit 次数" \
-"sudo perf stat -e 'kvm:kvm_exit,kvm:kvm_entry' -- ./build/vmm --mem 2M build/payload16.bin" \
+"sudo perf stat -e 'kvm:kvm_exit,kvm:kvm_entry' -- ./build/vmm --mode real16 --mem 2M build/payload16.bin" \
 "kvm:kvm_entry 与 kvm:kvm_exit 计数应相等。
 exit 总数会明显大于 VMM 打印的 exits=N —— 因为绝大多数 exit
 （比如 NPT violation 造成的缺页）被 kvm_amd 在内核态就地处理掉了，
 根本没返回用户态。这个差值本身就是 ioeventfd-irqfd 里程碑的动机。"
 
 guide "看清楚 VMM 到底发了哪些 ioctl" \
-"strace -f -e trace=ioctl,openat,mmap ./build/vmm --mem 2M build/payload16.bin 2>&1 | grep -E 'kvm|KVM'" \
+"strace -f -e trace=ioctl,openat,mmap ./build/vmm --mode real16 --mem 2M build/payload16.bin 2>&1 | grep -E 'kvm|KVM'" \
 "应能看到完整的三层 fd 序列：
     openat(\"/dev/kvm\")            -> 系统级 fd
     ioctl(3, KVM_CREATE_VM)        -> VM 级 fd
@@ -154,7 +154,7 @@ mmap 出来的那一页共享内存传递，这是 KVM 用户态接口的核心�
 guide "确认 SVM 特性位与 /proc/cpuinfo 一致" \
 "# 不要手写 grep 模式去对——那等于维护第二份命名表，早晚写错。
 # 直接把我们输出的那一行剪下来，拿它当模式去 /proc/cpuinfo 里查。
-./build/vmm --mem 2M build/payload16.bin 2>&1 | sed -n 's/.*SVM features: //p' | tr ' ' '\\n' | sort -u > /tmp/vmm-svm.txt
+./build/vmm --mode real16 --mem 2M build/payload16.bin 2>&1 | sed -n 's/.*SVM features: //p' | tr ' ' '\\n' | sort -u > /tmp/vmm-svm.txt
 
 grep -m1 '^flags' /proc/cpuinfo | tr ' ' '\\n' | grep -x -F -f /tmp/vmm-svm.txt | sort -u > /tmp/kernel-svm.txt
 

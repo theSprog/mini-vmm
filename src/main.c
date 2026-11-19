@@ -95,7 +95,7 @@ static int exitport_write(void *opaque, uint64_t off, uint32_t size,
 void vmm_config_default(struct vmm_config *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    cfg->mode         = VMM_BOOT_REAL16;
+    cfg->mode         = VMM_BOOT_LINUX;
     cfg->ram_size     = VMM_DEFAULT_RAM_SIZE;
     cfg->nr_vcpus     = 1;
     cfg->payload_gpa  = UINT64_MAX;   /* UINT64_MAX = 用模式默认值 */
@@ -113,7 +113,7 @@ void vmm_usage(const char *prog)
     fprintf(stderr,
 "Usage: %s [options] <payload.bin | vmlinux | bzImage>\n"
 "\n"
-"  --mode real16|long64|linux  Boot mode (default: real16)\n"
+"  --mode real16|long64|linux  Boot mode (default: linux)\n"
 "                           real16 = 16-bit real mode payload, entry GPA 0x0\n"
 "                           long64 = 64-bit long mode payload, entry GPA 0x%llx\n"
 "                           linux  = boot Linux: vmlinux (ELF) or bzImage,\n"
