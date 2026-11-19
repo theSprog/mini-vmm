@@ -45,14 +45,14 @@ suite_script() {
     gshell) echo "offline/guest_shell.sh" ;;
     milestones) echo "offline/milestones.sh" ;;
     kbump)  echo "offline/kernel_bump.sh" ;;
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events|pvpanic) echo "e2e/$1.sh" ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events|pvpanic|edu-dev) echo "e2e/$1.sh" ;;
     *)      echo "" ;;
     esac
 }
 
 suite_needs_kvm() {
     case "$1" in
-    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events|pvpanic) return 0 ;;
+    kvm-basics|linux-boot|smp|legacy-devices|guest-memory|event-loop|exit-stats|pci-bus|emu-net|emu-blk|pci-msi|gdbstub|system-reset|arch-distro|monitor|split-irqchip|acpi-events|pvpanic|edu-dev) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -83,12 +83,13 @@ suite_desc() {
     split-irqchip)  echo "split irqchip：用户态 PIC/IOAPIC/PIT、level EOI 退出、XT-PIC、PIT 补发策略与内核态对照" ;;
     acpi-events)    echo "ACPI 固定电源按钮：monitor 按键 → SCI → KEY_POWER，W1C 后 SCI 只触发一次，logind 经 S5 关机" ;;
     pvpanic)        echo "pvpanic：DSDT 描述的 QEMU0001 被驱动绑定，guest panic 时 VMM 以退出码 3 退出，对照组走复位路径" ;;
+    edu-dev)        echo "edu 教学设备：Arch guest 里编译自己的驱动，DMA 与 INTx/MSI 闭环，加载卸载 100 次资源配平（无镜像时 SKIP）" ;;
     arch-distro)    echo "Arch Linux：systemd running、本地仓库 pacman、reboot/poweroff 后文件系统干净（无镜像时 SKIP）" ;;
     esac
 }
 
 # e2e suite 以 MILESTONES.md 里的里程碑 ID 命名
-E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset monitor split-irqchip acpi-events pvpanic arch-distro"
+E2E_SUITES="kvm-basics linux-boot smp legacy-devices guest-memory event-loop exit-stats pci-bus emu-net emu-blk pci-msi gdbstub system-reset monitor split-irqchip acpi-events pvpanic edu-dev arch-distro"
 ALL_SUITES="unit negctl tables gshell milestones kbump fuzz $E2E_SUITES"
 DEFAULT_SUITES="unit negctl tables gshell milestones kbump $E2E_SUITES"
 

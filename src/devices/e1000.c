@@ -1168,8 +1168,10 @@ static int e1000_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int e1000_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus)
+static int e1000_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus,
+                        struct event_loop *loop)
 {
+    (void)loop;
     struct e1000 *s = d->dev;
     struct pci_device *p = &s->pci;
 

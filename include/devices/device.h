@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 struct blockdev;
+struct event_loop;
 struct netdev;
 struct opts;
 struct pci_bus;
@@ -31,9 +32,10 @@ struct vmm_device_type {
     /* o 在 create 返回后释放，要保留的字符串自己拷贝 */
     int  (*create)(const struct opts *o, void **dev);
     /* d->dev 是 create 分配的对象；有 netdev= / drive= 属性的设备从
-     * d->net / d->blk 拿后端 */
+     * d->net / d->blk 拿后端。loop 是还没启动的事件循环，设备要在 I/O 线程
+     * 上做事（例如异步完成命令）时在这里登记自己的 fd */
     int  (*attach)(const struct vmm_device *d, struct vmm_vm *vm,
-                   struct pci_bus *bus);
+                   struct pci_bus *bus, struct event_loop *loop);
     /* 整机复位（reset.h）时调用，参数是 d->dev。attach 成功后由
      * vmm_device_attach 登记；NULL 表示设备没有需要复位的状态 */
     void (*reset)(void *dev);
@@ -59,7 +61,7 @@ int  vmm_device_parse(const char *arg, struct vmm_device *out);
 
 /* 挂载阶段 */
 int  vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                       struct pci_bus *bus);
+                       struct pci_bus *bus, struct event_loop *loop);
 
 /* --device help 的输出 */
 void vmm_device_list_types(FILE *f);

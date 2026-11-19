@@ -682,7 +682,7 @@ static int boot_linux(struct vmm_vm *vm, const struct vmm_config *cfg,
             return r;
     }
     for (i = 0; i < cfg->nr_devices; i++) {
-        r = vmm_device_attach(&cfg->devices[i], vm, &g_pci);
+        r = vmm_device_attach(&cfg->devices[i], vm, &g_pci, loop);
         if (r != VMM_OK)
             return r;
     }

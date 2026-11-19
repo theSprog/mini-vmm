@@ -44,8 +44,11 @@ SNAPSHOT_SET=0
 ROOT_UUID=6d696e69-766d-4d2d-8172-636800000001
 
 # guest 里的包：base 是最小系统，linux 带来官方内核和 mkinitcpio；fio 和
-# iperf3 是 exit 基线的负载。
-PACKAGES=(base linux fio iperf3)
+# iperf3 是 exit 基线的负载；gcc、make 和 linux-headers 让 guest 能对着
+# 正在运行的内核编译外部模块（edu-dev 的驱动在 guest 里编译加载）。
+# linux-headers 和 linux 来自同一个软件源快照，版本必然一致，模块的
+# vermagic 才对得上。
+PACKAGES=(base linux linux-headers gcc make fio iperf3)
 # 测试仓库里的包：镜像里没装、依赖只有 glibc 的小包，e2e 让 guest 经
 # e1000 从 host 侧的本地仓库下载安装它。
 REPO_PACKAGES=(tree)

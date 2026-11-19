@@ -1338,8 +1338,10 @@ static int ahci_create(const struct opts *o, void **dev)
     return VMM_OK;
 }
 
-static int ahci_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus)
+static int ahci_attach(const struct vmm_device *d, struct vmm_vm *vm, struct pci_bus *bus,
+                       struct event_loop *loop)
 {
+    (void)loop;
     struct ahci *s = d->dev;
 
     s->vm = vm;

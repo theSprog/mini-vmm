@@ -19,6 +19,7 @@
 - 全模拟网卡 e1000（82540EM）：`--netdev tap,id=n0,ifname=tap0 --device e1000,netdev=n0`，Linux 自带的 e1000 驱动直接可用，支持校验和 offload 与 TSO
 - 全模拟 AHCI 磁盘控制器：`--drive id=d0,file=disk.img --device ahci,drive=d0`，后端是 raw 镜像，Linux 自带的 ahci 驱动直接可用，支持 NCQ（深度 32），能读写、能 `root=/dev/sda` 从盘启动
 - MSI：PCI 设备可以带单向量 MSI capability，AHCI 用上它，guest 关掉 MSI 时回到 INTx；guest 写进去的非法消息由 VMM 报出原因
+- 教学 PCI 设备 edu：`--device edu`，寄存器规范在 `include/devices/edu_regs.h`，带一个异步完成的 DMA 引擎和 INTx/MSI 中断；配套的 guest 驱动和测试工具在 `tools/guest/edu/`，在 guest 里对着发行版的 `linux-headers` 编译加载
 - `--gdb PORT`：用 gdb 调试 guest 内核，软件断点、硬件断点、单步、Ctrl-C，每个 vCPU 是 gdb 里的一个线程
 
 限制：MSI 只有单向量、每次都由 VMM 经 `KVM_SIGNAL_MSI` 注入，没有 MSI-X 和 irqfd；e1000 只用 INTx；磁盘 I/O 在 vCPU 线程上同步执行，NCQ 命令在设备里实际一次只有一条；PCI 只有总线 0，没有 PCIe 扩展配置空间。

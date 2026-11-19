@@ -26,7 +26,7 @@ tests/
 ├── guest_shell.py  启动 VMM，等 guest shell 提示符逐条送命令（e2e 用）
 ├── net_peer.py     host 侧 TCP 对端：HTTP 提供随机数据、接收一次上传并算哈希，listen 好之后才报 ready
 ├── mutate.py       源码层 mutant 的运行器：在源码副本里替换一段文字，重新构建单元测试，看它红没红
-├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py、system-reset.py、monitor.py、split-irqchip.py、acpi-events.py、pvpanic.py、smp.py）
+├── mutants/        源码层 mutant 清单，一个里程碑一个文件（pci-msi.py、gdbstub.py、system-reset.py、monitor.py、split-irqchip.py、acpi-events.py、pvpanic.py、smp.py、edu-dev.py）
 ├── gdb_session.py  gdbstub e2e 的协调者：起 VMM 和 gdb，从 host 侧探测 vCPU 线程停在哪，gdb 退出后经串口关机
 ├── gdb_checks.py   gdbstub e2e 里由 gdb -x 执行的检查脚本，每项打一行 GDBCHECK ok/FAIL
 ├── vmm_irqchip.sh  IRQCHIP=on|split 时代替 build/vmm 被调用：给 --mode linux 的启动补上 --kernel-irqchip，命令行里已经写了就不动
@@ -42,7 +42,7 @@ tests/
 │   ├── kernel_bump.sh  tools/kernel_bump.py 的自测：现场造两棵小内核树，逐项核对每种输出
 │   └── fuzz.sh         跑 build/fuzz/*，按墙钟时间计费
 ├── e2e/            需要 /dev/kvm，多数还需要 guest 内核；一个里程碑一个 suite，以里程碑 ID 命名
-│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh  monitor.sh  split-irqchip.sh  acpi-events.sh  pvpanic.sh  arch-distro.sh
+│   ├── kvm-basics.sh  linux-boot.sh  smp.sh  legacy-devices.sh  guest-memory.sh  event-loop.sh  exit-stats.sh  pci-bus.sh  emu-net.sh  emu-blk.sh  pci-msi.sh  gdbstub.sh  system-reset.sh  monitor.sh  split-irqchip.sh  acpi-events.sh  pvpanic.sh  edu-dev.sh  arch-distro.sh
 ├── unit/           C 单元测试源码
 │   ├── harness.h           最小断言框架
 │   ├── mutants.h           negative control 的接口定义
@@ -57,6 +57,7 @@ tests/
 │   ├── netdev_test.c       --netdev 解析与引用规则；在自建的 user + net namespace 里经真实 TAP 收发帧、RX 流控
 │   ├── ahci_test.c         AHCI 控制器：HBA/端口复位、COMRESET 与签名、PxIS 到 IS 再到 INTx 的三级中断、MSI 模式下何时发消息、命令出错停端口与恢复、寄存器位与访问宽度；IDENTIFY 数据、DMA 读写与 PRDT 的逐段检查、FLUSH 与写缓存、SET FEATURES；NCQ 的接收与 SDB 完成、出错后经日志 10h 恢复，READ/WRITE LOG EXT
 │   ├── blockdev_test.c     --drive 解析与引用规则；镜像加锁、多段读写、越界与溢出、只读盘、部分传输与 EINTR
+│   ├── edu_test.c          edu 教学设备模型：寄存器与访问宽度、缓冲区的任意宽度访问、INT_RAISE/INT_ACK 与 INTx 电平、MSI 只在原因位由 0 变 1 时发、DMA 异步完成与参数快照、BAD_RANGE/BUS_ERROR、64 位地址、复位丢弃执行中的命令
 │   ├── e1000_test.c        e1000 设备模型：EEPROM 位操作、PHY、中断原因、TX 校验和与 TSO、RX 过滤与描述符环
 │   ├── serial8250_test.c   按 Linux 8250 探测序列回放，判定 16550A
 │   ├── gdb_test.c          gdb 远程协议：组包与转义、ack 与重发、g/p/P 的寄存器布局、m/M、Z/z 与 int3 隐藏、vCont 与停止应答、target.xml；x86 断点表、DR7、KVM_SET_GUEST_DEBUG 控制字、KVM_EXIT_DEBUG 归类、寄存器换算
@@ -103,6 +104,7 @@ tests/
 | `split-irqchip` | 是 | 是 | `--kernel-irqchip` 各种取值的报错；两种模式各启动一次：`pci=nomsi` 下 AHCI 的 INTx 走 IO-APIC 17-fasteoi、读盘不超时，split 下 `info irqchip` 的 EOI exit 数和 pin 17 投递数不少于 AHCI 中断数、exit 统计里有 IOAPIC_EOI 和用户态 PIT/PIC/IOAPIC 的访问，内核模式里一项都没有；guest 里重放 Linux 的 PIT 校准（`pitprobe`），测出的 TSC 频率与 kvmclock 报告的相差不到 1%；`noapic` 下时钟和串口走 XT-PIC，split 下经 `KVM_INTERRUPT` 注入过 ExtINT；`no-kvmclock` 下 TSC 校准走 PIT 的三种合法结局之一；`noapictimer` 把 tick 钉在 PIT 上，VMM 被 SIGSTOP 一秒后，补发开时 jiffies 与 CLOCK_MONOTONIC 相差不超过 50 ms、关时落后至少 500 ms，两种模式下 IRQ0 计数与 jiffies 一致 |
 | `acpi-events` | 是 | 是（Arch 用例用 `tools/build_arch_image.sh` 的镜像，没有时 SKIP） | 两种 irqchip 下各一次：FADT 声明的固定电源按钮只有一个 `LNXPWRBN`，IRQ 9 在 guest 里是 `9-fasteoi acpi`，没有全局锁不存在的报错；monitor `system_powerdown` 两次，guest 里 `evkey` 每次收到 `KEY_POWER` 按下和松开，SCI 中断计数和 `ff_pwr_btn` 每次正好加 1，monitor 报 `presses since reset: 2, SCI raised 2 times`；`poweroff -f` 经 PM1_CNT 写 S5；`acpi=off` 时回复说明 `PWRBTN_EN is clear`、SCI 不拉起；Arch 的 systemd-logind 在监听 Power Button，按下后正常关机、`reboot: Power down`、VMM 以 S5 退出码 0 结束 |
 | `pvpanic` | 是 | 是（Arch 用例用 `tools/build_arch_image.sh` 的镜像，没有时 SKIP；guest 内核不带 `CONFIG_PVPANIC_MMIO=y` 时 BusyBox 用例 SKIP 并提示重新构建） | `--device pvpanic` 时 guest 的 `pvpanic-mmio` 绑定 `QEMU0001:00`，capability 为 7；`/dev/port` 读 0x505 得 0x07，写 0xF8 被忽略，写 0xFA 只记 `CRASH_LOADED`、guest 继续；sysrq-c 后 VMM 打印 `pvpanic: guest panicked (events 0x01: PANICKED)`、退出码 3；对照组（不挂设备、guest 把 `events` 清零）同一个 panic 走复位，`--no-reboot` 下退出码 0；写 `SHUTDOWN` 退出码 0，`PANICKED|SHUTDOWN` 退出码 3；两个 pvpanic 启动前报错；Arch 的驱动模块自动加载、capability 7，`systemctl poweroff` 经 S5 退出且没有 SHUTDOWN 事件，sysrq-c 退出码 3 |
+| `edu-dev` | 是 | 否（用 `tools/build_arch_image.sh` 的镜像，没有镜像或镜像里没有 `linux-headers` 时 SKIP；host 要有 `debugfs`） | guest 里用 `linux-headers` 编出 `tools/guest/edu` 的驱动和 `eductl`，vermagic 与 `uname -r` 一致；驱动映射 BAR0、申请 MSI、注册 `/dev/edu0`；MSI 和 INTx 下 `eductl selftest 20` 都打印 `rounds ok`，中断数和 DMA 完成数各等于轮数的 4 倍和 3 倍；卸载后模块、字符设备、中断、`/proc/iomem` 占用、Bus Master、MSI Enable 全部归还；加载卸载 100 次（MSI/INTx 交替）探测各 50 次、`dma:dma_alloc`/`dma:dma_free` 次数相等、dmesg 没有警告；对照组：remove 漏掉 `dma_free_coherent` 的驱动副本 10 次分配 0 次释放 |
 | `arch-distro` | 是 | 否，用 `tools/build_arch_image.sh` 生成的 Arch 镜像 | 官方 linux 包的内核和 initramfs 直启，systemd 自己报告 `running`、`systemctl --failed` 为空，dmesg 没有超时、err/warn 只有已查明与 VMM 无关的几条；e1000 经 DHCP 上网，pacman 从本地仓库装包并校验签名；`systemctl reboot` 后 boot_id 变了、再次 `running`、systemd-fsck 报 clean；`systemctl poweroff` 经 ACPI S5 退出，host 上 `e2fsck -fn` 无错；两次关机各在 30 秒内完成 |
 
 `linux-boot` / `smp` / `legacy-devices` / `guest-memory` / `event-loop` / `exit-stats` / `pci-bus` / `emu-net` / `emu-blk` / `pci-msi` / `gdbstub` / `system-reset` / `monitor` / `split-irqchip` / `acpi-events` / `pvpanic` 需要 guest 内核。没设 `VMLINUX=`、`BZIMAGE=` 时用 `tools/build_guest_kernel.sh` 构建在 `guest-kernel/` 里的 vmlinux 和 bzImage，那里也没有时相关用例 SKIP。Linux 模式必须带 `--initrd`，各 suite 经 `lib.sh` 的 `initrd_ready` 使用 `build/initramfs.cpio.gz`：它不存在，或者比 `tools/build_initramfs.sh`、`tools/guest/*.c` 里任何一个旧时，先调 `tools/build_initramfs.sh` 重新生成；打包失败（例如没有静态 busybox）时相关用例 SKIP。

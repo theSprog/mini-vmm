@@ -7,12 +7,14 @@
 #include "devices/device.h"
 #include "devices/ahci.h"
 #include "devices/e1000.h"
+#include "devices/edu.h"
 #include "devices/pci_test.h"
 #include "devices/pvpanic.h"
 
 static const struct vmm_device_type *const device_types[] = {
     &ahci_device_type,
     &e1000_device_type,
+    &edu_device_type,
     &pci_test_device_type,
     &pvpanic_device_type,
 };
@@ -86,9 +88,9 @@ out:
 }
 
 int vmm_device_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                      struct pci_bus *bus)
+                      struct pci_bus *bus, struct event_loop *loop)
 {
-    int r = d->type->attach(d, vm, bus);
+    int r = d->type->attach(d, vm, bus, loop);
 
     if (r == VMM_OK && d->type->reset)
         r = vmm_register_reset(vm, d->type->name, d->type->reset, d->dev);

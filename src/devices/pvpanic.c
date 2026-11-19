@@ -68,8 +68,9 @@ static int pvpanic_create(const struct opts *o, void **dev)
 }
 
 static int pvpanic_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                          struct pci_bus *bus)
+                          struct pci_bus *bus, struct event_loop *loop)
 {
+    (void)loop;
     struct vmm_io_dev dev;
     int r;
 

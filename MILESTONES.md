@@ -28,7 +28,7 @@
 | 5 | pci-msi ✓ |
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
-| 8 | monitor ✓ · pvpanic ✓ · edu-dev · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
+| 8 | monitor ✓ · pvpanic ✓ · edu-dev ✓ · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
 | 9 | acpi-events ✓ · pci-msix · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
@@ -217,11 +217,11 @@ mkinitcpio 的 autodetect hook 按构建机（host）的 sysfs 挑选模块，�
 
 guest 侧内核模块这条线的起点。设备的寄存器规范由本项目自己定义并写进仓库，VMM 侧和 guest 侧的代码都在自己手里，任何一侧出问题都能直接加诊断。后面 MSI-X、IOMMU、SR-IOV 的验证都以它为试验台。
 
-- [ ] 设备规范文档写明寄存器布局、DMA 引擎和中断语义
-- [ ] guest 驱动模块在 Arch guest 里用 `linux-headers` 编译和加载，探测设备、映射 BAR、注册字符设备
-- [ ] DMA 引擎能在 guest 内存和设备内部缓冲区之间双向搬运数据，驱动用 DMA API 分配缓冲区，结果校验一致
-- [ ] INTx 和 MSI 两种中断都能完成一次“提交命令 → 设备完成 → 中断 → 驱动确认”的闭环
-- [ ] 模块卸载后没有资源泄漏，重复加载卸载 100 次行为一致
+- [x] 设备规范文档写明寄存器布局、DMA 引擎和中断语义
+- [x] guest 驱动模块在 Arch guest 里用 `linux-headers` 编译和加载，探测设备、映射 BAR、注册字符设备
+- [x] DMA 引擎能在 guest 内存和设备内部缓冲区之间双向搬运数据，驱动用 DMA API 分配缓冲区，结果校验一致
+- [x] INTx 和 MSI 两种中断都能完成一次“提交命令 → 设备完成 → 中断 → 驱动确认”的闭环
+- [x] 模块卸载后没有资源泄漏，重复加载卸载 100 次行为一致
 
 ### pci-msix — MSI-X 中断
 

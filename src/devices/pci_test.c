@@ -84,8 +84,9 @@ static int pci_test_create(const struct opts *o, void **dev)
 }
 
 static int pci_test_dev_attach(const struct vmm_device *d, struct vmm_vm *vm,
-                               struct pci_bus *bus)
+                               struct pci_bus *bus, struct event_loop *loop)
 {
+    (void)loop;
     (void)vm;
     return pci_test_attach(d->dev, bus);
 }
