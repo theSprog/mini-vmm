@@ -19,18 +19,12 @@
  * 里置上 KASLR_FLAG。所以 VMM 这边比直启 vmlinux 还省事：不用解析
  * ELF，也不用伪造 setup header。
  */
-#define _GNU_SOURCE
-#include <errno.h>
-#include <fcntl.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
 
 #include "vmm.h"
 #include "memory.h"
+#include "boot/image_file.h"
 #include "boot/kernel_loader.h"
 #include "boot/zeropage.h"
 
@@ -42,107 +36,140 @@
 #define BZ_MIN_PROTOCOL     0x020c      /* 2.12：有 xloadflags，能声明 64 位入口 */
 #define BZ_DEFAULT_LOAD     0x100000ULL /* 协议 2.10 之前没有 pref_address */
 
-int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
+/* 只接受能从 64 位入口启动、装在 1MiB 以上的 bzImage */
+static int check_header(const struct setup_header *hdr, const char *path)
 {
-    struct setup_header hdr;
-    const uint8_t *file;
-    struct stat st;
-    uint64_t load, need, pm_off, pm_len, hdr_end;
-    enum gpa_status gs;
-    uint8_t *dst;
-    int fd, r = VMM_ERR_INVAL;
-
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) {
-        vmm_err("open %s: %s", path, strerror(errno));
-        return VMM_ERR_SYS;
-    }
-    if (fstat(fd, &st) < 0) {
-        vmm_err("fstat %s: %s", path, strerror(errno));
-        close(fd);
-        return VMM_ERR_SYS;
-    }
-    if ((uint64_t)st.st_size < BZ_HDR_OFF + sizeof(hdr)) {
-        vmm_err("%s: too small for a bzImage setup header", path);
-        close(fd);
+    if (hdr->version < BZ_MIN_PROTOCOL) {
+        vmm_err("%s: boot protocol %u.%02u is too old, need >= 2.12",
+                path, hdr->version >> 8, hdr->version & 0xff);
         return VMM_ERR_INVAL;
     }
-    file = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-    if (file == MAP_FAILED) {
-        vmm_err("mmap %s: %s", path, strerror(errno));
-        return VMM_ERR_SYS;
-    }
-
-    /* header 在文件里没有对齐保证，先整体拷出来再看 */
-    memcpy(&hdr, file + BZ_HDR_OFF, sizeof(hdr));
-
-    if (hdr.version < BZ_MIN_PROTOCOL) {
-        vmm_err("%s: boot protocol %u.%02u is too old, need >= 2.12",
-                path, hdr.version >> 8, hdr.version & 0xff);
-        goto out;
-    }
-    if (!(hdr.xloadflags & XLF_KERNEL_64)) {
+    if (!(hdr->xloadflags & XLF_KERNEL_64)) {
         vmm_err("%s: bzImage has no 64-bit entry point (XLF_KERNEL_64 clear), "
                 "is it a 32-bit kernel?", path);
-        goto out;
+        return VMM_ERR_INVAL;
     }
-    if (!(hdr.loadflags & LOADED_HIGH)) {
+    if (!(hdr->loadflags & LOADED_HIGH)) {
         vmm_err("%s: zImage (loaded below 1MiB) is not supported", path);
-        goto out;
+        return VMM_ERR_INVAL;
     }
+    return VMM_OK;
+}
 
-    /* 保护模式部分从 (setup_sects + 1) 个扇区之后开始 */
-    pm_off = (uint64_t)((hdr.setup_sects ? hdr.setup_sects : BZ_DEFAULT_SECTS) + 1)
-             * BZ_SECTOR;
-    if (pm_off >= (uint64_t)st.st_size) {
+/* 保护模式部分在文件里的位置：从 (setup_sects + 1) 个扇区之后到文件末尾 */
+static int locate_pm_part(const struct setup_header *hdr, uint64_t file_size,
+                          const char *path, uint64_t *off, uint64_t *len)
+{
+    *off = (uint64_t)((hdr->setup_sects ? hdr->setup_sects : BZ_DEFAULT_SECTS) + 1)
+           * BZ_SECTOR;
+    if (*off >= file_size) {
         vmm_err("%s: setup_sects=%u points beyond the end of the file",
-                path, hdr.setup_sects);
-        goto out;
+                path, hdr->setup_sects);
+        return VMM_ERR_INVAL;
     }
-    pm_len = (uint64_t)st.st_size - pm_off;
+    *len = file_size - *off;
     /* syssize 以 16 字节为单位（协议 2.04 起是 4 字节字段），只做健全性检查 */
-    if (hdr.syssize && (uint64_t)hdr.syssize * 16 > pm_len) {
+    if (hdr->syssize && (uint64_t)hdr->syssize * 16 > *len) {
         vmm_err("%s: truncated, syssize says 0x%llx bytes but only 0x%llx present",
-                path, (unsigned long long)hdr.syssize * 16,
-                (unsigned long long)pm_len);
-        goto out;
+                path, (unsigned long long)hdr->syssize * 16,
+                (unsigned long long)*len);
+        return VMM_ERR_INVAL;
     }
+    return VMM_OK;
+}
 
-    /* header 的实际长度 = 0x202 + 0x201 处那个字节（短跳转的偏移），
-     * 更老的内核 header 更短；超过本结构体的部分我们也不认识，截掉 */
-    hdr_end = BZ_JUMP_OFF + 2 + file[BZ_JUMP_OFF + 1];
-    if (hdr_end > BZ_HDR_OFF + sizeof(hdr))
-        hdr_end = BZ_HDR_OFF + sizeof(hdr);
+/* header 的实际长度 = 0x202 + 0x201 处那个字节（短跳转的偏移）- 0x1f1，
+ * 更老的内核 header 更短；超过本结构体的部分我们也不认识，截掉 */
+static size_t header_len(const uint8_t *file)
+{
+    uint64_t end = BZ_JUMP_OFF + 2 + file[BZ_JUMP_OFF + 1];
 
-    /* 装载地址：优先 pref_address（2.10 起有），它就是链接地址，
-     * 解压器不必再挪一次。relocatable 内核要求按 kernel_alignment 对齐。 */
-    load = hdr.pref_address ? hdr.pref_address : BZ_DEFAULT_LOAD;
-    if (hdr.relocatable_kernel && hdr.kernel_alignment &&
-        (load & (hdr.kernel_alignment - 1))) {
+    if (end > BZ_HDR_OFF + sizeof(struct setup_header))
+        end = BZ_HDR_OFF + sizeof(struct setup_header);
+    return end - BZ_HDR_OFF;
+}
+
+/* 装载地址：优先 pref_address（2.10 起有），它就是链接地址，
+ * 解压器不必再挪一次。relocatable 内核要求按 kernel_alignment 对齐。 */
+static int choose_load_addr(const struct setup_header *hdr, const char *path,
+                            uint64_t *load)
+{
+    *load = hdr->pref_address ? hdr->pref_address : BZ_DEFAULT_LOAD;
+    if (hdr->relocatable_kernel && hdr->kernel_alignment &&
+        (*load & (hdr->kernel_alignment - 1))) {
         vmm_err("%s: pref_address 0x%llx is not aligned to kernel_alignment 0x%x",
-                path, (unsigned long long)load, hdr.kernel_alignment);
-        goto out;
+                path, (unsigned long long)*load, hdr->kernel_alignment);
+        return VMM_ERR_INVAL;
     }
-    if (load < ZP_HIGH_MEM_START) {
+    if (*load < ZP_HIGH_MEM_START) {
         vmm_err("%s: load address 0x%llx is below 1MiB",
-                path, (unsigned long long)load);
-        goto out;
+                path, (unsigned long long)*load);
+        return VMM_ERR_INVAL;
     }
+    return VMM_OK;
+}
 
-    /* init_size 是解压、重定位期间从装载地址起需要的线性内存，
-     * 比文件大得多（测试 guest 内核约 44MiB，文件约 15MiB），必须整段是 RAM */
-    need = hdr.init_size > pm_len ? hdr.init_size : pm_len;
-    gs = gpa_to_hva(vm, load, need, (void **)&dst);
+/* 把保护模式部分拷到 load。init_size 是解压、重定位期间从装载地址起需要
+ * 的线性内存，比文件大得多（解压后的内核加上解压器的工作区），必须整段
+ * 是 RAM。*need 返回占用的长度 */
+static int copy_pm_part(struct vmm_vm *vm, const struct setup_header *hdr,
+                        const uint8_t *src, uint64_t len, uint64_t load,
+                        const char *path, uint64_t *need)
+{
+    enum gpa_status gs;
+    uint8_t *dst;
+
+    *need = hdr->init_size > len ? hdr->init_size : len;
+    gs = gpa_to_hva(vm, load, *need, (void **)&dst);
     if (gs != GPA_OK) {
         vmm_err("%s: needs RAM [0x%llx, 0x%llx) (init_size): %s, "
                 "increase --mem", path, (unsigned long long)load,
-                (unsigned long long)(load + need), gpa_status_str(gs));
-        goto out;
+                (unsigned long long)(load + *need), gpa_status_str(gs));
+        return VMM_ERR_INVAL;
     }
-    memcpy(dst, file + pm_off, pm_len);
+    memcpy(dst, src, len);
     /* guest RAM 是匿名映射，本来就是 0；显式清零让结果不依赖这一点 */
-    memset(dst + pm_len, 0, need - pm_len);
+    memset(dst + len, 0, *need - len);
+    return VMM_OK;
+}
+
+/* kernel_version 是版本字符串相对 0x200 的偏移 */
+static void log_kernel_version(const struct setup_header *hdr,
+                               const struct image_file *f)
+{
+    uint64_t off = (uint64_t)hdr->kernel_version + BZ_JUMP_OFF;
+    int max;
+
+    if (!hdr->kernel_version || off >= f->size)
+        return;
+    max = (int)(f->size - off < 80 ? f->size - off : 80);
+    vmm_info("bzImage: %.*s", max, (const char *)f->data + off);
+}
+
+int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
+{
+    struct setup_header hdr;
+    struct image_file f;
+    uint64_t load, need, pm_off, pm_len;
+    int r;
+
+    r = image_file_map(path, BZ_HDR_OFF + sizeof(hdr),
+                       "a bzImage setup header", &f);
+    if (r != VMM_OK)
+        return r;
+
+    /* header 在文件里没有对齐保证，先整体拷出来再看 */
+    memcpy(&hdr, f.data + BZ_HDR_OFF, sizeof(hdr));
+
+    r = check_header(&hdr, path);
+    if (r == VMM_OK)
+        r = locate_pm_part(&hdr, f.size, path, &pm_off, &pm_len);
+    if (r == VMM_OK)
+        r = choose_load_addr(&hdr, path, &load);
+    if (r == VMM_OK)
+        r = copy_pm_part(vm, &hdr, f.data + pm_off, pm_len, load, path, &need);
+    if (r != VMM_OK)
+        goto out;
 
     /* 协议要求：relocatable 内核装好后 loader 要把 code32_start 改成实际
      * 装载地址。64 位入口不经过它，但照做无害，工具也能据此看到装在哪 */
@@ -153,25 +180,16 @@ int bzimage_load(struct vmm_vm *vm, const char *path, struct kernel_image *img)
     img->lo_gpa    = load;
     img->hi_gpa    = load + need;
     img->hdr       = hdr;
-    img->hdr_len   = hdr_end - BZ_HDR_OFF;
+    img->hdr_len   = header_len(f.data);
 
-    /* kernel_version 是版本字符串相对 0x200 的偏移 */
-    if (hdr.kernel_version &&
-        (uint64_t)hdr.kernel_version + BZ_JUMP_OFF < (uint64_t)st.st_size) {
-        uint64_t off = (uint64_t)hdr.kernel_version + BZ_JUMP_OFF;
-        int max = (int)((uint64_t)st.st_size - off < 80 ?
-                        (uint64_t)st.st_size - off : 80);
-
-        vmm_info("bzImage: %.*s", max, (const char *)file + off);
-    }
+    log_kernel_version(&hdr, &f);
     vmm_info("bzImage: protocol %u.%02u, setup %llu bytes, payload 0x%llx bytes "
              "-> GPA 0x%llx, init_size 0x%x, entry 0x%llx",
              hdr.version >> 8, hdr.version & 0xff,
              (unsigned long long)pm_off, (unsigned long long)pm_len,
              (unsigned long long)load, hdr.init_size,
              (unsigned long long)img->entry_gpa);
-    r = VMM_OK;
 out:
-    munmap((void *)file, (size_t)st.st_size);
+    image_file_unmap(&f);
     return r;
 }

@@ -65,34 +65,24 @@ int vm_create_vcpu(struct vmm_vm *vm, int id)
     return VMM_OK;
 }
 
-int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
+/* KVM 的 API 版本，以及这个 VMM 离不开的几项能力 */
+static int check_kvm(struct vmm_vm *vm, const struct vmm_config *cfg)
 {
-    int r, i;
+    int max_vcpus;
 
-    memset(vm, 0, sizeof(*vm));
-    vm->kvm_fd = vm->vm_fd = vm->stats_fd = -1;
-    vm->cfg = *cfg;
-    pthread_mutex_init(&vm->io_lock, NULL);
-    io_trace_open(vm);
-
-    /* 1. 打开 /dev/kvm */
-    vm->kvm_fd = kvm_open();
-    if (vm->kvm_fd < 0)
-        return VMM_ERR_SYS;
-
-    /* 2. API 版本必须精确等于 12。KVM 从 2007 年定下这个数字后再没
-     *    改过——新功能全部通过 KVM_CHECK_EXTENSION 增量协商，
-     *    而不是升版本号。所以不等于 12 就说明环境根本不对。 */
+    /* API 版本必须精确等于 12。KVM 从 2007 年定下这个数字后再没
+     * 改过——新功能全部通过 KVM_CHECK_EXTENSION 增量协商，
+     * 而不是升版本号。所以不等于 12 就说明环境根本不对。 */
     vm->api_version = kvm_get_api_version(vm->kvm_fd);
     if (vm->api_version != KVM_API_VERSION) {
         vmm_err("KVM API version %d, expected %d",
                 vm->api_version, KVM_API_VERSION);
-        goto fail;
+        return VMM_ERR_SYS;
     }
 
     if (!kvm_check_extension(vm->kvm_fd, KVM_CAP_USER_MEMORY)) {
         vmm_err("kernel does not support KVM_CAP_USER_MEMORY");
-        goto fail;
+        return VMM_ERR_SYS;
     }
 
     vm->vcpu_mmap_size = (size_t)kvm_get_vcpu_mmap_size(vm->kvm_fd);
@@ -101,70 +91,93 @@ int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
                 "sizeof(kvm_run)=%zu; the linux/kvm.h used at build "
                 "time is probably newer than the running kernel",
                 vm->vcpu_mmap_size, sizeof(struct kvm_run));
-        goto fail;
+        return VMM_ERR_SYS;
     }
 
-    r = kvm_check_extension(vm->kvm_fd, KVM_CAP_MAX_VCPUS);
+    max_vcpus = kvm_check_extension(vm->kvm_fd, KVM_CAP_MAX_VCPUS);
     vmm_info("KVM API v%d, kvm_run size %zu bytes, max vCPUs %d",
-             vm->api_version, vm->vcpu_mmap_size, r);
-    if (r > 0 && cfg->nr_vcpus > r) {
+             vm->api_version, vm->vcpu_mmap_size, max_vcpus);
+    if (max_vcpus > 0 && cfg->nr_vcpus > max_vcpus) {
         vmm_err("%d vCPUs requested, KVM allows at most %d",
-                cfg->nr_vcpus, r);
-        goto fail;
+                cfg->nr_vcpus, max_vcpus);
+        return VMM_ERR_SYS;
     }
 
     /* 停机协调依赖 kvm_run->immediate_exit，见 smp.c vm_request_stop() */
     if (!kvm_check_extension(vm->kvm_fd, KVM_CAP_IMMEDIATE_EXIT)) {
         vmm_err("kernel does not support KVM_CAP_IMMEDIATE_EXIT (needs 4.11+)");
-        goto fail;
+        return VMM_ERR_SYS;
     }
+    return VMM_OK;
+}
 
-    /* 3. 探测 CPU 厂商并校验虚拟化能力 */
+/* 探测 CPU 厂商并校验虚拟化能力 */
+static int probe_arch(struct vmm_vm *vm)
+{
     vm->arch = arch_probe();
     if (!vm->arch)
-        goto fail;
-    if (vm->arch->check_features) {
-        r = vm->arch->check_features(vm);
-        if (r != VMM_OK)
-            goto fail;
-    }
+        return VMM_ERR_SYS;
+    if (vm->arch->check_features)
+        return vm->arch->check_features(vm);
+    return VMM_OK;
+}
 
-    /* 4. 创建 VM */
+/* 创建 VM，再做厂商相关的 VM 级准备（Intel 的 TSS/identity map 在这里） */
+static int create_vm_fd(struct vmm_vm *vm, const struct vmm_config *cfg)
+{
     vm->vm_fd = kvm_create_vm(vm->kvm_fd);
     if (vm->vm_fd < 0)
-        goto fail;
+        return VMM_ERR_SYS;
     if (cfg->exit_stats_path || cfg->monitor_path)
         vm->stats_fd = kvm_get_stats_fd(vm->vm_fd);
+    if (vm->arch->prepare_vm)
+        return vm->arch->prepare_vm(vm);
+    return VMM_OK;
+}
 
-    /* 5. 厂商相关的 VM 级准备（Intel 的 TSS/identity map 在这里） */
-    if (vm->arch->prepare_vm) {
-        r = vm->arch->prepare_vm(vm);
-        if (r != VMM_OK)
-            goto fail;
-    }
+/* Linux 需要中断控制器和 PIT，且必须在创建 vCPU 之前建好：KVM 在
+ * KVM_CREATE_VCPU 时才决定是否给 vCPU 挂内核态 LAPIC。裸 payload 模式
+ * 不创建任何中断控制器。 */
+static int create_irqchip(struct vmm_vm *vm, const struct vmm_config *cfg)
+{
+    const struct irqchip_ops *chip;
+    int r;
 
-    /* 6. 分配并注册 guest 物理内存 */
-    r = mem_init(vm, cfg->ram_size);
+    if (cfg->mode != VMM_BOOT_LINUX)
+        return VMM_OK;
+    chip = cfg->irqchip == VMM_IRQCHIP_SPLIT ? &irqchip_split_ops
+                                             : &irqchip_kernel_ops;
+    r = chip->create(vm);
     if (r != VMM_OK)
+        return r;
+    vm->irqchip = chip;
+    return VMM_OK;
+}
+
+int vm_create(struct vmm_vm *vm, const struct vmm_config *cfg)
+{
+    int i;
+
+    memset(vm, 0, sizeof(*vm));
+    vm->kvm_fd = vm->vm_fd = vm->stats_fd = -1;
+    vm->cfg = *cfg;
+    pthread_mutex_init(&vm->io_lock, NULL);
+    io_trace_open(vm);
+
+    vm->kvm_fd = kvm_open();
+    if (vm->kvm_fd < 0)
+        return VMM_ERR_SYS;
+
+    /* 顺序有依赖：VM 要在确认能力和厂商之后创建，内存和中断控制器
+     * 挂在 VM 上，vCPU 最后建（理由见 create_irqchip） */
+    if (check_kvm(vm, cfg) != VMM_OK ||
+        probe_arch(vm) != VMM_OK ||
+        create_vm_fd(vm, cfg) != VMM_OK ||
+        mem_init(vm, cfg->ram_size) != VMM_OK ||
+        create_irqchip(vm, cfg) != VMM_OK)
         goto fail;
-
-    /* 7. Linux 需要中断控制器和 PIT，且必须在创建 vCPU 之前建好：
-     *    KVM 在 KVM_CREATE_VCPU 时才决定是否给 vCPU 挂内核态 LAPIC。 */
-    if (cfg->mode == VMM_BOOT_LINUX) {
-        const struct irqchip_ops *chip = cfg->irqchip == VMM_IRQCHIP_SPLIT
-                                       ? &irqchip_split_ops
-                                       : &irqchip_kernel_ops;
-
-        r = chip->create(vm);
-        if (r != VMM_OK)
-            goto fail;
-        vm->irqchip = chip;
-    }
-
-    /* 8. 创建 vCPU */
     for (i = 0; i < cfg->nr_vcpus; i++) {
-        r = vm_create_vcpu(vm, i);
-        if (r != VMM_OK)
+        if (vm_create_vcpu(vm, i) != VMM_OK)
             goto fail;
     }
 

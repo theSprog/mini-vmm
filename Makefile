@@ -40,6 +40,7 @@ SRCS := \
 	src/devices/i8042.c \
 	src/boot/elf_loader.c \
 	src/boot/bzimage.c \
+	src/boot/image_file.c \
 	src/boot/kernel_loader.c \
 	src/boot/zeropage.c \
 	src/boot/mptable.c \
@@ -329,21 +330,23 @@ $(BUILD)/tests/kvm_stats_test: tests/unit/kvm_stats_test.c src/kvm_stats.c
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/elf_loader_fuzz: tests/fuzz/elf_loader_fuzz.c \
-                               src/boot/elf_loader.c
+                               src/boot/elf_loader.c src/boot/image_file.c
 	@mkdir -p $(dir $@)
 	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $(filter %.c,$^)
 
-$(BUILD)/fuzz/bzimage_fuzz: tests/fuzz/bzimage_fuzz.c src/boot/bzimage.c
+$(BUILD)/fuzz/bzimage_fuzz: tests/fuzz/bzimage_fuzz.c src/boot/bzimage.c \
+                            src/boot/image_file.c
 	@mkdir -p $(dir $@)
 	$(FUZZ_CC) $(FUZZ_CFLAGS) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/elf_loader_fuzz_noalign: tests/fuzz/elf_loader_fuzz.c \
-                                       src/boot/elf_loader.c
+                                       src/boot/elf_loader.c \
+                                       src/boot/image_file.c
 	@mkdir -p $(dir $@)
 	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $(filter %.c,$^)
 
 $(BUILD)/fuzz/bzimage_fuzz_noalign: tests/fuzz/bzimage_fuzz.c \
-                                    src/boot/bzimage.c
+                                    src/boot/bzimage.c src/boot/image_file.c
 	@mkdir -p $(dir $@)
 	$(FUZZ_CC) $(FUZZ_CFLAGS_NOALIGN) -o $@ $(filter %.c,$^)
 

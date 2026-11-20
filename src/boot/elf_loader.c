@@ -8,19 +8,14 @@
  * 已经是物理地址；但为了兼容别的构建方式，如果它落在内核虚拟地址区，
  * 就用所在段的 (p_vaddr - p_paddr) 把它换算回物理地址。
  */
-#define _GNU_SOURCE
-#include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <elf.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
 
 #include "vmm.h"
 #include "memory.h"
 #include "boot/elf_loader.h"
+#include "boot/image_file.h"
 
 static int check_ehdr(const Elf64_Ehdr *eh, size_t file_size, const char *path)
 {
@@ -53,108 +48,117 @@ static int check_ehdr(const Elf64_Ehdr *eh, size_t file_size, const char *path)
     return VMM_OK;
 }
 
+/* 把第 i 个 PT_LOAD 段拷到 p_paddr，文件里没有的部分（bss）清零 */
+static int load_segment(struct vmm_vm *vm, const Elf64_Phdr *p, int i,
+                        const struct image_file *f, const char *path)
+{
+    enum gpa_status gs;
+    uint8_t *dst;
+
+    /* p_offset 与 p_filesz 同样是文件说了算，相加一样会回绕 */
+    if (p->p_filesz > p->p_memsz ||
+        p->p_offset > (uint64_t)f->size ||
+        p->p_filesz > (uint64_t)f->size - p->p_offset) {
+        vmm_err("%s: PT_LOAD #%d is malformed", path, i);
+        return VMM_ERR_INVAL;
+    }
+
+    gs = gpa_to_hva(vm, p->p_paddr, p->p_memsz, (void **)&dst);
+    if (gs != GPA_OK) {
+        vmm_err("%s: PT_LOAD #%d [0x%llx, 0x%llx): %s "
+                "(try a larger --mem)", path, i,
+                (unsigned long long)p->p_paddr,
+                (unsigned long long)(p->p_paddr + p->p_memsz),
+                gpa_status_str(gs));
+        return VMM_ERR_INVAL;
+    }
+    memcpy(dst, f->data + p->p_offset, p->p_filesz);
+    memset(dst + p->p_filesz, 0, p->p_memsz - p->p_filesz);
+
+    vmm_info("vmlinux PT_LOAD #%d: GPA [0x%llx, 0x%llx) file 0x%llx mem 0x%llx",
+             i, (unsigned long long)p->p_paddr,
+             (unsigned long long)(p->p_paddr + p->p_memsz),
+             (unsigned long long)p->p_filesz,
+             (unsigned long long)p->p_memsz);
+    return VMM_OK;
+}
+
+/* e_entry 落在这个段里时，换算成物理地址写回 *entry 并返回 true。
+ * e_entry 是物理地址时落在 [p_paddr, +memsz)，是虚拟地址时落在
+ * [p_vaddr, +memsz) */
+static bool entry_in_segment(const Elf64_Phdr *p, uint64_t *entry)
+{
+    if (*entry >= p->p_paddr && *entry < p->p_paddr + p->p_memsz)
+        return true;
+    if (*entry >= p->p_vaddr && *entry < p->p_vaddr + p->p_memsz) {
+        *entry = *entry - p->p_vaddr + p->p_paddr;
+        return true;
+    }
+    return false;
+}
+
+/* 装载全部 PT_LOAD 段，填 info 的地址范围，*entry 换算成物理地址 */
+static int load_segments(struct vmm_vm *vm, const struct image_file *f,
+                         const char *path, struct elf_load_info *info,
+                         uint64_t *entry, bool *entry_found)
+{
+    const Elf64_Ehdr *eh = (const Elf64_Ehdr *)f->data;
+    /* e_phoff 没有任何对齐保证，直接当 Elf64_Phdr* 解引用是未定义行为
+     * （x86 上跑得通，UBSan 会报 misaligned member access）。逐个拷进
+     * 对齐的局部变量再用，和 bzimage.c 处理 setup header 的做法一致。 */
+    const uint8_t *ph_tab = f->data + eh->e_phoff;
+    int i, r, nr_load = 0;
+
+    for (i = 0; i < eh->e_phnum; i++) {
+        Elf64_Phdr p;
+
+        memcpy(&p, ph_tab + (size_t)i * sizeof(p), sizeof(p));
+        if (p.p_type != PT_LOAD || p.p_memsz == 0)
+            continue;
+        r = load_segment(vm, &p, i, f, path);
+        if (r != VMM_OK)
+            return r;
+
+        if (p.p_paddr < info->lo_gpa)
+            info->lo_gpa = p.p_paddr;
+        if (p.p_paddr + p.p_memsz > info->hi_gpa)
+            info->hi_gpa = p.p_paddr + p.p_memsz;
+        if (!*entry_found)
+            *entry_found = entry_in_segment(&p, entry);
+        nr_load++;
+    }
+
+    if (!nr_load) {
+        vmm_err("%s has no PT_LOAD segment", path);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
 int elf_load_vmlinux(struct vmm_vm *vm, const char *path,
                      struct elf_load_info *info)
 {
-    struct stat st;
-    const uint8_t *img;
+    struct image_file f;
     const Elf64_Ehdr *eh;
-    const uint8_t *ph_tab;
     uint64_t entry;
-    int fd, i, r = VMM_OK, nr_load = 0;
     bool entry_found = false;
+    int r;
 
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) {
-        vmm_err("open %s: %s", path, strerror(errno));
-        return VMM_ERR_SYS;
-    }
-    if (fstat(fd, &st) < 0) {
-        vmm_err("fstat %s: %s", path, strerror(errno));
-        close(fd);
-        return VMM_ERR_SYS;
-    }
-    img = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-    if (img == MAP_FAILED) {
-        vmm_err("mmap %s: %s", path, strerror(errno));
-        return VMM_ERR_SYS;
-    }
+    r = image_file_map(path, 0, NULL, &f);
+    if (r != VMM_OK)
+        return r;
 
-    eh = (const Elf64_Ehdr *)img;
-    r = check_ehdr(eh, (size_t)st.st_size, path);
+    eh = (const Elf64_Ehdr *)f.data;
+    r = check_ehdr(eh, f.size, path);
     if (r != VMM_OK)
         goto out;
 
     memset(info, 0, sizeof(*info));
     info->lo_gpa = UINT64_MAX;
     entry = eh->e_entry;
-    /* e_phoff 没有任何对齐保证，直接当 Elf64_Phdr* 解引用是未定义行为
-     * （x86 上跑得通，UBSan 会报 misaligned member access）。逐个拷进
-     * 对齐的局部变量再用，和 bzimage.c 处理 setup header 的做法一致。 */
-    ph_tab = img + eh->e_phoff;
-
-    for (i = 0; i < eh->e_phnum; i++) {
-        Elf64_Phdr p;
-        enum gpa_status gs;
-        uint8_t *dst;
-
-        memcpy(&p, ph_tab + (size_t)i * sizeof(p), sizeof(p));
-
-        if (p.p_type != PT_LOAD || p.p_memsz == 0)
-            continue;
-        /* p_offset 与 p_filesz 同样是文件说了算，相加一样会回绕 */
-        if (p.p_filesz > p.p_memsz ||
-            p.p_offset > (uint64_t)st.st_size ||
-            p.p_filesz > (uint64_t)st.st_size - p.p_offset) {
-            vmm_err("%s: PT_LOAD #%d is malformed", path, i);
-            r = VMM_ERR_INVAL;
-            goto out;
-        }
-
-        gs = gpa_to_hva(vm, p.p_paddr, p.p_memsz, (void **)&dst);
-        if (gs != GPA_OK) {
-            vmm_err("%s: PT_LOAD #%d [0x%llx, 0x%llx): %s "
-                    "(try a larger --mem)", path, i,
-                    (unsigned long long)p.p_paddr,
-                    (unsigned long long)(p.p_paddr + p.p_memsz),
-                    gpa_status_str(gs));
-            r = VMM_ERR_INVAL;
-            goto out;
-        }
-        memcpy(dst, img + p.p_offset, p.p_filesz);
-        memset(dst + p.p_filesz, 0, p.p_memsz - p.p_filesz);
-
-        vmm_info("vmlinux PT_LOAD #%d: GPA [0x%llx, 0x%llx) file 0x%llx mem 0x%llx",
-                 i, (unsigned long long)p.p_paddr,
-                 (unsigned long long)(p.p_paddr + p.p_memsz),
-                 (unsigned long long)p.p_filesz,
-                 (unsigned long long)p.p_memsz);
-
-        if (p.p_paddr < info->lo_gpa)
-            info->lo_gpa = p.p_paddr;
-        if (p.p_paddr + p.p_memsz > info->hi_gpa)
-            info->hi_gpa = p.p_paddr + p.p_memsz;
-
-        /* 入口换算：e_entry 是物理地址时落在 [p_paddr, +memsz)，
-         * 是虚拟地址时落在 [p_vaddr, +memsz) */
-        if (!entry_found) {
-            if (entry >= p.p_paddr && entry < p.p_paddr + p.p_memsz) {
-                entry_found = true;
-            } else if (entry >= p.p_vaddr &&
-                       entry < p.p_vaddr + p.p_memsz) {
-                entry = entry - p.p_vaddr + p.p_paddr;
-                entry_found = true;
-            }
-        }
-        nr_load++;
-    }
-
-    if (!nr_load) {
-        vmm_err("%s has no PT_LOAD segment", path);
-        r = VMM_ERR_INVAL;
+    r = load_segments(vm, &f, path, info, &entry, &entry_found);
+    if (r != VMM_OK)
         goto out;
-    }
     if (!entry_found) {
         vmm_err("%s: e_entry 0x%llx is not inside any PT_LOAD segment",
                 path, (unsigned long long)eh->e_entry);
@@ -168,6 +172,6 @@ int elf_load_vmlinux(struct vmm_vm *vm, const char *path,
              (unsigned long long)info->hi_gpa,
              (unsigned long long)info->entry_gpa);
 out:
-    munmap((void *)img, (size_t)st.st_size);
+    image_file_unmap(&f);
     return r;
 }

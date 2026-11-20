@@ -182,267 +182,440 @@ static int parse_hex(const char *s, uint64_t *out)
     return VMM_OK;
 }
 
-int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
+/* 解析过程中要记住、但不属于 struct vmm_config 的东西 */
+struct parse_state {
+    struct vmm_config *cfg;
+    const char *prog;            /* argv[0]，打印用法时用 */
+    /* --append 只在拼内核命令行时用一次，拼好的结果写回 cfg->cmdline */
+    const char *append;
+    /* 这两个选项的默认值也是合法的取值，只看 cfg 分不出用户写没写 */
+    bool irqchip_given;
+    bool reinject_given;
+};
+
+/* ---- 每个选项一个处理函数：arg 是选项的参数（不带参数的选项为 NULL），
+ * 返回 VMM_OK 或 VMM_ERR_INVAL ---- */
+
+static int opt_help(struct parse_state *st, char *arg)
+{
+    vmm_usage(st->prog);
+    exit(0);
+}
+
+static int opt_quiet(struct parse_state *st, char *arg)
+{
+    st->cfg->log_level = 0;
+    return VMM_OK;
+}
+
+static int opt_mode(struct parse_state *st, char *arg)
+{
+    if (!strcmp(arg, "real16"))
+        st->cfg->mode = VMM_BOOT_REAL16;
+    else if (!strcmp(arg, "long64"))
+        st->cfg->mode = VMM_BOOT_LONG64;
+    else if (!strcmp(arg, "linux"))
+        st->cfg->mode = VMM_BOOT_LINUX;
+    else {
+        vmm_err("unknown mode: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
+static int opt_mem(struct parse_state *st, char *arg)
+{
+    if (parse_size(arg, &st->cfg->ram_size) != VMM_OK) {
+        vmm_err("cannot parse --mem: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
+static int opt_smp(struct parse_state *st, char *arg)
+{
+    char *end;
+    long n = strtol(arg, &end, 10);
+
+    if (end == arg || *end || n < 1 || n > VMM_MAX_VCPUS) {
+        vmm_err("--smp must be an integer in 1..%d: %s", VMM_MAX_VCPUS, arg);
+        return VMM_ERR_INVAL;
+    }
+    st->cfg->nr_vcpus = (int)n;
+    return VMM_OK;
+}
+
+static int opt_initrd(struct parse_state *st, char *arg)
+{
+    st->cfg->initrd_path = arg;
+    return VMM_OK;
+}
+
+static int opt_cmdline(struct parse_state *st, char *arg)
+{
+    st->cfg->cmdline = arg;
+    return VMM_OK;
+}
+
+static int opt_append(struct parse_state *st, char *arg)
+{
+    st->append = arg;
+    return VMM_OK;
+}
+
+static int opt_map(struct parse_state *st, char *arg)
+{
+    return parse_size(arg, &st->cfg->map_size);
+}
+
+static int opt_load(struct parse_state *st, char *arg)
+{
+    return parse_hex(arg, &st->cfg->payload_gpa);
+}
+
+static int opt_entry(struct parse_state *st, char *arg)
+{
+    return parse_hex(arg, &st->cfg->entry_gpa);
+}
+
+static int opt_gran(struct parse_state *st, char *arg)
+{
+    if (!strcmp(arg, "2m"))
+        st->cfg->pt_gran = BOOT_PG_2M;
+    else if (!strcmp(arg, "4k"))
+        st->cfg->pt_gran = BOOT_PG_4K;
+    else
+        return VMM_ERR_INVAL;
+    return VMM_OK;
+}
+
+static int opt_trace_pio(struct parse_state *st, char *arg)
+{
+    st->cfg->trace_pio_path = arg;
+    return VMM_OK;
+}
+
+static int opt_trace_mmio(struct parse_state *st, char *arg)
+{
+    st->cfg->trace_mmio_path = arg;
+    return VMM_OK;
+}
+
+static int opt_gdb(struct parse_state *st, char *arg)
+{
+    char *end;
+    long n = strtol(arg, &end, 10);
+
+    if (end == arg || *end || n < 0 || n > 65535) {
+        vmm_err("--gdb must be a TCP port in 0..65535: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    st->cfg->gdb_port = (int)n;
+    return VMM_OK;
+}
+
+static int opt_monitor(struct parse_state *st, char *arg)
+{
+    st->cfg->monitor_path = arg;
+    return VMM_OK;
+}
+
+static int opt_no_reboot(struct parse_state *st, char *arg)
+{
+    st->cfg->no_reboot = true;
+    return VMM_OK;
+}
+
+static int opt_kernel_irqchip(struct parse_state *st, char *arg)
+{
+    if (!strcmp(arg, "on")) {
+        st->cfg->irqchip = VMM_IRQCHIP_ON;
+    } else if (!strcmp(arg, "split")) {
+        st->cfg->irqchip = VMM_IRQCHIP_SPLIT;
+    } else if (!strcmp(arg, "off")) {
+        vmm_err("--kernel-irqchip off (LAPIC in user space) is not "
+                "implemented yet; it belongs to the user-lapic "
+                "milestone");
+        return VMM_ERR_INVAL;
+    } else {
+        vmm_err("--kernel-irqchip must be on or split: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    st->irqchip_given = true;
+    return VMM_OK;
+}
+
+static int opt_pit_reinject(struct parse_state *st, char *arg)
+{
+    if (!strcmp(arg, "on")) {
+        st->cfg->pit_reinject = true;
+    } else if (!strcmp(arg, "off")) {
+        st->cfg->pit_reinject = false;
+    } else {
+        vmm_err("--pit-reinject must be on or off: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    st->reinject_given = true;
+    return VMM_OK;
+}
+
+static int opt_exit_stats(struct parse_state *st, char *arg)
+{
+    st->cfg->exit_stats_path = arg;
+    return VMM_OK;
+}
+
+/* --device、--netdev、--drive 都可以重复，各自最多 VMM_MAX_DEVICES 个 */
+static int check_room(int count, const char *opt)
+{
+    if (count == VMM_MAX_DEVICES) {
+        vmm_err("too many %s (max %d)", opt, VMM_MAX_DEVICES);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
+static int opt_device(struct parse_state *st, char *arg)
+{
+    struct vmm_config *cfg = st->cfg;
+
+    if (!strcmp(arg, "help")) {
+        vmm_device_list_types(stdout);
+        exit(0);
+    }
+    if (check_room(cfg->nr_devices, "--device") != VMM_OK ||
+        vmm_device_parse(arg, &cfg->devices[cfg->nr_devices]) != VMM_OK)
+        return VMM_ERR_INVAL;
+    cfg->nr_devices++;
+    return VMM_OK;
+}
+
+static int opt_netdev(struct parse_state *st, char *arg)
+{
+    struct vmm_config *cfg = st->cfg;
+
+    if (!strcmp(arg, "help")) {
+        netdev_list_types(stdout);
+        exit(0);
+    }
+    if (check_room(cfg->nr_netdevs, "--netdev") != VMM_OK ||
+        netdev_parse(arg, &cfg->netdevs[cfg->nr_netdevs]) != VMM_OK)
+        return VMM_ERR_INVAL;
+    cfg->nr_netdevs++;
+    return VMM_OK;
+}
+
+static int opt_drive(struct parse_state *st, char *arg)
+{
+    struct vmm_config *cfg = st->cfg;
+
+    if (check_room(cfg->nr_drives, "--drive") != VMM_OK ||
+        blockdev_parse(arg, &cfg->drives[cfg->nr_drives]) != VMM_OK)
+        return VMM_ERR_INVAL;
+    cfg->nr_drives++;
+    return VMM_OK;
+}
+
+static int opt_walk(struct parse_state *st, char *arg)
+{
+    return parse_hex(arg, &st->cfg->walk_gva);
+}
+
+/* GPA:LEN，GPA 是十六进制，LEN 按 C 的写法（十进制、0x 十六进制都行） */
+static int opt_dump(struct parse_state *st, char *arg)
+{
+    char *colon = strchr(arg, ':');
+
+    if (!colon)
+        return VMM_ERR_INVAL;
+    *colon = '\0';
+    if (parse_hex(arg, &st->cfg->dump_gpa) != VMM_OK)
+        return VMM_ERR_INVAL;
+    st->cfg->dump_len = (size_t)strtoul(colon + 1, NULL, 0);
+    st->cfg->dump_on_exit = true;
+    return VMM_OK;
+}
+
+struct cli_option {
+    const char *name;
+    bool has_arg;
+    int (*apply)(struct parse_state *st, char *arg);
+};
+
+/* -v 不在表里：它可以合写成 -vv，见 is_verbose_flag */
+static const struct cli_option options[] = {
+    { "-h",               false, opt_help },
+    { "--help",           false, opt_help },
+    { "-q",               false, opt_quiet },
+    { "--mode",           true,  opt_mode },
+    { "--mem",            true,  opt_mem },
+    { "--smp",            true,  opt_smp },
+    { "--initrd",         true,  opt_initrd },
+    { "--cmdline",        true,  opt_cmdline },
+    { "--append",         true,  opt_append },
+    { "--map",            true,  opt_map },
+    { "--load",           true,  opt_load },
+    { "--entry",          true,  opt_entry },
+    { "--gran",           true,  opt_gran },
+    { "--trace-pio",      true,  opt_trace_pio },
+    { "--trace-mmio",     true,  opt_trace_mmio },
+    { "--gdb",            true,  opt_gdb },
+    { "--monitor",        true,  opt_monitor },
+    { "--no-reboot",      false, opt_no_reboot },
+    { "--kernel-irqchip", true,  opt_kernel_irqchip },
+    { "--pit-reinject",   true,  opt_pit_reinject },
+    { "--exit-stats",     true,  opt_exit_stats },
+    { "--device",         true,  opt_device },
+    { "--netdev",         true,  opt_netdev },
+    { "--drive",          true,  opt_drive },
+    { "--walk",           true,  opt_walk },
+    { "--dump",           true,  opt_dump },
+};
+
+static const struct cli_option *find_option(const char *name)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(options) / sizeof(options[0]); i++)
+        if (!strcmp(options[i].name, name))
+            return &options[i];
+    return NULL;
+}
+
+/* -v 可以重复，也可以合写成 -vv：每个 v 提高一级 */
+static bool is_verbose_flag(const char *a)
+{
+    return a[0] == '-' && a[1] == 'v' && strspn(a + 1, "v") == strlen(a + 1);
+}
+
+static int parse_argv(struct parse_state *st, int argc, char **argv)
 {
     int i, r;
-    bool irqchip_given = false;
-    bool reinject_given = false;
-    /* --append 只在拼内核命令行时用一次，拼好的结果写回 cfg->cmdline */
-    const char *append = NULL;
 
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
+        const struct cli_option *o = find_option(a);
+        char *arg = NULL;
 
-#define NEED_ARG() do {                                               \
-        if (++i >= argc) {                                    \
-            vmm_err("%s requires an argument", a);                \
-            return VMM_ERR_INVAL;                         \
-        }                                                     \
-    } while (0)
-
-        if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
-            vmm_usage(argv[0]);
-            exit(0);
-        } else if (a[0] == '-' && a[1] == 'v' &&
-                   strspn(a + 1, "v") == strlen(a + 1)) {
-            /* -v 可以重复，也可以合写成 -vv：每个 v 提高一级 */
-            cfg->log_level += (int)strlen(a + 1);
-        } else if (!strcmp(a, "-q")) {
-            cfg->log_level = 0;
-        } else if (!strcmp(a, "--mode")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "real16"))
-                cfg->mode = VMM_BOOT_REAL16;
-            else if (!strcmp(argv[i], "long64"))
-                cfg->mode = VMM_BOOT_LONG64;
-            else if (!strcmp(argv[i], "linux"))
-                cfg->mode = VMM_BOOT_LINUX;
-            else {
-                vmm_err("unknown mode: %s", argv[i]);
-                return VMM_ERR_INVAL;
+        if (o) {
+            if (o->has_arg) {
+                if (++i >= argc) {
+                    vmm_err("%s requires an argument", a);
+                    return VMM_ERR_INVAL;
+                }
+                arg = argv[i];
             }
-        } else if (!strcmp(a, "--mem")) {
-            NEED_ARG();
-            if (parse_size(argv[i], &cfg->ram_size) != VMM_OK) {
-                vmm_err("cannot parse --mem: %s", argv[i]);
-                return VMM_ERR_INVAL;
-            }
-        } else if (!strcmp(a, "--smp")) {
-            char *end;
-            long n;
-
-            NEED_ARG();
-            n = strtol(argv[i], &end, 10);
-            if (end == argv[i] || *end || n < 1 || n > VMM_MAX_VCPUS) {
-                vmm_err("--smp must be an integer in 1..%d: %s",
-                        VMM_MAX_VCPUS, argv[i]);
-                return VMM_ERR_INVAL;
-            }
-            cfg->nr_vcpus = (int)n;
-        } else if (!strcmp(a, "--initrd")) {
-            NEED_ARG();
-            cfg->initrd_path = argv[i];
-        } else if (!strcmp(a, "--cmdline")) {
-            NEED_ARG();
-            cfg->cmdline = argv[i];
-        } else if (!strcmp(a, "--append")) {
-            NEED_ARG();
-            append = argv[i];
-        } else if (!strcmp(a, "--map")) {
-            NEED_ARG();
-            if (parse_size(argv[i], &cfg->map_size) != VMM_OK)
-                return VMM_ERR_INVAL;
-        } else if (!strcmp(a, "--load")) {
-            NEED_ARG();
-            if (parse_hex(argv[i], &cfg->payload_gpa) != VMM_OK)
-                return VMM_ERR_INVAL;
-        } else if (!strcmp(a, "--entry")) {
-            NEED_ARG();
-            if (parse_hex(argv[i], &cfg->entry_gpa) != VMM_OK)
-                return VMM_ERR_INVAL;
-        } else if (!strcmp(a, "--gran")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "2m"))
-                cfg->pt_gran = BOOT_PG_2M;
-            else if (!strcmp(argv[i], "4k"))
-                cfg->pt_gran = BOOT_PG_4K;
-            else
-                return VMM_ERR_INVAL;
-        } else if (!strcmp(a, "--trace-pio")) {
-            NEED_ARG();
-            cfg->trace_pio_path = argv[i];
-        } else if (!strcmp(a, "--trace-mmio")) {
-            NEED_ARG();
-            cfg->trace_mmio_path = argv[i];
-        } else if (!strcmp(a, "--gdb")) {
-            char *end;
-            long n;
-
-            NEED_ARG();
-            n = strtol(argv[i], &end, 10);
-            if (end == argv[i] || *end || n < 0 || n > 65535) {
-                vmm_err("--gdb must be a TCP port in 0..65535: %s", argv[i]);
-                return VMM_ERR_INVAL;
-            }
-            cfg->gdb_port = (int)n;
-        } else if (!strcmp(a, "--monitor")) {
-            NEED_ARG();
-            cfg->monitor_path = argv[i];
-        } else if (!strcmp(a, "--no-reboot")) {
-            cfg->no_reboot = true;
-        } else if (!strcmp(a, "--kernel-irqchip")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "on")) {
-                cfg->irqchip = VMM_IRQCHIP_ON;
-            } else if (!strcmp(argv[i], "split")) {
-                cfg->irqchip = VMM_IRQCHIP_SPLIT;
-            } else if (!strcmp(argv[i], "off")) {
-                vmm_err("--kernel-irqchip off (LAPIC in user space) is not "
-                        "implemented yet; it belongs to the user-lapic "
-                        "milestone");
-                return VMM_ERR_INVAL;
-            } else {
-                vmm_err("--kernel-irqchip must be on or split: %s", argv[i]);
-                return VMM_ERR_INVAL;
-            }
-            irqchip_given = true;
-        } else if (!strcmp(a, "--pit-reinject")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "on")) {
-                cfg->pit_reinject = true;
-            } else if (!strcmp(argv[i], "off")) {
-                cfg->pit_reinject = false;
-            } else {
-                vmm_err("--pit-reinject must be on or off: %s", argv[i]);
-                return VMM_ERR_INVAL;
-            }
-            reinject_given = true;
-        } else if (!strcmp(a, "--exit-stats")) {
-            NEED_ARG();
-            cfg->exit_stats_path = argv[i];
-        } else if (!strcmp(a, "--device")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "help")) {
-                vmm_device_list_types(stdout);
-                exit(0);
-            }
-            if (cfg->nr_devices == VMM_MAX_DEVICES) {
-                vmm_err("too many --device (max %d)", VMM_MAX_DEVICES);
-                return VMM_ERR_INVAL;
-            }
-            if (vmm_device_parse(argv[i], &cfg->devices[cfg->nr_devices]) != VMM_OK)
-                return VMM_ERR_INVAL;
-            cfg->nr_devices++;
-        } else if (!strcmp(a, "--netdev")) {
-            NEED_ARG();
-            if (!strcmp(argv[i], "help")) {
-                netdev_list_types(stdout);
-                exit(0);
-            }
-            if (cfg->nr_netdevs == VMM_MAX_DEVICES) {
-                vmm_err("too many --netdev (max %d)", VMM_MAX_DEVICES);
-                return VMM_ERR_INVAL;
-            }
-            if (netdev_parse(argv[i], &cfg->netdevs[cfg->nr_netdevs]) != VMM_OK)
-                return VMM_ERR_INVAL;
-            cfg->nr_netdevs++;
-        } else if (!strcmp(a, "--drive")) {
-            NEED_ARG();
-            if (cfg->nr_drives == VMM_MAX_DEVICES) {
-                vmm_err("too many --drive (max %d)", VMM_MAX_DEVICES);
-                return VMM_ERR_INVAL;
-            }
-            if (blockdev_parse(argv[i], &cfg->drives[cfg->nr_drives]) != VMM_OK)
-                return VMM_ERR_INVAL;
-            cfg->nr_drives++;
-        } else if (!strcmp(a, "--walk")) {
-            NEED_ARG();
-            if (parse_hex(argv[i], &cfg->walk_gva) != VMM_OK)
-                return VMM_ERR_INVAL;
-        } else if (!strcmp(a, "--dump")) {
-            char *colon;
-            NEED_ARG();
-            colon = strchr(argv[i], ':');
-            if (!colon)
-                return VMM_ERR_INVAL;
-            *colon = '\0';
-            if (parse_hex(argv[i], &cfg->dump_gpa) != VMM_OK)
-                return VMM_ERR_INVAL;
-            cfg->dump_len = (size_t)strtoul(colon + 1, NULL, 0);
-            cfg->dump_on_exit = true;
+            r = o->apply(st, arg);
+            if (r != VMM_OK)
+                return r;
+        } else if (is_verbose_flag(a)) {
+            st->cfg->log_level += (int)strlen(a + 1);
         } else if (a[0] == '-' && a[1]) {
             vmm_err("unknown option: %s", a);
             return VMM_ERR_INVAL;
         } else {
-            cfg->payload_path = a;
+            st->cfg->payload_path = a;
         }
-#undef NEED_ARG
     }
+    return VMM_OK;
+}
+
+/* 裸 payload 模式（real16/long64）下不能用的选项。按表的顺序检查，报出
+ * 第一个违反的 */
+static int check_payload_mode(const struct parse_state *st)
+{
+    const struct vmm_config *cfg = st->cfg;
+    const struct {
+        bool given;
+        const char *msg;
+    } linux_only[] = {
+        { cfg->initrd_path || cfg->cmdline || st->append,
+          "--initrd/--cmdline/--append require --mode linux" },
+        /* 裸 payload 不会去唤醒 AP，而且没有内核态 irqchip 时
+         * 所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时跑起来 */
+        { cfg->nr_vcpus > 1, "--smp > 1 requires --mode linux" },
+        /* PCI 总线只在 Linux 模式下创建：描述它的 DSDT 和 MP table 只有
+         * 这个模式才生成，裸 payload 拿不到总线的地址窗口和中断路由 */
+        { cfg->nr_devices,   "--device requires --mode linux" },
+        { cfg->nr_netdevs,   "--netdev requires --mode linux" },
+        { cfg->nr_drives,    "--drive requires --mode linux" },
+        { cfg->no_reboot,    "--no-reboot requires --mode linux" },
+        /* 裸 payload 模式不创建任何中断控制器 */
+        { st->irqchip_given,  "--kernel-irqchip requires --mode linux" },
+        { st->reinject_given, "--pit-reinject requires --mode linux" },
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(linux_only) / sizeof(linux_only[0]); i++) {
+        if (linux_only[i].given) {
+            vmm_err("%s", linux_only[i].msg);
+            return VMM_ERR_INVAL;
+        }
+    }
+    return VMM_OK;
+}
+
+/* Linux 模式内核与 initramfs 缺一不可。没有 initramfs 时内核找不到
+ * rootfs，只会在启动末尾以 "VFS: Unable to mount root fs" panic，
+ * 现象离真正的原因（忘了传参、路径写错）太远，所以在创建 VM 之前
+ * 就拦下来。需要专门验证 panic -> reboot -> VMM 退出这条路径时，
+ * 照常提供 initramfs，再加 --append rdinit=/nonexistent：内核在
+ * initramfs 里找不到 init，转去挂载 root=，没有 root= 就同样 VFS panic。 */
+static int check_linux_files(const struct vmm_config *cfg)
+{
+    if (!cfg->initrd_path) {
+        vmm_err("--mode linux requires --initrd FILE "
+                "(build one with tools/build_initramfs.sh)");
+        return VMM_ERR_INVAL;
+    }
+    if (access(cfg->initrd_path, R_OK) != 0) {
+        vmm_err("initrd %s: %s", cfg->initrd_path, strerror(errno));
+        return VMM_ERR_INVAL;
+    }
+    if (access(cfg->payload_path, R_OK) != 0) {
+        vmm_err("kernel %s: %s", cfg->payload_path, strerror(errno));
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
+/* 内核命令行 = --cmdline（缺省用 DEFAULT_LINUX_CMDLINE），再接上 --append */
+static int build_linux_cmdline(struct vmm_config *cfg, const char *append)
+{
+    static char cmdline[ZP_CMDLINE_MAX];
+    int n;
+
+    n = snprintf(cmdline, sizeof(cmdline), "%s%s%s",
+                 cfg->cmdline ? cfg->cmdline : DEFAULT_LINUX_CMDLINE,
+                 append ? " " : "", append ? append : "");
+    if (n < 0 || (size_t)n >= sizeof(cmdline)) {
+        vmm_err("kernel command line is too long (max %d bytes)",
+                ZP_CMDLINE_MAX - 1);
+        return VMM_ERR_INVAL;
+    }
+    cfg->cmdline = cmdline;
+    return VMM_OK;
+}
+
+int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
+{
+    struct parse_state st = { .cfg = cfg, .prog = argv[0] };
+    bool is_linux;
+    int r;
+
+    r = parse_argv(&st, argc, argv);
+    if (r != VMM_OK)
+        return r;
 
     if (!cfg->payload_path) {
         vmm_err("missing payload file");
         return VMM_ERR_INVAL;
     }
+    is_linux = cfg->mode == VMM_BOOT_LINUX;
+    r = is_linux ? check_linux_files(cfg) : check_payload_mode(&st);
+    if (r != VMM_OK)
+        return r;
 
-    if (cfg->mode != VMM_BOOT_LINUX &&
-        (cfg->initrd_path || cfg->cmdline || append)) {
-        vmm_err("--initrd/--cmdline/--append require --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    /* Linux 模式内核与 initramfs 缺一不可。没有 initramfs 时内核找不到
-     * rootfs，只会在启动末尾以 "VFS: Unable to mount root fs" panic，
-     * 现象离真正的原因（忘了传参、路径写错）太远，所以在创建 VM 之前
-     * 就拦下来。需要专门验证 panic -> reboot -> VMM 退出这条路径时，
-     * 照常提供 initramfs，再加 --append rdinit=/nonexistent：内核在
-     * initramfs 里找不到 init，转去挂载 root=，没有 root= 就同样 VFS panic。 */
-    if (cfg->mode == VMM_BOOT_LINUX) {
-        if (!cfg->initrd_path) {
-            vmm_err("--mode linux requires --initrd FILE "
-                    "(build one with tools/build_initramfs.sh)");
-            return VMM_ERR_INVAL;
-        }
-        if (access(cfg->initrd_path, R_OK) != 0) {
-            vmm_err("initrd %s: %s", cfg->initrd_path, strerror(errno));
-            return VMM_ERR_INVAL;
-        }
-        if (access(cfg->payload_path, R_OK) != 0) {
-            vmm_err("kernel %s: %s", cfg->payload_path, strerror(errno));
-            return VMM_ERR_INVAL;
-        }
-    }
-    /* 裸 payload 不会去唤醒 AP，而且没有内核态 irqchip 时
-     * 所有 vCPU 一创建就是 RUNNABLE，会从同一个入口同时跑起来 */
-    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_vcpus > 1) {
-        vmm_err("--smp > 1 requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    /* PCI 总线只在 Linux 模式下创建：描述它的 DSDT 和 MP table 只有
-     * 这个模式才生成，裸 payload 拿不到总线的地址窗口和中断路由 */
-    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_devices) {
-        vmm_err("--device requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_netdevs) {
-        vmm_err("--netdev requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    if (cfg->mode != VMM_BOOT_LINUX && cfg->nr_drives) {
-        vmm_err("--drive requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    if (cfg->no_reboot && cfg->mode != VMM_BOOT_LINUX) {
-        vmm_err("--no-reboot requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    /* 裸 payload 模式不创建任何中断控制器 */
-    if (irqchip_given && cfg->mode != VMM_BOOT_LINUX) {
-        vmm_err("--kernel-irqchip requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
-    if (reinject_given && cfg->mode != VMM_BOOT_LINUX) {
-        vmm_err("--pit-reinject requires --mode linux");
-        return VMM_ERR_INVAL;
-    }
     /* --netdev、--drive 可以写在引用它们的 --device 之后，所以引用要等
      * 全部解析完。两边都检查完再返回，一次报出所有引用错误 */
     r = netdev_link(cfg->devices, cfg->nr_devices,
@@ -450,19 +623,11 @@ int vmm_config_parse_args(struct vmm_config *cfg, int argc, char **argv)
     if (blockdev_link(cfg->devices, cfg->nr_devices,
                       cfg->drives, cfg->nr_drives) != VMM_OK || r != VMM_OK)
         return VMM_ERR_INVAL;
-    if (cfg->mode == VMM_BOOT_LINUX) {
-        static char cmdline[ZP_CMDLINE_MAX];
-        int n;
 
-        n = snprintf(cmdline, sizeof(cmdline), "%s%s%s",
-                     cfg->cmdline ? cfg->cmdline : DEFAULT_LINUX_CMDLINE,
-                     append ? " " : "", append ? append : "");
-        if (n < 0 || (size_t)n >= sizeof(cmdline)) {
-            vmm_err("kernel command line is too long (max %d bytes)",
-                    ZP_CMDLINE_MAX - 1);
-            return VMM_ERR_INVAL;
-        }
-        cfg->cmdline = cmdline;
+    if (is_linux) {
+        r = build_linux_cmdline(cfg, st.append);
+        if (r != VMM_OK)
+            return r;
     }
 
     /* 按模式补默认地址 */

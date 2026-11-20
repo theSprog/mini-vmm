@@ -55,6 +55,78 @@ static int run_guest(struct vmm_vm *vm, struct machine *m)
     return r;
 }
 
+/* 统计文件在启动前就打开：路径写错要在 guest 跑之前报出来，
+ * 而不是跑完一整次之后才发现结果没处写 */
+static int open_exit_stats(const struct vmm_config *cfg, FILE **out)
+{
+    *out = NULL;
+    if (!cfg->exit_stats_path)
+        return VMM_OK;
+    *out = strcmp(cfg->exit_stats_path, "-")
+         ? fopen(cfg->exit_stats_path, "w") : stderr;
+    if (!*out) {
+        vmm_err("--exit-stats %s: %s", cfg->exit_stats_path, strerror(errno));
+        return VMM_ERR_SYS;
+    }
+    return VMM_OK;
+}
+
+/* 已经 monitor_init 过的 monitor：登记命令，开始监听。socket 和完成通知
+ * eventfd 要在 evl_start 之前注册（处理器表只在单线程阶段由主线程写） */
+static int monitor_setup(struct monitor *mon, struct vmm_vm *vm,
+                         const char *path, struct event_loop *loop)
+{
+    int r = monitor_cmds_register(mon, vm);
+
+    if (r == VMM_OK)
+        r = power_monitor_register(mon);
+    if (r == VMM_OK)
+        r = monitor_listen(mon, path, loop);
+    return r;
+}
+
+static double seconds_between(const struct timespec *t0,
+                              const struct timespec *t1)
+{
+    return (double)(t1->tv_sec - t0->tv_sec) +
+           (double)(t1->tv_nsec - t0->tv_nsec) / 1e9;
+}
+
+/* 运行 guest 直到它停下，然后停掉 I/O 线程并输出报告 */
+static int run_and_report(struct vmm_vm *vm, struct machine *m,
+                          struct event_loop *loop, FILE *stats_out)
+{
+    const struct vmm_config *cfg = &vm->cfg;
+    struct timespec t0, t1;
+    int i, r;
+
+    vmm_info("--- entering guest ---");
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    r = run_guest(vm, m);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
+    evl_stop(loop);
+    machine_stop(m);
+    vmm_info("--- left guest (%s) ---", r == VMM_OK ? "ok" : "error");
+
+    /* Ctrl-A x 打断的现场一定要看：guest 卡住时这是唯一的线索 */
+    if (r == VMM_OK && (vmm_log_level >= 3 || vm->user_stop)) {
+        for (i = 0; i < vm->nr_vcpus; i++)
+            vcpu_dump_state(&vm->vcpus[i]);
+    }
+
+    /* 出错停下的那一次同样要输出：exit 落在哪里正是排错线索 */
+    if (stats_out)
+        exit_stats_report(stats_out, vm, seconds_between(&t0, &t1));
+
+    if (cfg->dump_on_exit) {
+        fprintf(stderr, "guest memory at GPA 0x%llx, %zu bytes:\n",
+                (unsigned long long)cfg->dump_gpa, cfg->dump_len);
+        mem_hexdump(vm, cfg->dump_gpa, cfg->dump_len);
+    }
+    return r;
+}
+
 int main(int argc, char **argv)
 {
     struct vmm_config cfg;
@@ -63,8 +135,7 @@ int main(int argc, char **argv)
     static struct event_loop loop;
     static struct monitor mon;
     bool mon_inited = false;
-    FILE *stats_out = NULL;
-    struct timespec t0, t1;
+    FILE *stats_out;
     int i, r;
 
     vmm_config_default(&cfg);
@@ -75,18 +146,8 @@ int main(int argc, char **argv)
     if (vmm_config_parse_args(&cfg, argc, argv) != VMM_OK)
         return 1;
     vmm_log_level = cfg.log_level;
-
-    /* 统计文件在启动前就打开：路径写错要在 guest 跑之前报出来，
-     * 而不是跑完一整次之后才发现结果没处写 */
-    if (cfg.exit_stats_path) {
-        stats_out = strcmp(cfg.exit_stats_path, "-")
-                  ? fopen(cfg.exit_stats_path, "w") : stderr;
-        if (!stats_out) {
-            vmm_err("--exit-stats %s: %s", cfg.exit_stats_path,
-                    strerror(errno));
-            return 1;
-        }
-    }
+    if (open_exit_stats(&cfg, &stats_out) != VMM_OK)
+        return 1;
 
     r = vm_create(&vm, &cfg);
     if (r != VMM_OK)
@@ -95,66 +156,25 @@ int main(int argc, char **argv)
     /* 后端 fd 在 guest 启动前注册（console_start 等），evl_start 放在
      * vm_run 之前，这样注册阶段处理器表只有主线程在写 */
     r = evl_init(&loop);
-    if (r != VMM_OK)
-        goto out;
-
-    r = machine_init(&machine, &vm, &loop);
-    if (r != VMM_OK)
-        goto out;
-    r = machine_boot(&machine);
-    if (r != VMM_OK)
-        goto out;
-
-    /* monitor 的 socket 和完成通知 eventfd 要在 evl_start 之前注册（处理器表
-     * 只在单线程阶段由主线程写） */
-    if (cfg.monitor_path) {
+    if (r == VMM_OK)
+        r = machine_init(&machine, &vm, &loop);
+    if (r == VMM_OK)
+        r = machine_boot(&machine);
+    if (r == VMM_OK && cfg.monitor_path) {
         r = monitor_init(&mon);
-        if (r != VMM_OK)
-            goto out;
-        mon_inited = true;
-        r = monitor_cmds_register(&mon, &vm);
+        mon_inited = r == VMM_OK;
         if (r == VMM_OK)
-            r = power_monitor_register(&mon);
-        if (r == VMM_OK)
-            r = monitor_listen(&mon, cfg.monitor_path, &loop);
-        if (r != VMM_OK)
-            goto out;
+            r = monitor_setup(&mon, &vm, cfg.monitor_path, &loop);
     }
+    if (r != VMM_OK)
+        goto out;
+
     clock_gettime(CLOCK_MONOTONIC, &vm.started);
     r = evl_start(&loop);
-    if (r != VMM_OK)
-        goto out;
-    if (cfg.gdb_port >= 0) {
+    if (r == VMM_OK && cfg.gdb_port >= 0)
         r = gdbstub_init(&vm, (uint16_t)cfg.gdb_port);
-        if (r != VMM_OK)
-            goto out;
-    }
-    vmm_info("--- entering guest ---");
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    r = run_guest(&vm, &machine);
-    clock_gettime(CLOCK_MONOTONIC, &t1);
-    /* vCPU 线程都已 join，停掉 I/O 线程之后再没有谁会碰设备状态 */
-    evl_stop(&loop);
-    machine_stop(&machine);
-    vmm_info("--- left guest (%s) ---", r == VMM_OK ? "ok" : "error");
-
-    /* Ctrl-A x 打断的现场一定要看：guest 卡住时这是唯一的线索 */
-    if (r == VMM_OK && (vmm_log_level >= 3 || vm.user_stop)) {
-        for (i = 0; i < vm.nr_vcpus; i++)
-            vcpu_dump_state(&vm.vcpus[i]);
-    }
-
-    /* 出错停下的那一次同样要输出：exit 落在哪里正是排错线索 */
-    if (stats_out)
-        exit_stats_report(stats_out, &vm,
-                          (double)(t1.tv_sec - t0.tv_sec) +
-                          (double)(t1.tv_nsec - t0.tv_nsec) / 1e9);
-
-    if (cfg.dump_on_exit) {
-        fprintf(stderr, "guest memory at GPA 0x%llx, %zu bytes:\n",
-                (unsigned long long)cfg.dump_gpa, cfg.dump_len);
-        mem_hexdump(&vm, cfg.dump_gpa, cfg.dump_len);
-    }
+    if (r == VMM_OK)
+        r = run_and_report(&vm, &machine, &loop, stats_out);
 
 out:
     /* monitor 的回调在 I/O 线程上运行，先停 I/O 线程再关 monitor。
