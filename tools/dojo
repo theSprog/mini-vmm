@@ -35,9 +35,14 @@ EXAMPLE
   tools/dojo start 1                  create ../mini-vmm-dojo-001, build it
   tools/dojo submit                   (inside the worktree) commit everything, push solve/001
   tools/dojo clean 1                  remove the worktree after review
+  source tools/dojo.sh; dojo start 1  same commands as a shell function that also cd's
   tools/dojo pack guest-hangs-on-reboot --from /tmp/wt --challenge /tmp/challenge.md
 
 NOTE
+  - A program cannot change its caller's directory. tools/dojo.sh defines a
+    shell function dojo (bash and zsh) that runs these commands from any
+    directory, cd's into the worktree after start and back to the main
+    checkout after submit. Source it from your shell rc file.
   - Challenge NNN lives on branch dojo/NNN; your work goes to solve/NNN.
   - start: fetches from origin when reachable, creates the worktree
     ../mini-vmm-dojo-NNN next to the main checkout, runs make, and links
@@ -65,15 +70,15 @@ STEPS = """\
 ## 流程
 
 ```sh
-tools/dojo start {n}            # 在 mini-vmm 主目录执行：建 worktree、编译、链接 guest 内核和 initramfs
-cd ../mini-vmm-dojo-{nnn}       # 之后所有事情都在这个目录里做
+dojo start {n}       # 建 worktree、编译、链接 guest 内核和 initramfs，然后进入 worktree
 # 调试、修复，报告写在 dojo/{name}/report.md
-tools/dojo submit             # 提交 worktree 里的全部改动并推送 solve/{nnn}，可以反复执行
-tools/dojo clean {n}            # 评审结束后删除 worktree，有未提交或未推送的内容时会拒绝
+dojo submit        # 提交 worktree 里的全部改动并推送 solve/{nnn}，然后回到 mini-vmm 主目录；可以反复执行
+dojo clean {n}       # 评审结束后删除 worktree，有未提交或未推送的内容时会拒绝
 ```
 
-- 换一台机器继续：在那边的 mini-vmm 主目录执行 `tools/dojo start {n}`，它会从远端取回已经推送的 `solve/{nnn}`。
-- `tools/dojo list` 查看所有题目和状态。
+- `dojo` 是 `tools/dojo.sh` 定义的 shell 函数，在 `~/.zshrc` 里 source 它。没有 source 时用 `tools/dojo` 加同样的参数，目录要自己 `cd`（worktree 是 `../mini-vmm-dojo-{nnn}`）。
+- 换一台机器继续：在那边执行 `dojo start {n}`，它会从远端取回已经推送的 `solve/{nnn}`。
+- `dojo list` 查看所有题目和状态。
 - 不要拿 `dojo/{nnn}` 和 master 做 diff，那样等于直接看答案。
 - 向 Claude 要了提示，就在报告里写明得到了什么提示。
 """
@@ -106,9 +111,12 @@ def main_checkout() -> Path:
     r = subprocess.run(["git", "rev-parse", "--path-format=absolute",
                         "--git-common-dir"], text=True,
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    if r.returncode != 0:
-        die("not inside the mini-vmm repository or one of its worktrees")
-    return Path(r.stdout.strip()).parent
+    if r.returncode == 0:
+        return Path(r.stdout.strip()).parent
+    # tools/dojo.sh 里的 dojo 函数设置它，让命令在仓库外也能用
+    if os.environ.get("DOJO_MAIN"):
+        return Path(os.environ["DOJO_MAIN"])
+    die("not inside the mini-vmm repository or one of its worktrees")
 
 
 MAIN = main_checkout()
@@ -237,6 +245,10 @@ def link(dst: Path, target: Path) -> None:
     dst.symlink_to(target)
 
 
+def cmd_where(a: argparse.Namespace) -> None:
+    print(worktree_of(norm_id(a.id)))
+
+
 def cmd_submit(a: argparse.Namespace) -> None:
     nnn = norm_id(a.id) if a.id else current_id()
     wt = worktree_of(nnn)
@@ -348,6 +360,8 @@ def main() -> None:
     sub.add_parser("list", help="list challenges and their state")
     s = sub.add_parser("start", help="create the worktree and build it")
     s.add_argument("id")
+    s = sub.add_parser("where", help="print the worktree path of challenge N")
+    s.add_argument("id")
     s = sub.add_parser("submit", help="commit everything and push solve/NNN")
     s.add_argument("id", nargs="?")
     s = sub.add_parser("clean", help="remove the worktree after review")
@@ -361,7 +375,7 @@ def main() -> None:
     s.add_argument("--push", action="store_true", help=f"push to {REMOTE}")
     a = p.parse_args()
     {"list": cmd_list, "start": cmd_start, "submit": cmd_submit,
-     "clean": cmd_clean, "pack": cmd_pack}[a.cmd](a)
+     "clean": cmd_clean, "pack": cmd_pack, "where": cmd_where}[a.cmd](a)
 
 
 if __name__ == "__main__":

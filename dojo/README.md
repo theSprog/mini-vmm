@@ -18,14 +18,16 @@ Claude 在 mini-vmm 里植入一个 bug，只交给你一个故障现场，你�
 
 一道题的全部材料都在题目分支 `dojo/NNN` 上：植入了 bug 的源码加上 `challenge.md`。你只在一个 worktree 里工作，修复和 `report.md` 都留在那里，一起提交到 `solve/NNN`。
 
+在 `~/.zshrc` 里加一行 `source ~/mini-vmm/tools/dojo.sh`（路径按实际位置），就能在任何目录用 `dojo` 命令：`dojo start N` 建好 worktree 后直接进入，`dojo submit` 推送后回到 mini-vmm 主目录。不加这一行也能用 `tools/dojo`，只是要自己 `cd`。
+
 | 步骤 | 谁 | 命令 |
 |---|---|---|
 | 出题 | Claude | `tools/dojo pack <现象> --from <植入后的副本> --challenge <文件> --push` |
-| 看题 | 你 | `tools/dojo list` |
-| 开始 | 你 | `tools/dojo start N`，然后 `cd ../mini-vmm-dojo-NNN` |
-| 交作业 | 你 | 在 worktree 里 `tools/dojo submit` |
+| 看题 | 你 | `dojo list` |
+| 开始 | 你 | `dojo start N` |
+| 交作业 | 你 | 在 worktree 里 `dojo submit` |
 | 评审 | Claude | 读 `solve/NNN`，写 `feedback.md`，把三个文件归档到 master 的 `dojo/NNN-<现象>/` |
-| 收尾 | 你 | `tools/dojo clean N` |
+| 收尾 | 你 | `dojo clean N` |
 
 - `start` 会在仓库旁边建 worktree、编译，并把主目录里的 guest 内核和 initramfs 链接进去，`challenge.md` 里的命令可以原样运行。在另一台机器上它会先 fetch。
 - `submit` 把 worktree 里的所有改动提交并推送 `solve/NNN`，包括调试时加的打印，评审时都看得到。它不删除任何东西，可以反复执行。
