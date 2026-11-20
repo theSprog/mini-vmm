@@ -250,8 +250,11 @@ int kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value)
     buf.hdr.nmsrs = 1;
     buf.hdr.entries[0].index = index;
 
-    if (KVM_IOCTL(vcpu_fd, KVM_GET_MSRS, &buf.hdr) < 0)
+    /* 返回值是成功读出的个数：读不了的 MSR 不报 -1，而是返回 0 */
+    if (KVM_IOCTL(vcpu_fd, KVM_GET_MSRS, &buf.hdr) != 1) {
+        vmm_err("KVM_GET_MSRS: MSR 0x%x is not readable", index);
         return VMM_ERR_SYS;
+    }
 
     *value = buf.hdr.entries[0].data;
     return VMM_OK;
@@ -266,6 +269,11 @@ int kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value)
     buf.hdr.entries[0].index = index;
     buf.hdr.entries[0].data  = value;
 
-    return KVM_IOCTL(vcpu_fd, KVM_SET_MSRS, &buf.hdr) < 0
-           ? VMM_ERR_SYS : VMM_OK;
+    /* 和 KVM_GET_MSRS 一样，写不进的 MSR 让返回值是 0 而不是 -1 */
+    if (KVM_IOCTL(vcpu_fd, KVM_SET_MSRS, &buf.hdr) != 1) {
+        vmm_err("KVM_SET_MSRS: MSR 0x%x rejected value 0x%llx",
+                index, (unsigned long long)value);
+        return VMM_ERR_SYS;
+    }
+    return VMM_OK;
 }

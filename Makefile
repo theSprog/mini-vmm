@@ -198,6 +198,7 @@ UNIT_BINS := $(BUILD)/tests/boot_tables_test \
              $(BUILD)/tests/serial8250_test \
              $(BUILD)/tests/event_loop_test \
              $(BUILD)/tests/kvm_stats_test \
+             $(BUILD)/tests/kvm_msr_test \
              $(BUILD)/tests/pci_bus_test \
              $(BUILD)/tests/opts_test \
              $(BUILD)/tests/netdev_test \
@@ -326,6 +327,10 @@ $(BUILD)/tests/pit_test: tests/unit/pit_test.c src/devices/i8254.c
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 
 $(BUILD)/tests/kvm_stats_test: tests/unit/kvm_stats_test.c src/kvm_stats.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
+
+$(BUILD)/tests/kvm_msr_test: tests/unit/kvm_msr_test.c src/kvm_wrappers.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS_TEST) -o $@ $(filter %.c,$^)
 

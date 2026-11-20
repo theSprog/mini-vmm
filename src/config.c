@@ -263,19 +263,33 @@ static int opt_append(struct parse_state *st, char *arg)
     return VMM_OK;
 }
 
+/* 十六进制地址类选项的共同写法：解析失败时报出选项名和原值 */
+static int parse_hex_opt(const char *opt, const char *arg, uint64_t *out)
+{
+    if (parse_hex(arg, out) != VMM_OK) {
+        vmm_err("cannot parse %s: %s", opt, arg);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
+}
+
 static int opt_map(struct parse_state *st, char *arg)
 {
-    return parse_size(arg, &st->cfg->map_size);
+    if (parse_size(arg, &st->cfg->map_size) != VMM_OK) {
+        vmm_err("cannot parse --map: %s", arg);
+        return VMM_ERR_INVAL;
+    }
+    return VMM_OK;
 }
 
 static int opt_load(struct parse_state *st, char *arg)
 {
-    return parse_hex(arg, &st->cfg->payload_gpa);
+    return parse_hex_opt("--load", arg, &st->cfg->payload_gpa);
 }
 
 static int opt_entry(struct parse_state *st, char *arg)
 {
-    return parse_hex(arg, &st->cfg->entry_gpa);
+    return parse_hex_opt("--entry", arg, &st->cfg->entry_gpa);
 }
 
 static int opt_gran(struct parse_state *st, char *arg)
@@ -284,8 +298,10 @@ static int opt_gran(struct parse_state *st, char *arg)
         st->cfg->pt_gran = BOOT_PG_2M;
     else if (!strcmp(arg, "4k"))
         st->cfg->pt_gran = BOOT_PG_4K;
-    else
+    else {
+        vmm_err("--gran must be 2m or 4k: %s", arg);
         return VMM_ERR_INVAL;
+    }
     return VMM_OK;
 }
 
@@ -418,20 +434,34 @@ static int opt_drive(struct parse_state *st, char *arg)
 
 static int opt_walk(struct parse_state *st, char *arg)
 {
-    return parse_hex(arg, &st->cfg->walk_gva);
+    return parse_hex_opt("--walk", arg, &st->cfg->walk_gva);
 }
 
-/* GPA:LEN，GPA 是十六进制，LEN 按 C 的写法（十进制、0x 十六进制都行） */
+/* GPA:LEN，GPA 是十六进制，LEN 按 C 的写法（十进制、0x 十六进制都行）。
+ * 两段都必须整段是数字：后面跟着别的字符多半是写错了，按前缀截断会
+ * 悄悄 dump 错的地址或长度 */
 static int opt_dump(struct parse_state *st, char *arg)
 {
     char *colon = strchr(arg, ':');
+    char *end;
+    unsigned long long gpa, len;
 
-    if (!colon)
+    if (colon) {
+        gpa = strtoull(arg, &end, 16);
+        if (end == arg || end != colon)
+            colon = NULL;
+    }
+    if (colon) {
+        len = strtoull(colon + 1, &end, 0);
+        if (end == colon + 1 || *end)
+            colon = NULL;
+    }
+    if (!colon) {
+        vmm_err("--dump must be GPA:LEN (hex GPA, decimal LEN): %s", arg);
         return VMM_ERR_INVAL;
-    *colon = '\0';
-    if (parse_hex(arg, &st->cfg->dump_gpa) != VMM_OK)
-        return VMM_ERR_INVAL;
-    st->cfg->dump_len = (size_t)strtoul(colon + 1, NULL, 0);
+    }
+    st->cfg->dump_gpa = gpa;
+    st->cfg->dump_len = (size_t)len;
     st->cfg->dump_on_exit = true;
     return VMM_OK;
 }

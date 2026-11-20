@@ -134,6 +134,55 @@ expect_rc 1
 expect_has "unknown option"
 end_case
 
+# 参数值写错时必须说明是哪个选项、哪个值，不能只以退出码 1 静默退出
+run_case "--map 1Q 报出选项和取值" \
+    "$VMM" --mode long64 --map 1Q "$P64"
+expect_rc 1
+expect_has "cannot parse --map: 1Q"
+end_case
+
+run_case "--load zz 报出选项和取值" \
+    "$VMM" --mode long64 --load zz "$P64"
+expect_rc 1
+expect_has "cannot parse --load: zz"
+end_case
+
+run_case "--entry zz 报出选项和取值" \
+    "$VMM" --mode long64 --entry zz "$P64"
+expect_rc 1
+expect_has "cannot parse --entry: zz"
+end_case
+
+run_case "--walk zz 报出选项和取值" \
+    "$VMM" --mode long64 --walk zz "$P64"
+expect_rc 1
+expect_has "cannot parse --walk: zz"
+end_case
+
+run_case "--gran 1g 报出选项和取值" \
+    "$VMM" --mode long64 --gran 1g "$P64"
+expect_rc 1
+expect_has "--gran must be 2m or 4k: 1g"
+end_case
+
+run_case "--dump 500000 报出选项和取值" \
+    "$VMM" --mode long64 --dump 500000 "$P64"
+expect_rc 1
+expect_has "--dump must be GPA:LEN"
+end_case
+
+run_case "--dump zz:16 报出选项和取值" \
+    "$VMM" --mode long64 --dump zz:16 "$P64"
+expect_rc 1
+expect_has "--dump must be GPA:LEN"
+end_case
+
+run_case "--dump 500000:16x 报出选项和取值" \
+    "$VMM" --mode long64 --dump 500000:16x "$P64"
+expect_rc 1
+expect_has "--dump must be GPA:LEN"
+end_case
+
 }
 
 # ------------------------------------------------------------------
