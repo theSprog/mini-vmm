@@ -67,7 +67,7 @@ MUTANTS = [
         breaks="5.2.10: a non-HW-reduced platform has a FACS, found via FADT "
                "FIRMWARE_CTRL",
         file=ACPI,
-        old="    fadt->x_firmware_ctrl = ACPI_TABLES_GPA + facs_off;\n",
+        old="    fadt->x_firmware_ctrl = facs_gpa;\n",
         new="",
         tests=["boot_tables_test"],
     ),
@@ -75,8 +75,8 @@ MUTANTS = [
         name="facs-signature-stale",
         breaks="Table 5.13: the hardware signature changes when the tables change",
         file=ACPI,
-        old="    facs->hardware_signature = tables_signature(base, facs_off);\n",
-        new="    facs->hardware_signature = tables_signature(base, 16);\n",
+        old="               tables_signature(base, at.facs));\n",
+        new="               tables_signature(base, 16));\n",
         tests=["boot_tables_test"],
     ),
     dict(

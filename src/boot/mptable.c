@@ -139,26 +139,164 @@ static uint8_t mp_checksum(const void *p, size_t len)
     return (uint8_t)(-sum);
 }
 
-int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
+#define MP_ISA_IRQS       16     /* ISA IRQ 0-15 */
+#define MP_ALL_LAPICS     0xff   /* lintsrc 的 dstapic：所有 LAPIC */
+#define MP_LINT0          0
+#define MP_LINT1          1
+/* LAPIC id 是 0..N-1，IOAPIC 的 id 紧跟其后取 N；8 位 APIC id 里 0xff 是
+ * 广播，所以 N 最大 254 */
+#define MP_MAX_CPUS       254
+
+/* processor entry 的 family/model/stepping 与特性位 Linux 只拿来打印，填个
+ * 合理值 */
+#define MP_CPU_SIGNATURE  0x600
+#define MP_CPU_FEATURES   0x201  /* FPU | APIC */
+
+static int count_pci_irqs(const struct pci_bus *pci)
 {
-    enum gpa_status gs;
-    uint8_t *base, *p;
-    struct mpf_intel *mpf;
-    struct mpc_table *mpc;
-    uint8_t ioapic_id = (uint8_t)nr_cpus;   /* 紧跟在 LAPIC id 之后 */
-    uint16_t nr_entries = 0;
-    size_t size;
-    int i, nr_pci_irqs = 0;
+    int i, n = 0;
 
     for (i = 0; pci && i < PCI_MAX_SLOTS; i++)
         if (pci->devs[i] && pci->devs[i]->intx_pin)
-            nr_pci_irqs++;
+            n++;
+    return n;
+}
 
-    size = sizeof(*mpf) + sizeof(*mpc)
+static size_t mp_table_size(int nr_cpus, int nr_pci_irqs)
+{
+    return sizeof(struct mpf_intel)
+         + sizeof(struct mpc_table)
          + (size_t)nr_cpus * sizeof(struct mpc_cpu)
-         + 2 * sizeof(struct mpc_bus) + sizeof(struct mpc_ioapic)
-         + (size_t)(18 + nr_pci_irqs) * sizeof(struct mpc_intsrc);
-    if (nr_cpus < 1 || nr_cpus > 254 || size > MPTABLE_MAX_SIZE) {
+         + sizeof(struct mpc_bus)                          /* PCI */
+         + sizeof(struct mpc_bus)                          /* ISA */
+         + sizeof(struct mpc_ioapic)
+         + MP_ISA_IRQS * sizeof(struct mpc_intsrc)         /* ISA IRQ 0-15 */
+         + (size_t)nr_pci_irqs * sizeof(struct mpc_intsrc) /* PCI INTx */
+         + sizeof(struct mpc_intsrc)                       /* LINT0 */
+         + sizeof(struct mpc_intsrc);                      /* LINT1 */
+}
+
+/* entry 一项接一项写在 mpc_table 表头之后：每加一项游标后移、计数加一 */
+struct mp_writer {
+    uint8_t *p;
+    uint16_t nr_entries;
+    uint8_t  ioapic_id;
+};
+
+static void *mp_add(struct mp_writer *w, size_t size)
+{
+    void *e = w->p;
+
+    w->p += size;
+    w->nr_entries++;
+    return e;
+}
+
+static void mp_add_cpus(struct mp_writer *w, int nr_cpus)
+{
+    int i;
+
+    for (i = 0; i < nr_cpus; i++) {
+        struct mpc_cpu *c = mp_add(w, sizeof(*c));
+
+        c->type        = MP_PROCESSOR;
+        c->apicid      = (uint8_t)i;
+        c->apicver     = APIC_VERSION;
+        c->cpuflag     = CPU_ENABLED | (i == 0 ? CPU_BOOTPROCESSOR : 0);
+        c->cpufeature  = MP_CPU_SIGNATURE;
+        c->featureflag = MP_CPU_FEATURES;
+    }
+}
+
+static void mp_add_bus(struct mp_writer *w, uint8_t id, const char type[6])
+{
+    struct mpc_bus *b = mp_add(w, sizeof(*b));
+
+    b->type  = MP_BUS;
+    b->busid = id;
+    memcpy(b->bustype, type, 6);
+}
+
+static void mp_add_ioapic(struct mp_writer *w)
+{
+    struct mpc_ioapic *io = mp_add(w, sizeof(*io));
+
+    io->type     = MP_IOAPIC;
+    io->apicid   = w->ioapic_id;
+    io->apicver  = IOAPIC_VERSION;
+    io->flags    = MP_IOAPIC_USABLE;
+    io->apicaddr = MP_IOAPIC_BASE;
+}
+
+static struct mpc_intsrc *mp_add_intsrc(struct mp_writer *w, uint8_t bus,
+                                        uint8_t bus_irq, uint8_t pin)
+{
+    struct mpc_intsrc *s = mp_add(w, sizeof(*s));
+
+    s->type      = MP_INTSRC;
+    s->irqtype   = MP_IRQTYPE_INT;
+    s->srcbus    = bus;
+    s->srcbusirq = bus_irq;
+    s->dstapic   = w->ioapic_id;
+    s->dstirq    = pin;
+    return s;
+}
+
+static void mp_add_isa_irqs(struct mp_writer *w)
+{
+    int i;
+
+    for (i = 0; i < MP_ISA_IRQS; i++) {
+        struct mpc_intsrc *s = mp_add_intsrc(w, MP_BUS_ID_ISA, (uint8_t)i,
+                                             (uint8_t)i);
+
+        /* SCI 不是 ISA 的边沿中断：FADT SCI_INT 规定它是 level、active low，
+         * MADT 没写 ISO 时 Linux 正是这样配置 IRQ 9 的。这里写成同样的属性，
+         * 两份表描述的接线才一致 */
+        if (i == ACPI_SCI_IRQ)
+            s->irqflag = MP_IRQFLAG_ACTIVE_LOW | MP_IRQFLAG_LEVEL;
+    }
+}
+
+/* PCI 中断：srcbusirq 的 bit 6:2 是 slot，bit 1:0 是 pin（0 = INTA），
+ * Linux 按同样的位取用（io_apic.c IO_APIC_get_PCI_irq_vector）。irqflag 0
+ * 表示“按总线默认”，PCI 总线默认就是电平触发、低有效。 */
+static void mp_add_pci_irqs(struct mp_writer *w, const struct pci_bus *pci)
+{
+    int i;
+
+    for (i = 0; pci && i < PCI_MAX_SLOTS; i++) {
+        const struct pci_device *d = pci->devs[i];
+
+        if (!d || !d->intx_pin)
+            continue;
+        mp_add_intsrc(w, MP_BUS_ID_PCI, (uint8_t)(i << 2 | (d->intx_pin - 1)),
+                      (uint8_t)pci_intx_gsi(i, d->intx_pin));
+    }
+}
+
+/* lintsrc 和 intsrc 结构相同，只是 type 不同，dstirq 是 LAPIC 的 LINT 引脚 */
+static void mp_add_lint(struct mp_writer *w, uint8_t irqtype, uint8_t lint)
+{
+    struct mpc_intsrc *l = mp_add(w, sizeof(*l));
+
+    l->type    = MP_LINTSRC;
+    l->irqtype = irqtype;
+    l->dstapic = MP_ALL_LAPICS;
+    l->dstirq  = lint;
+}
+
+int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
+{
+    enum gpa_status gs;
+    uint8_t *base;
+    struct mpf_intel *mpf;
+    struct mpc_table *mpc;
+    struct mp_writer w;
+    int nr_pci_irqs = count_pci_irqs(pci);
+
+    if (nr_cpus < 1 || nr_cpus > MP_MAX_CPUS ||
+        mp_table_size(nr_cpus, nr_pci_irqs) > MPTABLE_MAX_SIZE) {
         vmm_err("mptable: %d CPUs and %d PCI interrupts do not fit into %d bytes",
                 nr_cpus, nr_pci_irqs, MPTABLE_MAX_SIZE);
         return VMM_ERR_INVAL;
@@ -173,114 +311,27 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
     memset(base, 0, MPTABLE_MAX_SIZE);
 
     mpf = (struct mpf_intel *)base;
-    mpc = (struct mpc_table *)(base + sizeof(*mpf));
-    p   = (uint8_t *)(mpc + 1);
+    mpc = (struct mpc_table *)(mpf + 1);
+    w.p          = (uint8_t *)(mpc + 1);
+    w.nr_entries = 0;
+    w.ioapic_id  = (uint8_t)nr_cpus;
 
-    for (i = 0; i < nr_cpus; i++) {
-        struct mpc_cpu *c = (struct mpc_cpu *)p;
-
-        c->type    = MP_PROCESSOR;
-        c->apicid  = (uint8_t)i;
-        c->apicver = APIC_VERSION;
-        c->cpuflag = CPU_ENABLED | (i == 0 ? CPU_BOOTPROCESSOR : 0);
-        /* family/model/stepping 与特性位 Linux 只拿来打印，填个合理值 */
-        c->cpufeature  = 0x600;
-        c->featureflag = 0x201;   /* FPU | APIC */
-        p += sizeof(*c);
-        nr_entries++;
-    }
-
-    {
-        struct mpc_bus *b = (struct mpc_bus *)p;
-
-        b->type  = MP_BUS;
-        b->busid = MP_BUS_ID_PCI;
-        memcpy(b->bustype, "PCI   ", 6);
-        p += sizeof(*b);
-        b = (struct mpc_bus *)p;
-        b->type  = MP_BUS;
-        b->busid = MP_BUS_ID_ISA;
-        memcpy(b->bustype, "ISA   ", 6);
-        p += sizeof(*b);
-        nr_entries += 2;
-    }
-
-    {
-        struct mpc_ioapic *io = (struct mpc_ioapic *)p;
-
-        io->type     = MP_IOAPIC;
-        io->apicid   = ioapic_id;
-        io->apicver  = IOAPIC_VERSION;
-        io->flags    = MP_IOAPIC_USABLE;
-        io->apicaddr = MP_IOAPIC_BASE;
-        p += sizeof(*io);
-        nr_entries++;
-    }
-
-    for (i = 0; i < 16; i++) {
-        struct mpc_intsrc *s = (struct mpc_intsrc *)p;
-
-        s->type      = MP_INTSRC;
-        s->irqtype   = MP_IRQTYPE_INT;
-        s->srcbus    = MP_BUS_ID_ISA;
-        s->srcbusirq = (uint8_t)i;
-        s->dstapic   = ioapic_id;
-        s->dstirq    = (uint8_t)i;
-        /* SCI 不是 ISA 的边沿中断：FADT SCI_INT 规定它是 level、active low，
-         * MADT 没写 ISO 时 Linux 正是这样配置 IRQ 9 的。这里写成同样的属性，
-         * 两份表描述的接线才一致 */
-        if (i == ACPI_SCI_IRQ)
-            s->irqflag = MP_IRQFLAG_ACTIVE_LOW | MP_IRQFLAG_LEVEL;
-        p += sizeof(*s);
-        nr_entries++;
-    }
-
-    /* PCI 中断：srcbusirq 的 bit 6:2 是 slot，bit 1:0 是 pin（0 = INTA），
-     * Linux 按同样的位取用（io_apic.c IO_APIC_get_PCI_irq_vector）。irqflag 0 表示“按总线默认”，PCI 总线默认
-     * 就是电平触发、低有效。 */
-    for (i = 0; pci && i < PCI_MAX_SLOTS; i++) {
-        const struct pci_device *d = pci->devs[i];
-        struct mpc_intsrc *s;
-
-        if (!d || !d->intx_pin)
-            continue;
-        s = (struct mpc_intsrc *)p;
-        s->type      = MP_INTSRC;
-        s->irqtype   = MP_IRQTYPE_INT;
-        s->srcbus    = MP_BUS_ID_PCI;
-        s->srcbusirq = (uint8_t)(i << 2 | (d->intx_pin - 1));
-        s->dstapic   = ioapic_id;
-        s->dstirq    = (uint8_t)pci_intx_gsi(i, d->intx_pin);
-        p += sizeof(*s);
-        nr_entries++;
-    }
-
-    /* LINT0 接 8259 的 INTR（ExtINT），LINT1 接 NMI；dstapic 0xff =
-     * 所有 LAPIC。结构和 intsrc 一样，只是 type 不同。 */
-    {
-        struct mpc_intsrc *l = (struct mpc_intsrc *)p;
-
-        l->type    = MP_LINTSRC;
-        l->irqtype = MP_IRQTYPE_EXTINT;
-        l->dstapic = 0xff;
-        l->dstirq  = 0;
-        p += sizeof(*l);
-
-        l = (struct mpc_intsrc *)p;
-        l->type    = MP_LINTSRC;
-        l->irqtype = MP_IRQTYPE_NMI;
-        l->dstapic = 0xff;
-        l->dstirq  = 1;
-        p += sizeof(*l);
-        nr_entries += 2;
-    }
+    /* 顺序就是文件头列出的布局 */
+    mp_add_cpus(&w, nr_cpus);
+    mp_add_bus(&w, MP_BUS_ID_PCI, "PCI   ");
+    mp_add_bus(&w, MP_BUS_ID_ISA, "ISA   ");
+    mp_add_ioapic(&w);
+    mp_add_isa_irqs(&w);
+    mp_add_pci_irqs(&w, pci);
+    mp_add_lint(&w, MP_IRQTYPE_EXTINT, MP_LINT0);   /* 8259 的 INTR */
+    mp_add_lint(&w, MP_IRQTYPE_NMI, MP_LINT1);
 
     memcpy(mpc->signature, "PCMP", 4);
-    mpc->length   = (uint16_t)(p - (uint8_t *)mpc);
+    mpc->length   = (uint16_t)(w.p - (uint8_t *)mpc);
     mpc->spec     = MPC_SPEC;
     memcpy(mpc->oem, "MINIVMM ", 8);
     memcpy(mpc->productid, "000000000000", 12);
-    mpc->oemcount = nr_entries;
+    mpc->oemcount = w.nr_entries;
     mpc->lapic    = MP_LAPIC_BASE;
     mpc->checksum = mp_checksum(mpc, mpc->length);
 
@@ -291,7 +342,7 @@ int mptable_setup(struct vmm_vm *vm, int nr_cpus, const struct pci_bus *pci)
     mpf->checksum      = mp_checksum(mpf, sizeof(*mpf));
 
     vmm_info("MP table @ GPA 0x%llx: %d CPU(s), IOAPIC id %u @ 0x%x, %u entries",
-             (unsigned long long)MPTABLE_GPA, nr_cpus, ioapic_id,
-             MP_IOAPIC_BASE, nr_entries);
+             (unsigned long long)MPTABLE_GPA, nr_cpus, w.ioapic_id,
+             MP_IOAPIC_BASE, w.nr_entries);
     return VMM_OK;
 }

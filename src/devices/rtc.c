@@ -33,7 +33,6 @@
 #define RTC_REG_B      0x0b
 #define RTC_REG_C      0x0c
 #define RTC_REG_D      0x0d
-#define RTC_CENTURY    0x32
 
 #define RTC_REG_A_DEFAULT 0x26   /* 32.768kHz 时基，1024Hz 周期，UIP=0 */
 #define RTC_REG_B_24H     0x02   /* 24 小时制，BCD 编码，无中断 */

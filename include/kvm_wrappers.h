@@ -56,6 +56,16 @@ int  kvm_set_cpuid2(int vcpu_fd, struct kvm_cpuid2 *cpuid);
 int  kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value);
 int  kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value);
 
+/* 只装一项的 KVM_GET_MSRS / KVM_SET_MSRS 参数，用 hdr.entries[0] 访问那一项。
+ * struct kvm_msrs 以柔性数组结尾，按 ISO C 它不能作为别的结构体的成员，
+ * 写成 struct { struct kvm_msrs hdr; struct kvm_msr_entry ent[1]; } 只是
+ * GNU 扩展（clang 报 -Wgnu-variable-sized-type-not-at-end）。放进 union
+ * 是 ISO C 允许的，raw 负责给那一项留出空间。 */
+union kvm_msrs_one {
+    struct kvm_msrs hdr;
+    uint8_t raw[sizeof(struct kvm_msrs) + sizeof(struct kvm_msr_entry)];
+};
+
 /* vCPU 的复位状态机（KVM_MP_STATE_*）。AP 唤醒排障用：读到
  * UNINITIALIZED 说明还没收到 INIT，INIT_RECEIVED 说明在等 SIPI。
  * 必须在拥有该 vcpu_fd 的线程里调用——KVM 的 vCPU ioctl 要拿

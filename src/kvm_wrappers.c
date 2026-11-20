@@ -244,33 +244,27 @@ const char *kvm_mp_state_str(uint32_t state)
 
 int kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value)
 {
-    struct {
-        struct kvm_msrs hdr;
-        struct kvm_msr_entry ent[1];
-    } buf;
+    union kvm_msrs_one buf;
 
     memset(&buf, 0, sizeof(buf));
-    buf.hdr.nmsrs   = 1;
-    buf.ent[0].index = index;
+    buf.hdr.nmsrs = 1;
+    buf.hdr.entries[0].index = index;
 
     if (KVM_IOCTL(vcpu_fd, KVM_GET_MSRS, &buf.hdr) < 0)
         return VMM_ERR_SYS;
 
-    *value = buf.ent[0].data;
+    *value = buf.hdr.entries[0].data;
     return VMM_OK;
 }
 
 int kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value)
 {
-    struct {
-        struct kvm_msrs hdr;
-        struct kvm_msr_entry ent[1];
-    } buf;
+    union kvm_msrs_one buf;
 
     memset(&buf, 0, sizeof(buf));
-    buf.hdr.nmsrs    = 1;
-    buf.ent[0].index = index;
-    buf.ent[0].data  = value;
+    buf.hdr.nmsrs = 1;
+    buf.hdr.entries[0].index = index;
+    buf.hdr.entries[0].data  = value;
 
     return KVM_IOCTL(vcpu_fd, KVM_SET_MSRS, &buf.hdr) < 0
            ? VMM_ERR_SYS : VMM_OK;

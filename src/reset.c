@@ -89,10 +89,7 @@ static struct kvm_msrs *msrs_save(int vcpu_fd, const struct kvm_msr_list *list,
                                   int id)
 {
     struct kvm_msrs *out;
-    struct {
-        struct kvm_msrs hdr;
-        struct kvm_msr_entry ent;
-    } one;
+    union kvm_msrs_one one;
     unsigned int i, skipped = 0;
 
     out = calloc(1, sizeof(*out) + list->nmsrs * sizeof(out->entries[0]));
@@ -101,13 +98,13 @@ static struct kvm_msrs *msrs_save(int vcpu_fd, const struct kvm_msr_list *list,
     for (i = 0; i < list->nmsrs; i++) {
         memset(&one, 0, sizeof(one));
         one.hdr.nmsrs = 1;
-        one.ent.index = list->indices[i];
+        one.hdr.entries[0].index = list->indices[i];
         if (ioctl(vcpu_fd, KVM_GET_MSRS, &one.hdr) != 1 ||
             ioctl(vcpu_fd, KVM_SET_MSRS, &one.hdr) != 1) {
             skipped++;
             continue;
         }
-        out->entries[out->nmsrs++] = one.ent;
+        out->entries[out->nmsrs++] = one.hdr.entries[0];
     }
     vmm_dbg("reset: vCPU %d: saved %u MSRs, %u in KVM's list not readable "
             "and writable", id, out->nmsrs, skipped);
