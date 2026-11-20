@@ -94,23 +94,26 @@ $(BUILD)/%.o: src/%.c
 -include $(DEPS)
 
 # ---- payload ----
+# 链接用 -n：关掉页对齐，代码段保持只读可执行。-N 也关页对齐，但会把代码段
+# 标成可写，binutils 2.39 起 ld 对这种 RWX 段报警告。载荷不改写自己的代码，
+# 两者产出的 .bin 字节相同。
 # 16 位载荷用 --32 汇编（.code16 需要 32 位目标），链接到 0x0。
 $(BUILD)/payload16.elf: tools/payload/real_mode_stub.S
 	@mkdir -p $(dir $@)
 	$(AS) --32 -o $(BUILD)/payload16.o $<
-	$(LD) -m elf_i386 -N -e _start -Ttext 0x0 -o $@ $(BUILD)/payload16.o
+	$(LD) -m elf_i386 -n -e _start -Ttext 0x0 -o $@ $(BUILD)/payload16.o
 
 # 64 位载荷链接到 0x300000，和 VMM 里的 PAYLOAD_LONG_GPA 保持一致。
 $(BUILD)/payload64.elf: tools/payload/long_mode_stub.S
 	@mkdir -p $(dir $@)
 	$(AS) --64 -o $(BUILD)/payload64.o $<
-	$(LD) -m elf_x86_64 -N -e _start -Ttext 0x300000 -o $@ $(BUILD)/payload64.o
+	$(LD) -m elf_x86_64 -n -e _start -Ttext 0x300000 -o $@ $(BUILD)/payload64.o
 
 # 串口测试载荷，和 payload64 一样放 0x300000，用 cpp 预处理 #define。
 $(BUILD)/serial64.elf: tools/payload/serial_stub.S
 	@mkdir -p $(dir $@)
 	$(CC) -c -o $(BUILD)/serial64.o $<
-	$(LD) -m elf_x86_64 -N -e _start -Ttext 0x300000 -o $@ $(BUILD)/serial64.o
+	$(LD) -m elf_x86_64 -n -e _start -Ttext 0x300000 -o $@ $(BUILD)/serial64.o
 
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(OBJCOPY) -O binary $< $@
