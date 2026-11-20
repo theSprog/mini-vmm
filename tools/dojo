@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""tools/dojo — 调试训练题的打包、开始、交作业和收尾
+
+一道题的全部材料都在题目分支里：植入了 bug 的源码，加上
+dojo/NNN-<现象>/challenge.md。解题者只在一个 worktree 里工作，修复和
+report.md 都提交到 solve/NNN，不用在主目录和 worktree 之间来回切换。
+评审后 Claude 把 challenge/report/feedback 三个文件归档到 master 的 dojo/。
+
+题目分支是没有父提交的根提交：git log、git show 和编辑器的修改高亮都不会
+暴露改动位置。
+"""
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from enum import IntEnum
+from pathlib import Path
+from typing import NoReturn, Optional
+
+
+class Exit(IntEnum):
+    OK = 0
+    FAIL = 1
+    USAGE = 2
+
+
+REMOTE = "origin"
+
+HELP_EPILOG = """\
+EXAMPLE
+  tools/dojo list                     show all challenges and their state
+  tools/dojo start 1                  create ../mini-vmm-dojo-001, build it
+  tools/dojo submit                   (inside the worktree) commit everything, push solve/001
+  tools/dojo clean 1                  remove the worktree after review
+  tools/dojo pack guest-hangs-on-reboot --from /tmp/wt --challenge /tmp/challenge.md
+
+NOTE
+  - Challenge NNN lives on branch dojo/NNN; your work goes to solve/NNN.
+  - start: fetches from origin when reachable, creates the worktree
+    ../mini-vmm-dojo-NNN next to the main checkout, runs make, and links
+    guest-kernel/ and build/initramfs.cpio.gz from the main checkout, so the
+    commands in challenge.md work unchanged. Running it again only refreshes
+    the build and the links.
+  - submit: needs dojo/NNN-*/report.md to be non-empty, commits every change
+    in the worktree (git add -A; the worktree is yours alone) and pushes
+    solve/NNN to origin. It never deletes anything.
+  - clean: refuses while the worktree has uncommitted changes or solve/NNN
+    differs from origin/solve/NNN. Branches are kept.
+  - pack (for the challenge author): commits the tree of --from (a checkout
+    with the bug applied), the challenge file with the standard steps
+    appended, and the current tools/dojo (so submit works inside the
+    worktree) as a parent-less commit on dojo/NNN, where NNN is one more
+    than the highest number used by any dojo/ or solve/ branch (local or
+    origin) or archived dojo/NNN-* directory on the current commit. It only
+    uses a temporary index, so --from is left untouched. It does not push;
+    use --push for that.
+"""
+
+
+# pack 追加到每份 challenge.md 末尾，解题者不用再去别处查命令
+STEPS = """\
+## 流程
+
+```sh
+tools/dojo start {n}            # 在 mini-vmm 主目录执行：建 worktree、编译、链接 guest 内核和 initramfs
+cd ../mini-vmm-dojo-{nnn}       # 之后所有事情都在这个目录里做
+# 调试、修复，报告写在 dojo/{name}/report.md
+tools/dojo submit             # 提交 worktree 里的全部改动并推送 solve/{nnn}，可以反复执行
+tools/dojo clean {n}            # 评审结束后删除 worktree，有未提交或未推送的内容时会拒绝
+```
+
+- 换一台机器继续：在那边的 mini-vmm 主目录执行 `tools/dojo start {n}`，它会从远端取回已经推送的 `solve/{nnn}`。
+- `tools/dojo list` 查看所有题目和状态。
+- 不要拿 `dojo/{nnn}` 和 master 做 diff，那样等于直接看答案。
+- 向 Claude 要了提示，就在报告里写明得到了什么提示。
+"""
+
+
+def die(msg: str, code: Exit = Exit.FAIL) -> NoReturn:
+    print(f"dojo: {msg}", file=sys.stderr)
+    if code == Exit.USAGE:
+        print("Run 'tools/dojo --help' for usage.", file=sys.stderr)
+    sys.exit(code)
+
+
+def git(*args: str, cwd: Optional[Path] = None, env: Optional[dict] = None,
+        check: bool = True, capture: bool = True) -> str:
+    r = subprocess.run(["git", *args], cwd=cwd, env=env, text=True,
+                       stdout=subprocess.PIPE if capture else None,
+                       stderr=subprocess.PIPE if capture else None)
+    if check and r.returncode != 0:
+        err = (r.stderr or "").strip()
+        die(f"git {' '.join(args)} failed" + (f":\n{err}" if err else ""))
+    return (r.stdout or "").strip()
+
+
+def ref_exists(ref: str) -> bool:
+    return subprocess.run(["git", "rev-parse", "-q", "--verify", ref],
+                          cwd=MAIN, stdout=subprocess.DEVNULL).returncode == 0
+
+
+def main_checkout() -> Path:
+    r = subprocess.run(["git", "rev-parse", "--path-format=absolute",
+                        "--git-common-dir"], text=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if r.returncode != 0:
+        die("not inside the mini-vmm repository or one of its worktrees")
+    return Path(r.stdout.strip()).parent
+
+
+MAIN = main_checkout()
+
+
+def norm_id(s: str) -> str:
+    m = re.fullmatch(r"(\d{1,3})(-.*)?", s)
+    if not m:
+        die(f"bad challenge id {s!r}: expected a number such as 1 or 001",
+            Exit.USAGE)
+    return f"{int(m.group(1)):03d}"
+
+
+def worktree_of(nnn: str) -> Path:
+    return MAIN.parent / f"{MAIN.name}-dojo-{nnn}"
+
+
+def current_id() -> str:
+    """在 worktree 里省略编号时，从当前分支 solve/NNN 推出来。"""
+    br = git("branch", "--show-current", cwd=Path.cwd(), check=False)
+    m = re.fullmatch(r"solve/(\d{3})", br)
+    if not m:
+        die("no challenge id given and the current branch is not solve/NNN",
+            Exit.USAGE)
+    return m.group(1)
+
+
+def challenge_dir(ref: str, nnn: str, strict: bool = True) -> str:
+    """题目分支里 dojo/NNN-<现象> 的路径。strict 为假时找不到返回空串。"""
+    names = git("ls-tree", "--name-only", f"{ref}:dojo", cwd=MAIN,
+                check=False).splitlines()
+    hits = [n for n in names if n.startswith(f"{nnn}-")]
+    if len(hits) != 1:
+        if not strict:
+            return ""
+        die(f"{ref} should contain exactly one dojo/{nnn}-*/ directory, "
+            f"found {hits or 'none'}")
+    return f"dojo/{hits[0]}"
+
+
+def try_fetch() -> None:
+    r = subprocess.run(["git", "fetch", "-q", REMOTE], cwd=MAIN, text=True,
+                       stderr=subprocess.PIPE)
+    if r.returncode != 0:
+        print(f"dojo: warning: git fetch {REMOTE} failed, using local "
+              f"branches only", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_list(_: argparse.Namespace) -> None:
+    refs = git("for-each-ref", "--format=%(refname)",
+               "refs/heads/dojo/", f"refs/remotes/{REMOTE}/dojo/", cwd=MAIN)
+    ids = sorted({m.group(1) for r in refs.splitlines()
+                  if (m := re.search(r"/dojo/(\d{3})$", r))})
+    if not ids:
+        print("no challenges (no dojo/NNN branches)")
+        return
+    for nnn in ids:
+        ref = f"dojo/{nnn}" if ref_exists(f"dojo/{nnn}") \
+            else f"{REMOTE}/dojo/{nnn}"
+        d = challenge_dir(ref, nnn, strict=False)
+        if not d:
+            print(f"{nnn:<40} broken: {ref} has no dojo/{nnn}-*/ directory")
+            continue
+        local, remote = f"solve/{nnn}", f"{REMOTE}/solve/{nnn}"
+        if (MAIN / d / "feedback.md").exists():
+            state = "reviewed"
+        elif ref_exists(remote) and (not ref_exists(local) or
+                                     git("rev-parse", local, cwd=MAIN) ==
+                                     git("rev-parse", remote, cwd=MAIN)):
+            state = "submitted"
+        elif ref_exists(local):
+            state = "in progress"
+        else:
+            state = "not started"
+        wt = worktree_of(nnn)
+        where = f"  {wt}" if wt.exists() else ""
+        print(f"{d[len('dojo/'):]:<40} {state}{where}")
+
+
+def cmd_start(a: argparse.Namespace) -> None:
+    nnn = norm_id(a.id)
+    wt = worktree_of(nnn)
+    if not wt.exists():
+        try_fetch()
+        if ref_exists(f"solve/{nnn}"):
+            git("worktree", "add", str(wt), f"solve/{nnn}", cwd=MAIN)
+        else:
+            base = f"dojo/{nnn}" if ref_exists(f"dojo/{nnn}") \
+                else f"{REMOTE}/dojo/{nnn}"
+            if not ref_exists(base):
+                die(f"no branch dojo/{nnn} locally or on {REMOTE}; "
+                    f"'tools/dojo list' shows what exists")
+            src = f"{REMOTE}/solve/{nnn}" if ref_exists(
+                f"{REMOTE}/solve/{nnn}") else base
+            git("worktree", "add", "--no-track", "-b", f"solve/{nnn}",
+                str(wt), src, cwd=MAIN)
+    d = challenge_dir(f"solve/{nnn}", nnn)
+
+    jobs = str(os.cpu_count() or 1)
+    if subprocess.run(["make", f"-j{jobs}"], cwd=wt,
+                      stdout=subprocess.DEVNULL).returncode != 0:
+        die(f"make failed in {wt}; run make there to see the error")
+    link(wt / "guest-kernel", MAIN / "guest-kernel")
+    link(wt / "build" / "initramfs.cpio.gz",
+         MAIN / "build" / "initramfs.cpio.gz")
+
+    print(f"worktree: {wt}")
+    print(f"read:     {wt / d / 'challenge.md'}")
+    print(f"report:   {wt / d / 'report.md'}")
+    print(f"next:     cd {wt}")
+
+
+def link(dst: Path, target: Path) -> None:
+    if not target.exists():
+        print(f"dojo: warning: {target} is missing; build it in the main "
+              f"checkout (see HANDOFF.md)", file=sys.stderr)
+        return
+    if dst.is_symlink() or dst.exists():
+        if dst.is_symlink() and Path(os.readlink(dst)) == target:
+            return
+        if not dst.is_symlink():
+            return  # 用户自己放了真实文件，不覆盖
+        dst.unlink()
+    dst.symlink_to(target)
+
+
+def cmd_submit(a: argparse.Namespace) -> None:
+    nnn = norm_id(a.id) if a.id else current_id()
+    wt = worktree_of(nnn)
+    if not wt.exists():
+        die(f"{wt} does not exist; run 'tools/dojo start {nnn}' first")
+    d = challenge_dir(f"solve/{nnn}", nnn)
+    report = wt / d / "report.md"
+    if not report.exists() or not report.read_text().strip():
+        die(f"{report} is missing or empty; write the report first")
+    git("add", "-A", cwd=wt)
+    if git("diff", "--cached", "--name-only", cwd=wt):
+        git("commit", "-q", "-m", f"dojo {nnn}: submit", cwd=wt)
+    r = subprocess.run(["git", "push", "-u", REMOTE, f"solve/{nnn}"],
+                       cwd=wt, text=True, stderr=subprocess.PIPE)
+    if r.returncode != 0:
+        die(f"push failed, nothing was lost (all work is committed on "
+            f"solve/{nnn}):\n{r.stderr.strip()}")
+    print(f"submitted solve/{nnn} at {git('rev-parse', '--short', 'HEAD', cwd=wt)}")
+
+
+def cmd_clean(a: argparse.Namespace) -> None:
+    nnn = norm_id(a.id)
+    wt = worktree_of(nnn)
+    if not wt.exists():
+        die(f"{wt} does not exist")
+    if git("status", "--porcelain", cwd=wt):
+        die(f"{wt} has uncommitted changes; commit them or run "
+            f"'tools/dojo submit {nnn}'")
+    try_fetch()
+    remote = f"{REMOTE}/solve/{nnn}"
+    if not ref_exists(remote) or \
+            git("rev-parse", f"solve/{nnn}", cwd=MAIN) != \
+            git("rev-parse", remote, cwd=MAIN):
+        die(f"solve/{nnn} is not pushed as-is to {REMOTE}; "
+            f"run 'tools/dojo submit {nnn}' first")
+    git("worktree", "remove", str(wt), cwd=MAIN)
+    print(f"removed {wt}; branches dojo/{nnn} and solve/{nnn} are kept")
+
+
+def next_id() -> str:
+    """已用编号的最大值加一：本地和远端的 dojo/NNN、solve/NNN 分支，以及
+    master 里已归档的 dojo/NNN-* 目录。题目分支评审后可能被删，归档目录还在，
+    所以两处都要看。"""
+    refs = git("for-each-ref", "--format=%(refname)", "refs/heads/dojo/",
+               "refs/heads/solve/", f"refs/remotes/{REMOTE}/dojo/",
+               f"refs/remotes/{REMOTE}/solve/", cwd=MAIN).splitlines()
+    dirs = git("ls-tree", "--name-only", "HEAD:dojo", cwd=MAIN,
+               check=False).splitlines()
+    used = [int(m.group(1)) for r in refs
+            if (m := re.search(r"/(\d{3})$", r))]
+    used += [int(m.group(1)) for d in dirs
+             if (m := re.match(r"(\d{3})-", d))]
+    n = max(used, default=0) + 1
+    if n > 999:
+        die("challenge numbers are exhausted (999)")
+    return f"{n:03d}"
+
+
+def cmd_pack(a: argparse.Namespace) -> None:
+    if re.match(r"\d+-", a.symptom):
+        die(f"drop the number from {a.symptom!r}; pack assigns the next "
+            f"free number itself", Exit.USAGE)
+    if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", a.symptom):
+        die(f"bad symptom {a.symptom!r}: expected kebab-case such as "
+            f"guest-hangs-on-reboot", Exit.USAGE)
+    try_fetch()   # 另一台机器可能已经出过题，先拿到它的编号
+    nnn = next_id()
+    name = f"{nnn}-{a.symptom}"
+    src, chal = Path(a.src).resolve(), Path(a.challenge).resolve()
+    if not chal.is_file():
+        die(f"{chal} is not a file", Exit.USAGE)
+    with tempfile.TemporaryDirectory() as tmp:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(tmp) / "index"))
+        git("read-tree", "HEAD", cwd=src, env=env)
+        git("add", "-A", cwd=src, env=env)
+        text = chal.read_text().rstrip("\n") + "\n\n" + \
+            STEPS.format(n=int(nnn), nnn=nnn, name=name)
+        r = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=src,
+                           input=text, text=True, stdout=subprocess.PIPE)
+        if r.returncode != 0:
+            die("git hash-object failed")
+        blob = r.stdout.strip()
+        git("update-index", "--add", "--cacheinfo",
+            f"100644,{blob},dojo/{name}/challenge.md", cwd=src, env=env)
+        # 解题者在 worktree 里要用 submit，题目的基线可能早于这个脚本，
+        # 所以总是放进当前版本
+        tool = git("hash-object", "-w", str(Path(__file__).resolve()),
+                   cwd=src)
+        git("update-index", "--add", "--cacheinfo",
+            f"100755,{tool},tools/dojo", cwd=src, env=env)
+        tree = git("write-tree", cwd=src, env=env)
+    commit = git("commit-tree", tree, "-m", f"dojo {nnn}: challenge", cwd=src)
+    git("branch", f"dojo/{nnn}", commit, cwd=MAIN)
+    print(f"dojo/{nnn} -> {commit[:12]}  (dojo/{name}/challenge.md)")
+    if a.push:
+        git("push", REMOTE, f"dojo/{nnn}", cwd=MAIN, capture=False)
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        die(message, Exit.USAGE)
+
+
+def main() -> None:
+    p = Parser(prog="tools/dojo", description=__doc__.splitlines()[0],
+               epilog=HELP_EPILOG,
+               formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True, parser_class=Parser)
+    sub.add_parser("list", help="list challenges and their state")
+    s = sub.add_parser("start", help="create the worktree and build it")
+    s.add_argument("id")
+    s = sub.add_parser("submit", help="commit everything and push solve/NNN")
+    s.add_argument("id", nargs="?")
+    s = sub.add_parser("clean", help="remove the worktree after review")
+    s.add_argument("id")
+    s = sub.add_parser("pack", help="(author) package a challenge branch")
+    s.add_argument("symptom", help="kebab-case symptom, e.g. guest-hangs-on-reboot;"
+                   " the number is assigned automatically")
+    s.add_argument("--from", dest="src", required=True,
+                   help="checkout with the bug applied")
+    s.add_argument("--challenge", required=True, help="challenge.md to include")
+    s.add_argument("--push", action="store_true", help=f"push to {REMOTE}")
+    a = p.parse_args()
+    {"list": cmd_list, "start": cmd_start, "submit": cmd_submit,
+     "clean": cmd_clean, "pack": cmd_pack}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        die("interrupted")
