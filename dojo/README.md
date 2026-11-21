@@ -16,24 +16,31 @@ Claude 在 mini-vmm 里植入一个 bug，只交给你一个故障现场，你�
 
 ## 流程
 
-一道题的全部材料都在题目分支 `dojo/NNN` 上：植入了 bug 的源码加上 `challenge.md`。你只在一个 worktree 里工作，修复和 `report.md` 都留在那里，一起提交到 `solve/NNN`。
+一道题的全部材料都在题目分支 `dojo/NNN` 上：植入了 bug 的源码加上 `challenge.md`。你只在一个 worktree 里工作，修复和 `report.md` 都留在那里，一起提交到 `solve/NNN`。评审后所有材料归档到 master 的 `dojo/NNN-<现象>/`，题目的分支随之删除，分支数不会随题目增长。
 
-在 `~/.zshrc` 里加一行 `source ~/mini-vmm/tools/dojo.sh`（路径按实际位置），就能在任何目录用 `dojo` 命令：`dojo start N` 建好 worktree 后直接进入，`dojo submit` 推送后回到 mini-vmm 主目录。不加这一行也能用 `tools/dojo`，只是要自己 `cd`。
+在 `~/.zshrc` 里加一行 `source ~/mini-vmm/tools/dojo.sh`（路径按实际位置），就能用 `dojo` 命令：`dojo start N` 建好 worktree 后直接进入，`dojo submit` 推送后回到 mini-vmm 主目录。不加这一行也能用 `tools/dojo`，只是要自己 `cd`。
 
-| 步骤 | 谁 | 命令 |
-|---|---|---|
-| 出题 | Claude | `tools/dojo pack <现象> --from <植入后的副本> --challenge <文件> --push` |
-| 看题 | 你 | `dojo list` |
-| 开始 | 你 | `dojo start N` |
-| 交作业 | 你 | 在 worktree 里 `dojo submit` |
-| 评审 | Claude | 读 `solve/NNN`，写 `feedback.md`，把三个文件归档到 master 的 `dojo/NNN-<现象>/` |
-| 收尾 | 你 | `dojo clean N` |
+| 步骤 | 谁 | 在哪 | 命令 |
+|---|---|---|---|
+| 出题 | Claude | master | `tools/dojo pack <现象> --from <植入后的副本> --challenge <文件> --push` |
+| 看题 | 你 | 任意 | `dojo list` |
+| 开始 | 你 | master | `dojo start N` |
+| 交作业 | 你 | worktree | `dojo submit` |
+| 评审归档 | Claude | master | `tools/dojo archive N --feedback <文件>` |
+| 收尾 | 你 | master | `git pull` 看评审意见，然后 `dojo clean N` |
 
-- `start` 会在仓库旁边建 worktree、编译，并把主目录里的 guest 内核和 initramfs 链接进去，`challenge.md` 里的命令可以原样运行。在另一台机器上它会先 fetch。
+- 每个命令只能在表里写的位置运行，在别处会被拒绝。这样不会在题目分支上开新题，也不会把作业交到错的分支。
+- `start` 会在仓库旁边建 worktree、编译、构建缺失的 initramfs，并把 guest 内核和 initramfs 链接进去，`challenge.md` 里的命令可以原样运行。在另一台机器上它会先 fetch，接着已经推送的 `solve/NNN` 做。
 - `submit` 把 worktree 里的所有改动提交并推送 `solve/NNN`，包括调试时加的打印，评审时都看得到。它不删除任何东西，可以反复执行。
-- `clean` 只删 worktree，有未提交或未推送的内容时拒绝执行；分支保留，确认不再需要时再手动删。
+- `archive` 把 challenge、report、feedback，以及植入的改动 `bug.diff`、你的修复 `fix.diff` 写进 master 的题目目录，提交并推送 master 之后才删除远端和本地的题目分支。
+- `clean` 删除 worktree 和本地残留的分支；有未提交的内容，或者 `solve/NNN` 比归档时更新，会拒绝执行。
 - 题号由 `pack` 自动分配：取本地和远端分支、master 已归档目录里用过的最大编号加一，打包前会先 fetch，两台机器轮流出题不会撞号。
-- 题目分支没有父提交，`git log`、`git show` 和编辑器的修改高亮都看不出改了哪里。Claude 评审时拿基线 commit 和题目分支比较，得到标准答案。
+- 题目分支没有父提交，`git log`、`git show` 和编辑器的修改高亮都看不出改了哪里。
+
+## 出题要求
+
+- `challenge.md` 里写的每一条现象、每一个对照（例如“换成某参数就没有这个问题”）都要在植入后的版本上实际跑过。没验证的对照会把解题者引向错误方向。
+- 难度跟着解题者的水平走：先出现象和根因在同一处、线索能在日志里直接看到的题，再逐步加长推理链。
 
 ## 约定
 

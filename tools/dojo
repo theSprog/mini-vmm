@@ -4,7 +4,8 @@
 一道题的全部材料都在题目分支里：植入了 bug 的源码，加上
 dojo/NNN-<现象>/challenge.md。解题者只在一个 worktree 里工作，修复和
 report.md 都提交到 solve/NNN，不用在主目录和 worktree 之间来回切换。
-评审后 Claude 把 challenge/report/feedback 三个文件归档到 master 的 dojo/。
+评审后 archive 把 challenge/report/feedback 和两份 diff 归档到 master 的
+dojo/NNN-<现象>/，再删掉这道题的分支，分支数不会随题目增长。
 
 题目分支是没有父提交的根提交：git log、git show 和编辑器的修改高亮都不会
 暴露改动位置。
@@ -33,8 +34,9 @@ HELP_EPILOG = """\
 EXAMPLE
   tools/dojo list                     show all challenges and their state
   tools/dojo start 1                  create ../mini-vmm-dojo-001, build it
-  tools/dojo submit                   (inside the worktree) commit everything, push solve/001
-  tools/dojo clean 1                  remove the worktree after review
+  tools/dojo submit                   (in the worktree) commit everything, push solve/001
+  tools/dojo clean 1                  after archiving: remove the worktree and local branches
+  tools/dojo archive 1 --feedback /tmp/feedback.md
   source tools/dojo.sh; dojo start 1  same commands as a shell function that also cd's
   tools/dojo pack guest-hangs-on-reboot --from /tmp/wt --challenge /tmp/challenge.md
 
@@ -44,6 +46,10 @@ NOTE
     directory, cd's into the worktree after start and back to the main
     checkout after submit. Source it from your shell rc file.
   - Challenge NNN lives on branch dojo/NNN; your work goes to solve/NNN.
+  - Where each command runs: submit only on a solve/NNN branch (the
+    worktree); start, clean, archive and pack only on master; list and
+    where anywhere. Anything else is refused, so a command cannot act on
+    the wrong checkout.
   - start: fetches from origin when reachable, creates the worktree
     ../mini-vmm-dojo-NNN next to the main checkout, runs make, and links
     guest-kernel/ and build/initramfs.cpio.gz from the main checkout, so the
@@ -52,8 +58,18 @@ NOTE
   - submit: needs dojo/NNN-*/report.md to be non-empty, commits every change
     in the worktree (git add -A; the worktree is yours alone) and pushes
     solve/NNN to origin. It never deletes anything.
-  - clean: refuses while the worktree has uncommitted changes or solve/NNN
-    differs from origin/solve/NNN. Branches are kept.
+  - clean: refuses while the worktree has uncommitted changes. Once the
+    challenge is archived it also deletes the local dojo/NNN and solve/NNN,
+    refusing if solve/NNN has commits newer than the archived one. Before
+    archiving it only removes the worktree, and only if solve/NNN is pushed.
+  - archive (for the reviewer): writes challenge.md and report.md from the
+    submitted solve/NNN, the given feedback, bug.diff (base -> dojo/NNN) and
+    fix.diff (dojo/NNN -> solve/NNN) into dojo/NNN-*/, commits and pushes
+    master, then deletes dojo/NNN and solve/NNN on origin and locally.
+    Branches are deleted only after master is pushed; a branch still checked
+    out somewhere is left for clean.
+    The base is read from the Base: line of the dojo/NNN commit (written by
+    pack); pass --base for challenges packed without it.
   - pack (for the challenge author): commits the tree of --from (a checkout
     with the bug applied), the challenge file with the standard steps
     appended, and the current tools/dojo (so submit works inside the
@@ -73,8 +89,10 @@ STEPS = """\
 dojo start {n}       # 建 worktree、编译、链接 guest 内核和 initramfs，然后进入 worktree
 # 调试、修复，报告写在 dojo/{name}/report.md
 dojo submit        # 提交 worktree 里的全部改动并推送 solve/{nnn}，然后回到 mini-vmm 主目录；可以反复执行
-dojo clean {n}       # 评审结束后删除 worktree，有未提交或未推送的内容时会拒绝
+dojo clean {n}       # 评审归档后执行：删除 worktree 和本地分支，有未提交的内容时会拒绝
 ```
+
+- 评审后 challenge、report、feedback 会归档到 master 的 `dojo/{name}/`，`git pull` 后就能看到评审意见。
 
 - `dojo` 是 `tools/dojo.sh` 定义的 shell 函数，在 `~/.zshrc` 里 source 它。没有 source 时用 `tools/dojo` 加同样的参数，目录要自己 `cd`（worktree 是 `../mini-vmm-dojo-{nnn}`）。
 - 换一台机器继续：在那边执行 `dojo start {n}`，它会从远端取回已经推送的 `solve/{nnn}`。
@@ -111,12 +129,9 @@ def main_checkout() -> Path:
     r = subprocess.run(["git", "rev-parse", "--path-format=absolute",
                         "--git-common-dir"], text=True,
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    if r.returncode == 0:
-        return Path(r.stdout.strip()).parent
-    # tools/dojo.sh 里的 dojo 函数设置它，让命令在仓库外也能用
-    if os.environ.get("DOJO_MAIN"):
-        return Path(os.environ["DOJO_MAIN"])
-    die("not inside the mini-vmm repository or one of its worktrees")
+    if r.returncode != 0:
+        die("not inside the mini-vmm repository or one of its worktrees")
+    return Path(r.stdout.strip()).parent
 
 
 MAIN = main_checkout()
@@ -134,13 +149,30 @@ def worktree_of(nnn: str) -> Path:
     return MAIN.parent / f"{MAIN.name}-dojo-{nnn}"
 
 
-def current_id() -> str:
-    """在 worktree 里省略编号时，从当前分支 solve/NNN 推出来。"""
-    br = git("branch", "--show-current", cwd=Path.cwd(), check=False)
+def current_branch() -> str:
+    return git("branch", "--show-current", cwd=Path.cwd(), check=False)
+
+
+def toplevel() -> Path:
+    return Path(git("rev-parse", "--show-toplevel", cwd=Path.cwd()))
+
+
+def require_master() -> Path:
+    """出题、开始、收尾、归档都从 master 出发：在题目或解题分支上运行它们，
+    要么把东西建在错误的基线上，要么在 worktree 里再套 worktree。"""
+    br = current_branch()
+    if br != "master":
+        die(f"run this on master (current branch: {br or 'detached HEAD'})")
+    return toplevel()
+
+
+def require_solve() -> str:
+    """submit 只在解题分支上运行，题号从分支名得出。"""
+    br = current_branch()
     m = re.fullmatch(r"solve/(\d{3})", br)
     if not m:
-        die("no challenge id given and the current branch is not solve/NNN",
-            Exit.USAGE)
+        die(f"run submit in the challenge worktree on solve/NNN "
+            f"(current branch: {br or 'detached HEAD'})")
     return m.group(1)
 
 
@@ -157,6 +189,30 @@ def challenge_dir(ref: str, nnn: str, strict: bool = True) -> str:
     return f"dojo/{hits[0]}"
 
 
+def archived_dir(nnn: str) -> str:
+    """master 上已归档（有 feedback.md）的 dojo/NNN-* 目录，没有返回空串。"""
+    for n in git("ls-tree", "--name-only", "master:dojo", cwd=MAIN,
+                 check=False).splitlines():
+        if n.startswith(f"{nnn}-") and subprocess.run(
+                ["git", "cat-file", "-e", f"master:dojo/{n}/feedback.md"],
+                cwd=MAIN, stderr=subprocess.DEVNULL).returncode == 0:
+            return f"dojo/{n}"
+    return ""
+
+
+def archived_solve(nnn: str) -> str:
+    """归档提交里记下的 solve/NNN 提交号。"""
+    return git("log", "-1", "master", f"--grep=^dojo {nnn}: archive$",
+               "--format=%(trailers:key=Solve,valueonly)", cwd=MAIN).strip()
+
+
+def pick_ref(*refs: str) -> str:
+    for r in refs:
+        if ref_exists(r):
+            return r
+    return ""
+
+
 def try_fetch() -> None:
     r = subprocess.run(["git", "fetch", "-q", REMOTE], cwd=MAIN, text=True,
                        stderr=subprocess.PIPE)
@@ -170,22 +226,30 @@ def try_fetch() -> None:
 def cmd_list(_: argparse.Namespace) -> None:
     refs = git("for-each-ref", "--format=%(refname)",
                "refs/heads/dojo/", f"refs/remotes/{REMOTE}/dojo/", cwd=MAIN)
-    ids = sorted({m.group(1) for r in refs.splitlines()
-                  if (m := re.search(r"/dojo/(\d{3})$", r))})
+    ids = {m.group(1) for r in refs.splitlines()
+           if (m := re.search(r"/dojo/(\d{3})$", r))}
+    ids |= {m.group(1) for n in git("ls-tree", "--name-only", "master:dojo",
+                                    cwd=MAIN, check=False).splitlines()
+            if (m := re.match(r"(\d{3})-", n))}
     if not ids:
-        print("no challenges (no dojo/NNN branches)")
+        print("no challenges")
         return
-    for nnn in ids:
-        ref = f"dojo/{nnn}" if ref_exists(f"dojo/{nnn}") \
-            else f"{REMOTE}/dojo/{nnn}"
+    for nnn in sorted(ids):
+        wt = worktree_of(nnn)
+        where = f"  {wt}" if wt.exists() else ""
+        arch = archived_dir(nnn)
+        if arch:
+            print(f"{arch[len('dojo/'):]:<40} archived{where}")
+            continue
+        ref = pick_ref(f"dojo/{nnn}", f"{REMOTE}/dojo/{nnn}")
+        if not ref:
+            continue      # master 里只有目录、没有 feedback 的残留，不算一道题
         d = challenge_dir(ref, nnn, strict=False)
         if not d:
             print(f"{nnn:<40} broken: {ref} has no dojo/{nnn}-*/ directory")
             continue
         local, remote = f"solve/{nnn}", f"{REMOTE}/solve/{nnn}"
-        if (MAIN / d / "feedback.md").exists():
-            state = "reviewed"
-        elif ref_exists(remote) and (not ref_exists(local) or
+        if ref_exists(remote) and (not ref_exists(local) or
                                      git("rev-parse", local, cwd=MAIN) ==
                                      git("rev-parse", remote, cwd=MAIN)):
             state = "submitted"
@@ -193,16 +257,26 @@ def cmd_list(_: argparse.Namespace) -> None:
             state = "in progress"
         else:
             state = "not started"
-        wt = worktree_of(nnn)
-        where = f"  {wt}" if wt.exists() else ""
         print(f"{d[len('dojo/'):]:<40} {state}{where}")
 
 
 def cmd_start(a: argparse.Namespace) -> None:
+    require_master()
     nnn = norm_id(a.id)
     wt = worktree_of(nnn)
     if not wt.exists():
         try_fetch()
+        # worktree 目录被手动删掉时 git 仍记着它，不清掉就会报分支已被检出
+        git("worktree", "prune", cwd=MAIN)
+        chal = pick_ref(f"dojo/{nnn}", f"{REMOTE}/dojo/{nnn}")
+        for sr in (f"solve/{nnn}", f"{REMOTE}/solve/{nnn}"):
+            # 作废重出的题会复用编号，旧的 solve 分支不是新题目的后代
+            if chal and ref_exists(sr) and subprocess.run(
+                    ["git", "merge-base", "--is-ancestor", chal, sr],
+                    cwd=MAIN).returncode != 0:
+                die(f"{sr} belongs to an older challenge {nnn}, not to "
+                    f"{chal}; delete it first (git branch -D solve/{nnn}, "
+                    f"or git fetch --prune for the remote one)")
         if ref_exists(f"solve/{nnn}"):
             git("worktree", "add", str(wt), f"solve/{nnn}", cwd=MAIN)
         else:
@@ -221,9 +295,15 @@ def cmd_start(a: argparse.Namespace) -> None:
     if subprocess.run(["make", f"-j{jobs}"], cwd=wt,
                       stdout=subprocess.DEVNULL).returncode != 0:
         die(f"make failed in {wt}; run make there to see the error")
+    initrd = MAIN / "build" / "initramfs.cpio.gz"
+    if not initrd.exists():
+        # make 不构建 initramfs（e2e 按需构建），新机器上常常没有
+        if subprocess.run([str(MAIN / "tools" / "build_initramfs.sh")],
+                          cwd=MAIN, stdout=subprocess.DEVNULL).returncode != 0:
+            print("dojo: warning: tools/build_initramfs.sh failed",
+                  file=sys.stderr)
     link(wt / "guest-kernel", MAIN / "guest-kernel")
-    link(wt / "build" / "initramfs.cpio.gz",
-         MAIN / "build" / "initramfs.cpio.gz")
+    link(wt / "build" / "initramfs.cpio.gz", initrd)
 
     print(f"worktree: {wt}")
     print(f"read:     {wt / d / 'challenge.md'}")
@@ -249,11 +329,9 @@ def cmd_where(a: argparse.Namespace) -> None:
     print(worktree_of(norm_id(a.id)))
 
 
-def cmd_submit(a: argparse.Namespace) -> None:
-    nnn = norm_id(a.id) if a.id else current_id()
-    wt = worktree_of(nnn)
-    if not wt.exists():
-        die(f"{wt} does not exist; run 'tools/dojo start {nnn}' first")
+def cmd_submit(_: argparse.Namespace) -> None:
+    nnn = require_solve()
+    wt = toplevel()
     d = challenge_dir(f"solve/{nnn}", nnn)
     report = wt / d / "report.md"
     if not report.exists() or not report.read_text().strip():
@@ -270,22 +348,98 @@ def cmd_submit(a: argparse.Namespace) -> None:
 
 
 def cmd_clean(a: argparse.Namespace) -> None:
+    require_master()
     nnn = norm_id(a.id)
     wt = worktree_of(nnn)
-    if not wt.exists():
-        die(f"{wt} does not exist")
-    if git("status", "--porcelain", cwd=wt):
+    if wt.exists() and git("status", "--porcelain", cwd=wt):
         die(f"{wt} has uncommitted changes; commit them or run "
             f"'tools/dojo submit {nnn}'")
     try_fetch()
-    remote = f"{REMOTE}/solve/{nnn}"
-    if not ref_exists(remote) or \
-            git("rev-parse", f"solve/{nnn}", cwd=MAIN) != \
-            git("rev-parse", remote, cwd=MAIN):
-        die(f"solve/{nnn} is not pushed as-is to {REMOTE}; "
-            f"run 'tools/dojo submit {nnn}' first")
-    git("worktree", "remove", str(wt), cwd=MAIN)
-    print(f"removed {wt}; branches dojo/{nnn} and solve/{nnn} are kept")
+    if not archived_dir(nnn):
+        if not wt.exists():
+            die(f"{wt} does not exist and challenge {nnn} is not archived")
+        remote = f"{REMOTE}/solve/{nnn}"
+        if not ref_exists(remote) or \
+                git("rev-parse", f"solve/{nnn}", cwd=MAIN) != \
+                git("rev-parse", remote, cwd=MAIN):
+            die(f"solve/{nnn} is not pushed as-is to {REMOTE}; "
+                f"run 'tools/dojo submit {nnn}' first")
+        git("worktree", "remove", str(wt), cwd=MAIN)
+        print(f"removed {wt}; branches are kept until the challenge is "
+              f"archived")
+        return
+    if ref_exists(f"solve/{nnn}") and \
+            git("rev-parse", f"solve/{nnn}", cwd=MAIN) != archived_solve(nnn):
+        die(f"solve/{nnn} differs from the archived submission "
+            f"{archived_solve(nnn)[:12]}; it may hold work made after "
+            f"review. Push it or delete it yourself")
+    if wt.exists():
+        git("worktree", "remove", str(wt), cwd=MAIN)
+        print(f"removed {wt}")
+    for br in (f"dojo/{nnn}", f"solve/{nnn}"):
+        if ref_exists(f"refs/heads/{br}"):
+            r = subprocess.run(["git", "branch", "-D", br], cwd=MAIN,
+                               text=True, capture_output=True)
+            print(f"deleted {br}" if r.returncode == 0 else
+                  f"dojo: kept {br}: {r.stderr.strip()}")
+
+
+def cmd_archive(a: argparse.Namespace) -> None:
+    mw = require_master()
+    nnn = norm_id(a.id)
+    fb = Path(a.feedback).resolve()
+    if not fb.is_file():
+        die(f"{fb} is not a file", Exit.USAGE)
+    try_fetch()
+    solve = pick_ref(f"{REMOTE}/solve/{nnn}", f"solve/{nnn}")
+    chal = pick_ref(f"dojo/{nnn}", f"{REMOTE}/dojo/{nnn}")
+    if not solve or not chal:
+        die(f"need both dojo/{nnn} and a submitted solve/{nnn}")
+    base = a.base or git("log", "-1", chal,
+                         "--format=%(trailers:key=Base,valueonly)",
+                         cwd=MAIN).strip()
+    if not base:
+        die(f"dojo/{nnn} has no Base: line; pass --base <baseline commit>",
+            Exit.USAGE)
+    d = challenge_dir(solve, nnn)
+    if git("status", "--porcelain", "--", d, cwd=mw):
+        die(f"{mw / d} has uncommitted changes")
+
+    out = mw / d
+    out.mkdir(parents=True, exist_ok=True)
+    for f in ("challenge.md", "report.md"):
+        (out / f).write_text(git("show", f"{solve}:{d}/{f}", cwd=MAIN) + "\n")
+    (out / "feedback.md").write_text(fb.read_text())
+    (out / "bug.diff").write_text(git(
+        "diff", base, chal, "--", ".", ":(exclude)dojo",
+        ":(exclude)tools/dojo", cwd=MAIN) + "\n")
+    (out / "fix.diff").write_text(git(
+        "diff", chal, solve, "--", ".", ":(exclude)dojo", cwd=MAIN) + "\n")
+
+    git("add", "--", d, cwd=mw)
+    if git("diff", "--cached", "--name-only", "--", d, cwd=mw):
+        sha = git("rev-parse", solve, cwd=MAIN)
+        git("commit", "-q", "-m", f"dojo {nnn}: archive",
+            "-m", f"Solve: {sha}", "--", d, cwd=mw)
+    r = subprocess.run(["git", "push", REMOTE, "master"], cwd=mw, text=True,
+                       capture_output=True)
+    if r.returncode != 0:
+        die(f"archived into master locally, but push failed, so no branch "
+            f"was deleted; push master and run archive again:\n"
+            f"{r.stderr.strip()}")
+    gone = [b for b in (f"dojo/{nnn}", f"solve/{nnn}")
+            if ref_exists(f"{REMOTE}/{b}")]
+    if gone:
+        git("push", "-q", REMOTE, "--delete", *gone, cwd=MAIN)
+    print(f"archived to {d} and pushed master; deleted on {REMOTE}: "
+          f"{' '.join(gone) or 'nothing'}")
+    for br in (f"dojo/{nnn}", f"solve/{nnn}"):
+        if ref_exists(f"refs/heads/{br}"):
+            r = subprocess.run(["git", "branch", "-D", br], cwd=MAIN,
+                               text=True, capture_output=True)
+            print(f"deleted local {br}" if r.returncode == 0 else
+                  f"kept local {br} (checked out; 'tools/dojo clean {nnn}' "
+                  f"removes it later)")
 
 
 def next_id() -> str:
@@ -308,6 +462,7 @@ def next_id() -> str:
 
 
 def cmd_pack(a: argparse.Namespace) -> None:
+    require_master()
     if re.match(r"\d+-", a.symptom):
         die(f"drop the number from {a.symptom!r}; pack assigns the next "
             f"free number itself", Exit.USAGE)
@@ -340,7 +495,9 @@ def cmd_pack(a: argparse.Namespace) -> None:
         git("update-index", "--add", "--cacheinfo",
             f"100755,{tool},tools/dojo", cwd=src, env=env)
         tree = git("write-tree", cwd=src, env=env)
-    commit = git("commit-tree", tree, "-m", f"dojo {nnn}: challenge", cwd=src)
+    # Base 记下基线，archive 用它算出植入的改动
+    commit = git("commit-tree", tree, "-m", f"dojo {nnn}: challenge",
+                 "-m", f"Base: {git('rev-parse', 'HEAD', cwd=src)}", cwd=src)
     git("branch", f"dojo/{nnn}", commit, cwd=MAIN)
     print(f"dojo/{nnn} -> {commit[:12]}  (dojo/{name}/challenge.md)")
     if a.push:
@@ -362,10 +519,16 @@ def main() -> None:
     s.add_argument("id")
     s = sub.add_parser("where", help="print the worktree path of challenge N")
     s.add_argument("id")
-    s = sub.add_parser("submit", help="commit everything and push solve/NNN")
-    s.add_argument("id", nargs="?")
-    s = sub.add_parser("clean", help="remove the worktree after review")
+    sub.add_parser("submit", help="(in the worktree) commit everything and "
+                   "push solve/NNN")
+    s = sub.add_parser("clean", help="remove the worktree (and, once "
+                       "archived, the local branches)")
     s.add_argument("id")
+    s = sub.add_parser("archive", help="(reviewer) archive into master and "
+                       "delete the challenge branches")
+    s.add_argument("id")
+    s.add_argument("--feedback", required=True, help="feedback.md to archive")
+    s.add_argument("--base", help="baseline commit, if dojo/NNN has no Base:")
     s = sub.add_parser("pack", help="(author) package a challenge branch")
     s.add_argument("symptom", help="kebab-case symptom, e.g. guest-hangs-on-reboot;"
                    " the number is assigned automatically")
@@ -375,7 +538,8 @@ def main() -> None:
     s.add_argument("--push", action="store_true", help=f"push to {REMOTE}")
     a = p.parse_args()
     {"list": cmd_list, "start": cmd_start, "submit": cmd_submit,
-     "clean": cmd_clean, "pack": cmd_pack, "where": cmd_where}[a.cmd](a)
+     "clean": cmd_clean, "pack": cmd_pack, "where": cmd_where,
+     "archive": cmd_archive}[a.cmd](a)
 
 
 if __name__ == "__main__":
