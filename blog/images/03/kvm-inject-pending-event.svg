@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="626" viewBox="0 0 840 626" role="img" aria-labelledby="title desc">
+  <title id="title">inject_pending_event() · 进入 guest 前的决策</title>
+  <desc id="desc">示意简化后的事件注入：先查未完成注入、异常、NMI、外部中断；NMI 和外部中断需判断 guest 是否能接收。外部中断取最高可投递向量并写 EVENTINJ，仍有待处理请求时使用窗口机制等待重新检查。EVENTINJ 一轮最多放一个事件。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="624" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">inject_pending_event() · 进入 guest 前的决策</text>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#58728d"/>
+    </marker>
+  </defs>
+  <text x="36" y="70" font-size="15" font-weight="400" text-anchor="start" class="ink">正常路径简图：省略异常冲突和嵌套虚拟化等细节；每轮最多注入一个事件。</text>
+  <rect x="39" y="97" width="246" height="41" rx="8" class="panel"/>
+  <text x="162" y="122.5" font-size="15" font-weight="700" text-anchor="middle" class="ink">vcpu_enter_guest()</text>
+  <rect x="39" y="170" width="246" height="42" rx="8" class="flag"/>
+  <text x="162" y="196" font-size="15" font-weight="700" text-anchor="middle" class="ink">上次注入尚未完成？</text>
+  <rect x="39" y="245" width="246" height="42" rx="8" class="flag"/>
+  <text x="162" y="271" font-size="15" font-weight="700" text-anchor="middle" class="ink">有待注入的异常？</text>
+  <rect x="39" y="320" width="246" height="42" rx="8" class="flag"/>
+  <text x="162" y="346" font-size="15" font-weight="700" text-anchor="middle" class="ink">有待投递的 NMI？</text>
+  <rect x="39" y="419" width="246" height="42" rx="8" class="flag"/>
+  <text x="162" y="445" font-size="15" font-weight="700" text-anchor="middle" class="ink">有可投递的外部中断？</text>
+  <rect x="39" y="531" width="246" height="42" rx="8" class="res"/>
+  <text x="162" y="557" font-size="15" font-weight="700" text-anchor="middle" class="ink">本轮没有新事件可注入</text>
+  <rect x="336" y="170" width="457" height="42" rx="8" class="teal"/>
+  <text x="564.5" y="196" font-size="15" font-weight="700" text-anchor="middle" class="ink">按 EXITINTINFO 记录重新注入</text>
+  <rect x="336" y="245" width="457" height="42" rx="8" class="teal"/>
+  <text x="564.5" y="271" font-size="15" font-weight="700" text-anchor="middle" class="ink">注入异常</text>
+  <rect x="336" y="320" width="205" height="42" rx="8" class="flag"/>
+  <text x="438.5" y="346" font-size="15" font-weight="700" text-anchor="middle" class="ink">guest 能接收 NMI？</text>
+  <rect x="595" y="301" width="198" height="34" rx="8" class="teal"/>
+  <text x="694" y="323" font-size="15" font-weight="700" text-anchor="middle" class="ink">注入 NMI</text>
+  <rect x="595" y="347" width="198" height="34" rx="8" class="purple"/>
+  <text x="694" y="369" font-size="15" font-weight="700" text-anchor="middle" class="ink">打开 NMI 窗口</text>
+  <rect x="336" y="419" width="205" height="42" rx="8" class="flag"/>
+  <text x="438.5" y="445" font-size="15" font-weight="700" text-anchor="middle" class="ink">guest 能接收中断？</text>
+  <rect x="595" y="404" width="198" height="64" rx="8" class="teal"/>
+  <text x="694" y="427" font-size="14" font-weight="700" text-anchor="middle" class="ink">取最高可投递向量</text>
+  <text x="694" y="451" font-size="14" font-weight="700" text-anchor="middle" class="ink">写入 EVENTINJ</text>
+  <rect x="336" y="507" width="237" height="42" rx="8" class="flag"/>
+  <text x="454.5" y="533" font-size="15" font-weight="700" text-anchor="middle" class="ink">仍有待投递的中断？</text>
+  <rect x="622" y="507" width="171" height="42" rx="8" class="purple"/>
+  <text x="707.5" y="533" font-size="15" font-weight="700" text-anchor="middle" class="ink">打开中断窗口</text>
+  <rect x="336" y="565" width="237" height="34" rx="8" class="res"/>
+  <text x="454.5" y="587" font-size="15" font-weight="700" text-anchor="middle" class="ink">结束本轮</text>
+  <path d="M162 138V168" class="line" marker-end="url(#arr)"/>
+  <path d="M162 212V243" class="line" marker-end="url(#arr)"/>
+  <path d="M162 287V318" class="line" marker-end="url(#arr)"/>
+  <path d="M162 362V417" class="line" marker-end="url(#arr)"/>
+  <path d="M162 461V529" class="line" marker-end="url(#arr)"/>
+  <path d="M285 191H334" class="line" marker-end="url(#arr)"/>
+  <path d="M285 266H334" class="line" marker-end="url(#arr)"/>
+  <path d="M285 341H334" class="line" marker-end="url(#arr)"/>
+  <path d="M285 440H334" class="line" marker-end="url(#arr)"/>
+  <path d="M541 341H562V318H593" class="line" marker-end="url(#arr)"/>
+  <path d="M562 341V364H593" class="line" marker-end="url(#arr)"/>
+  <path d="M694 381V395H205V417" class="line" marker-end="url(#arr)"/>
+  <path d="M541 440H593" class="line" marker-end="url(#arr)"/>
+  <path d="M439 461V505" class="line" marker-end="url(#arr)"/>
+  <path d="M694 468V486H512V505" class="line" marker-end="url(#arr)"/>
+  <path d="M573 528H620" class="line" marker-end="url(#arr)"/>
+  <path d="M454 549V563" class="line" marker-end="url(#arr)"/>
+  <text x="172" y="231" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="172" y="307" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="172" y="394" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="172" y="505" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="301" y="183" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="301" y="258" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="301" y="333" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="301" y="432" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="566" y="315" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="560" y="432" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="590" y="520" font-size="12" font-weight="400" text-anchor="start" class="muted">是</text>
+  <text x="569" y="358" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="450" y="488" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="465" y="561" font-size="12" font-weight="400" text-anchor="start" class="muted">否</text>
+  <text x="779" y="199" font-size="12" font-weight="400" text-anchor="end" class="muted">本轮结束</text>
+  <text x="779" y="274" font-size="12" font-weight="400" text-anchor="end" class="muted">本轮结束</text>
+</svg>

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="456" viewBox="0 0 840 456" role="img" aria-labelledby="title desc">
+  <title id="title">IOAPIC 重定向表项（64 位）</title>
+  <desc id="desc">按位宽画出高、低两个 32 位字。63 至 56 位是目的字段，55 至 17 位保留。16 位是屏蔽，15 位是触发方式，14 位是远程 IRR，13 位是极性，12 位是投递状态，11 位是目的模式，10 至 8 位是投递模式，7 至 0 位是向量号。</desc>
+  <rect x="1" y="1" width="838" height="454" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g stroke="#7b92ad" stroke-width="1">
+    <rect x="36" y="100" width="192" height="36" fill="#dbeafe"/>
+    <rect x="228" y="100" width="576" height="36" fill="#e9eff6"/>
+    <rect x="36" y="191" width="360" height="36" fill="#e9eff6"/>
+    <rect x="396" y="191" width="24" height="36" fill="#f5dfbf"/>
+    <rect x="420" y="191" width="24" height="36" fill="#fff2df"/>
+    <rect x="444" y="191" width="24" height="36" fill="#f5dfbf"/>
+    <rect x="468" y="191" width="24" height="36" fill="#fff2df"/>
+    <rect x="492" y="191" width="24" height="36" fill="#f5dfbf"/>
+    <rect x="516" y="191" width="24" height="36" fill="#fff2df"/>
+    <rect x="540" y="191" width="72" height="36" fill="#d9eee9"/>
+    <rect x="612" y="191" width="192" height="36" fill="#dbeafe"/>
+  </g>
+  <g fill="#fff9f0" stroke="#d3b48d">
+    <rect x="36" y="253" width="248" height="54" rx="8"/>
+    <rect x="296" y="253" width="248" height="54" rx="8"/>
+    <rect x="556" y="253" width="248" height="54" rx="8"/>
+    <rect x="36" y="316" width="248" height="54" rx="8"/>
+    <rect x="296" y="316" width="248" height="54" rx="8"/>
+    <rect x="556" y="316" width="248" height="54" rx="8"/>
+  </g>
+  <rect x="36" y="390" width="768" height="40" rx="8" fill="#e5f5f2" stroke="#78aca5"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48">
+    <text x="36" y="44" font-size="23" font-weight="700">IOAPIC 重定向表项 · 64 位</text>
+    <g font-size="16" font-weight="700">
+      <text x="36" y="77">高 32 位</text>
+      <text x="36" y="168">低 32 位</text>
+    </g>
+    <g font-size="14" text-anchor="middle" font-weight="600">
+      <text x="132" y="93">63:56</text>
+      <text x="516" y="93">55:32</text>
+      <text x="216" y="184">31:17</text>
+      <text x="408" y="184">16</text>
+      <text x="432" y="184">15</text>
+      <text x="456" y="184">14</text>
+      <text x="480" y="184">13</text>
+      <text x="504" y="184">12</text>
+      <text x="528" y="184">11</text>
+      <text x="576" y="184">10:8</text>
+      <text x="708" y="184">7:0</text>
+    </g>
+    <g font-size="16" text-anchor="middle">
+      <text x="132" y="115" font-size="14" font-weight="600">目的字段</text>
+      <text x="132" y="130" font-size="12">物理模式：目的 APIC ID</text>
+      <text x="516" y="123">保留（55:17 的高半部分）</text>
+      <text x="216" y="214">保留（55:17 的低半部分）</text>
+      <text x="576" y="214" font-size="14">投递模式</text>
+      <text x="708" y="214">向量号</text>
+    </g>
+    <text x="49" y="275" font-size="15" font-weight="700"><tspan fill="#784417">16</tspan> · 屏蔽</text>
+    <text x="49" y="294" font-size="14">0 = 不屏蔽 · 1 = 屏蔽</text>
+    <text x="309" y="275" font-size="15" font-weight="700"><tspan fill="#784417">15</tspan> · 触发方式</text>
+    <text x="309" y="294" font-size="14">0 = 边沿 · 1 = 电平</text>
+    <text x="569" y="275" font-size="15" font-weight="700"><tspan fill="#784417">14</tspan> · 远程 IRR</text>
+    <text x="569" y="294" font-size="14">电平中断已接受，等待 EOI</text>
+    <text x="49" y="338" font-size="15" font-weight="700"><tspan fill="#784417">13</tspan> · 输入极性</text>
+    <text x="49" y="357" font-size="14">0 = 高有效 · 1 = 低有效</text>
+    <text x="309" y="338" font-size="15" font-weight="700"><tspan fill="#784417">12</tspan> · 投递状态</text>
+    <text x="309" y="357" font-size="14">0 = 空闲 · 1 = 投递待完成</text>
+    <text x="569" y="338" font-size="15" font-weight="700"><tspan fill="#784417">11</tspan> · 目的模式</text>
+    <text x="569" y="357" font-size="14">0 = 物理 · 1 = 逻辑</text>
+    <text x="50" y="415" font-size="15"><tspan font-weight="700">投递模式示例</tspan><tspan x="182">000 = Fixed</tspan><tspan x="311">001 = 最低优先级</tspan><tspan x="495">100 = NMI</tspan><tspan x="633">111 = ExtINT</tspan></text>
+  </g>
+</svg>

@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# tests/e2e/linux-boot.sh — 里程碑 linux-boot 的验收
+#
+#   8250 UART：THR 输出、SCR 读写、MCR.LOOP 回环
+#   vmlinux ELF 加载 + boot_params + MP/ACPI 表，内核打印横幅
+#   initramfs，busybox shell 交互，poweroff 或 shell exit 退出 VMM
+#   bzImage：64 位启动协议 + 解压器 + KASLR，同样进 shell 并关机
+#
+# 用法：
+#   VMLINUX=/path/to/vmlinux BZIMAGE=/path/to/bzImage ./tests/e2e/linux-boot.sh   全部
+#   VMLINUX=/path/to/vmlinux ./tests/e2e/linux-boot.sh -a     只跑自动用例
+#   ./tests/e2e/linux-boot.sh -m                              只看人工指引
+#
+# 没设 VMLINUX 时 2.2/2.3 的用例 SKIP，没设 BZIMAGE 时 2.4 SKIP。
+# Linux 模式必须带 --initrd；initramfs 不存在或过期时由 lib.sh 的 initrd_ready 重新生成。
+
+set -u
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+SERIAL64="$ROOT/build/serial64.bin"
+INITRD="$ROOT/build/initramfs.cpio.gz"
+VMLINUX="${VMLINUX:-}"
+BZIMAGE="${BZIMAGE:-}"
+MEM=512M
+
+# ------------------------------------------------------------------
+auto_tests() {
+
+head1 "8250 UART"
+
+# payload 轮询 LSR.THRE 再写 THR，然后做 SCR 与 MCR.LOOP 自检，
+# 两项都过才往调试端口写 'S'（0x53），失败写 'x'（0x78）。
+run_case "serial: THR 输出 + SCR + LOOP 自检" \
+    "$VMM" --mode long64 "$SERIAL64"
+expect_rc 0
+expect_has "serial8250 @ PIO 0x3f8, IRQ 4"
+expect_has "Hello from guest via 8250 UART"
+expect_has "guest wrote port 0x10: 0x53"
+expect_not "guest wrote port 0x10: 0x78"
+end_case
+
+run_case "--initrd 只能配合 --mode linux" \
+    "$VMM" --mode long64 --initrd /dev/null "$SERIAL64"
+expect_rc 1
+expect_has "require --mode linux"
+end_case
+
+run_case "--mode linux 缺少 --initrd 时拒绝启动" \
+    "$VMM" --mode linux --mem "$MEM" "$SERIAL64"
+expect_rc 1
+expect_has "--mode linux requires --initrd"
+end_case
+
+initrd_ready "$INITRD" || {
+    skip_case "vmlinux / initramfs / bzImage" "tools/build_initramfs.sh failed"
+    return
+}
+
+run_case "既不是 ELF 也不是 bzImage 的内核给出明确报错" \
+    "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$SERIAL64"
+expect_rc 1
+expect_has "is neither an ELF vmlinux nor a bzImage"
+end_case
+
+if [ -z "$VMLINUX" ] || [ ! -f "$VMLINUX" ]; then
+    skip_case "vmlinux / initramfs" "run tools/build_guest_kernel.sh or set VMLINUX=/path/to/vmlinux"
+else
+
+head1 "vmlinux 直启"
+
+# rdinit=/nonexistent：initramfs 照常提供，但内核在里面找不到 init，
+# 转去挂载 root=，没有 root= 就以 VFS panic 结束；panic=-1 触发 reboot，
+# reboot=k 走 i8042 请求复位，--no-reboot 让 VMM 据此正常退出。这一条把整条启动路径
+# 和"guest 能让 VMM 退出"一起验了。
+run_case "内核启动到 VFS panic 并经 i8042 reset 退出" \
+    timeout 60 "$VMM" --mode linux --no-reboot --mem "$MEM" --initrd "$INITRD" \
+        --append "rdinit=/nonexistent" "$VMLINUX"
+expect_rc 0
+expect_has "kernel format: vmlinux (ELF)"
+expect_has "Linux version"
+expect_has "BIOS-e820: [mem 0x0000000000100000-"
+expect_has "ACPI: Using ACPI (MADT) for SMP configuration information"
+expect_has "APIC: Switch to symmetric I/O mode setup"
+# TSC 频率的合法来源随内核配置变，判据见 lib.sh 的 expect_tsc_calibrated
+expect_tsc_calibrated
+expect_has "rtc_cmos rtc_cmos: setting system clock"
+expect_has "VFS: Unable to mount root fs"
+expect_has "guest requested reset via i8042"
+# i8042：控制器命令全有应答，KBD 口注册成功，AUX 口被快速判定不存在
+expect_has "serio: i8042 KBD port at 0x60,0x64 irq 1"
+expect_has "input: AT Translated Set 2 keyboard"
+expect_not "Can't read CTR"
+expect_not "probe with driver i8042 failed"
+expect_not "AUX port"
+# 没有 PIT gate（0x61）时 TSC 校准会间歇失败，jiffies 停住
+expect_not "Unable to read current time from RTC"
+expect_not "SHUTDOWN"
+end_case
+
+head1 "initramfs + busybox shell"
+
+CUR_NAME="initramfs: shell 交互 + poweroff"
+printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
+CUR_BAD=0
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --cmd 'cat /proc/interrupts' --stop 'poweroff -f' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_RC=$?
+expect_rc 0
+expect_has "Run /init as init process"
+expect_re "mini-vmm initramfs: Linux [0-9]+\\.[0-9]+"
+# 42 只能来自 guest shell 真的执行了算术展开，回显的命令行里只有 6*7
+expect_has "MARK-42"
+# 列宽随内核版本变（芯片名一列按最长的名字对齐），只认字段
+expect_re "IO-APIC +4-edge +ttyS0"
+expect_has "guest requested poweroff via ACPI S5"
+expect_not "Kernel panic"
+end_case
+
+# 交互 shell 退出后由 inittab 的下一条 wait 关机，这条路径只靠 inittab
+# 里写对的命令路径，写错时 init 只打印 "can't run" 并停在那里，
+# VMM 不会退出，表现为 timeout 杀掉进程（退出码 124）
+CUR_NAME="initramfs: shell exit 后 init 自动关机"
+printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
+CUR_BAD=0
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --stop 'exit' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$VMLINUX" 2>&1)"
+CUR_RC=$?
+expect_rc 0
+expect_has "MARK-42"
+expect_has "guest requested poweroff via ACPI S5"
+expect_not "can't run"
+expect_not "Kernel panic"
+end_case
+
+fi  # VMLINUX
+
+if [ -z "$BZIMAGE" ] || [ ! -f "$BZIMAGE" ]; then
+    skip_case "bzImage" "run tools/build_guest_kernel.sh or set BZIMAGE=/path/to/bzImage"
+    return
+fi
+
+head1 "bzImage"
+
+# 同一套 boot_params/E820/ACPI，只是入口换成解压器：VMM 原样拷 setup
+# header、装保护模式部分、从装载地址 + 0x200 进入，其余交给解压器
+CUR_NAME="bzImage: 解压 + shell 交互 + poweroff"
+printf '%s->%s %s\n' "$C_CYA" "$C_RST" "$CUR_NAME"
+CUR_BAD=0
+CUR_OUT="$(python3 "$GUEST_SHELL" --timeout 60 \
+           --cmd 'echo MARK-$((6*7))' --stop 'poweroff -f' \
+           -- "$VMM" --mode linux --mem "$MEM" --initrd "$INITRD" "$BZIMAGE" 2>&1)"
+CUR_RC=$?
+expect_rc 0
+expect_has "kernel format: bzImage"
+expect_has "bzImage: protocol 2."
+# 解压器自己的输出（earlyprintk=serial 对解压器同样有效）
+expect_has "Decompressing Linux..."
+expect_has "Booting the kernel"
+expect_has "Run /init as init process"
+expect_has "MARK-42"
+expect_has "guest requested poweroff via ACPI S5"
+expect_not "Kernel panic"
+end_case
+
+run_case "bzImage: VFS panic 并经 i8042 reset 退出" \
+    timeout 60 "$VMM" --mode linux --no-reboot --smp 2 --mem "$MEM" --initrd "$INITRD" \
+        --append "rdinit=/nonexistent" "$BZIMAGE"
+expect_rc 0
+expect_has "kernel format: bzImage"
+expect_has "smp: Brought up 1 node, 2 CPUs"
+expect_has "VFS: Unable to mount root fs"
+expect_has "guest requested reset via i8042"
+expect_not "SHUTDOWN"
+end_case
+
+}
+
+# ------------------------------------------------------------------
+manual_guide() {
+
+head1 "人工验收"
+
+guide "交互式 shell" \
+"./tools/build_initramfs.sh
+./build/vmm --mode linux --mem 512M --initrd build/initramfs.cpio.gz \$VMLINUX" \
+"看到 [guest /]# 提示符后可以正常输入命令；Ctrl-C 只打断 guest 里的
+前台命令，不会杀掉 VMM；Ctrl-A x 立即退出 VMM 并打印 vCPU 现场；
+poweroff -f 正常退出，终端恢复到 cooked 模式。"
+
+guide "观察 exit 分布" \
+"sudo perf kvm stat record -- ./build/vmm --mode linux --mem 512M --initrd build/initramfs.cpio.gz \$VMLINUX
+sudo perf kvm stat report --event=ioport" \
+"IO exit 主要集中在 0x3f8-0x3ff（串口，每个字符若干次）。
+0x70/0x71 的 exit 应只有几十次（RTC 模拟之前是约 4 万次）。"
+
+guide "对照 MP table 路径" \
+"# guest 内核开了 CONFIG_X86_MPPARSE 时：
+./build/vmm --mode linux --mem 512M --initrd build/initramfs.cpio.gz --append acpi=off \$VMLINUX" \
+"应看到 'Intel MultiProcessor Specification v1.4' 与
+'MPTABLE: OEM ID: MINIVMM'，而不是 virtual wire 模式。
+内核没开 MPPARSE 时这条会退回 virtual wire（预期如此）。"
+
+}
+
+# ------------------------------------------------------------------
+main() {
+    local mode="${1:-all}"
+
+    case "$mode" in
+    -m|--manual) manual_guide; return 0 ;;
+    -a|--auto)   ;;
+    all|"")      ;;
+    *) echo "用法: $0 [-a 只跑自动 | -m 只看人工指引]"; return 2 ;;
+    esac
+
+    need_kvm
+    need_build
+    auto_tests
+
+    local rc=0
+    summary || rc=1
+
+    if [ "$mode" != "-a" ] && [ "$mode" != "--auto" ]; then
+        manual_guide
+    fi
+    return $rc
+}
+
+main "${1:-all}"

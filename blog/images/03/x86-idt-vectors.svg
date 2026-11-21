@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="290" viewBox="0 0 840 290" role="img" aria-labelledby="title desc">
+  <title id="title">x86 IDT 的 256 个向量</title>
+  <desc id="desc">向量 0 到 31 由 Intel 保留，包括 CPU 异常；向量 32 到 255 由操作系统分配，用于外部和软件中断。异常示例：0 是除零（#DE），6 是非法指令（#UD），8 是双重错误（#DF），13 是一般保护（#GP），14 是缺页（#PF）。</desc>
+  <rect x="1" y="1" width="838" height="288" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48">
+    <text x="36" y="42" font-size="23" font-weight="700">x86 IDT：256 个向量</text>
+    <text x="36" y="80" font-size="17" font-weight="700">Intel 保留（含 CPU 异常）</text>
+    <text x="468" y="80" font-size="17" font-weight="700" text-anchor="middle">操作系统分配：外部中断和软件中断</text>
+    <g fill="none" stroke-width="1.5">
+      <path d="M84 88V103" stroke="#274a78"/>
+      <path d="M468 88V103" stroke="#3d746c"/>
+    </g>
+    <defs>
+      <clipPath id="bar-outline">
+        <rect x="36" y="103" width="768" height="40" rx="8"/>
+      </clipPath>
+    </defs>
+    <g clip-path="url(#bar-outline)">
+      <rect x="36" y="103" width="96" height="40" fill="#274a78"/>
+      <rect x="132" y="103" width="672" height="40" fill="#d9eee9"/>
+    </g>
+    <rect x="36" y="103" width="768" height="40" rx="8" fill="none" stroke="#58778a"/>
+    <g text-anchor="middle" font-size="16" font-weight="700">
+      <text x="84" y="129" fill="#fff">32 项</text>
+      <text x="468" y="129">224 项</text>
+    </g>
+    <path d="M36 143V151 M132 143V153 M804 143V151" fill="none" stroke="#4c6481" stroke-width="1.5"/>
+    <g font-size="16" font-weight="600">
+      <text x="36" y="172">0</text>
+      <text x="125" y="172" text-anchor="end">31</text>
+      <text x="139" y="172">32</text>
+      <text x="804" y="172" text-anchor="end">255</text>
+    </g>
+    <path d="M36 191H804" fill="none" stroke="#c8d5e5"/>
+    <text x="36" y="216" font-size="16" font-weight="700">CPU 异常示例</text>
+    <g fill="#e7f2ff" stroke="#a8bdd8">
+      <rect x="36" y="226" width="144" height="40" rx="8"/>
+      <rect x="192" y="226" width="144" height="40" rx="8"/>
+      <rect x="348" y="226" width="144" height="40" rx="8"/>
+      <rect x="504" y="226" width="144" height="40" rx="8"/>
+      <rect x="660" y="226" width="144" height="40" rx="8"/>
+    </g>
+    <g text-anchor="middle" font-size="15">
+      <text x="108" y="252"><tspan font-weight="700">0 #DE</tspan> 除零</text>
+      <text x="264" y="252"><tspan font-weight="700">6 #UD</tspan> 非法指令</text>
+      <text x="420" y="252"><tspan font-weight="700">8 #DF</tspan> 双重错误</text>
+      <text x="576" y="252"><tspan font-weight="700">13 #GP</tspan> 一般保护</text>
+      <text x="732" y="252"><tspan font-weight="700">14 #PF</tspan> 缺页</text>
+    </g>
+  </g>
+</svg>

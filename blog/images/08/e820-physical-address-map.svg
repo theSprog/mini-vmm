@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="470" viewBox="0 0 840 470" role="img" aria-labelledby="title desc">
+  <title id="title">E820：512 MiB guest 怎样报告物理地址</title>
+  <desc id="desc">左图展开 1 MiB 以下的五个地址边界；右图展示日志中的三条 E820 记录，以及未列为条目的大型 guest MMIO 空洞。各段高度不按容量比例。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="468" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">E820：512 MiB guest 怎样报告物理地址</text>
+  <text x="36" y="81" font-size="14" font-weight="700" text-anchor="start" class="muted">放大：第一个 MiB</text>
+  <text x="472" y="81" font-size="14" font-weight="700" text-anchor="start" class="muted">512 MiB guest：日志里的三条记录</text>
+  <path d="M 438 111 L 460 111 L 460 121 L 482 121 M 438 358 L 460 358 L 460 213 L 482 213" class="dash"/>
+  <rect x="153" y="111" width="285" height="66" rx="0" class="blue"/>
+  <text x="164" y="134" font-size="16" font-weight="700" text-anchor="start" class="ink">常规内存 · DOS 的传统 RAM 区域</text>
+  <text x="164" y="154" font-size="13" font-weight="400" text-anchor="start" class="muted">0x0000 起是实模式中断向量表</text>
+  <text x="164" y="170" font-size="13" font-weight="400" text-anchor="start" class="muted">Linux 在低端 RAM 中放 AP trampoline</text>
+  <rect x="153" y="177" width="285" height="55" rx="0" class="flag"/>
+  <text x="164" y="200" font-size="16" font-weight="700" text-anchor="start" class="ink">EBDA · 扩展 BIOS 数据区</text>
+  <text x="164" y="220" font-size="13" font-weight="400" text-anchor="start" class="muted">末尾 1 KiB 的传统常规内存空间</text>
+  <rect x="153" y="232" width="285" height="56" rx="0" class="flag"/>
+  <text x="164" y="255" font-size="16" font-weight="700" text-anchor="start" class="ink">VGA 显存窗口</text>
+  <text x="164" y="275" font-size="13" font-weight="400" text-anchor="start" class="muted">历史上用于映射显卡</text>
+  <rect x="153" y="288" width="285" height="70" rx="0" class="flag"/>
+  <text x="164" y="311" font-size="16" font-weight="700" text-anchor="start" class="ink">扩展卡 ROM / BIOS ROM</text>
+  <text x="164" y="331" font-size="13" font-weight="400" text-anchor="start" class="muted">传统主板 BIOS 段：0xF0000–0xFFFFF</text>
+  <text x="142" y="116" font-size="14" font-weight="700" text-anchor="end" class="ink">0x00000000</text>
+  <path d="M 145 111 H 153" class="line"/>
+  <text x="142" y="182" font-size="14" font-weight="700" text-anchor="end" class="ink">0x0009FC00</text>
+  <path d="M 145 177 H 153" class="line"/>
+  <text x="142" y="237" font-size="14" font-weight="700" text-anchor="end" class="ink">0x000A0000</text>
+  <path d="M 145 232 H 153" class="line"/>
+  <text x="142" y="293" font-size="14" font-weight="700" text-anchor="end" class="ink">0x000C0000</text>
+  <path d="M 145 288 H 153" class="line"/>
+  <text x="142" y="363" font-size="14" font-weight="700" text-anchor="end" class="ink">0x00100000</text>
+  <path d="M 145 358 H 153" class="line"/>
+  <text x="142" y="253" font-size="13" font-weight="400" text-anchor="end" class="muted">640 KiB</text>
+  <text x="142" y="379" font-size="13" font-weight="400" text-anchor="end" class="muted">1 MiB</text>
+  <rect x="482" y="121" width="322" height="45" rx="0" class="blue"/>
+  <text x="494" y="140" font-size="15" font-weight="700" text-anchor="start" class="ink">①  RAM</text>
+  <text x="494" y="158" font-size="13" font-weight="400" text-anchor="start" class="muted">0x00000000–0x0009FBFF</text>
+  <rect x="482" y="166" width="322" height="47" rx="0" class="flag"/>
+  <text x="494" y="185" font-size="15" font-weight="700" text-anchor="start" class="ink">②  保留（EBDA / VGA / ROM）</text>
+  <text x="494" y="203" font-size="13" font-weight="400" text-anchor="start" class="muted">0x0009FC00–0x000FFFFF</text>
+  <rect x="482" y="213" width="322" height="46" rx="0" class="blue"/>
+  <text x="494" y="232" font-size="15" font-weight="700" text-anchor="start" class="ink">③  RAM（内核加载在 1 MiB 以上）</text>
+  <text x="494" y="250" font-size="13" font-weight="400" text-anchor="start" class="muted">0x00100000–0x1FFFFFFF</text>
+  <text x="472" y="291" font-size="14" font-weight="700" text-anchor="start" class="muted">更大内存配置：这段不是上面的 E820 条目</text>
+  <rect x="482" y="307" width="322" height="68" rx="0" class="res"/>
+  <text x="494" y="327" font-size="16" font-weight="700" text-anchor="start" class="ink">3–4 GiB · 32 位 MMIO 空洞</text>
+  <text x="793" y="327" font-size="13" font-weight="700" text-anchor="end" class="muted">0xC0000000</text>
+  <text x="494" y="346" font-size="13" font-weight="400" text-anchor="start" class="ink">PCI BAR、IOAPIC 0xFEC00000、</text>
+  <text x="494" y="363" font-size="13" font-weight="400" text-anchor="start" class="ink">LAPIC 0xFEE00000、固件 ROM 等</text>
+  <rect x="482" y="375" width="322" height="32" rx="0" class="blue"/>
+  <text x="494" y="397" font-size="14" font-weight="700" text-anchor="start" class="ink">4 GiB 起：重映射的高端 RAM</text>
+  <text x="793" y="397" font-size="13" font-weight="700" text-anchor="end" class="muted">0x100000000</text>
+  <text x="36" y="442" font-size="14" font-weight="400" text-anchor="start" class="muted">左图标注各段起点，右上是闭区间；各段高度不按实际容量比例。</text>
+</svg>
