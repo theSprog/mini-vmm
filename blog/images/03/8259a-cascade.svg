@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="404" viewBox="0 0 840 404" role="img" aria-labelledby="title desc">
+  <title id="title">8259A PIC 的主从级联</title>
+  <desc id="desc">从片有 IRQ8 至 IRQ15 八个外部输入，它的 INT 输出级联到主片 IR2。主片还有 IRQ0、IRQ1 和 IRQ3 至 IRQ7 七个外部输入，主片的 INT 输出接 CPU 的 INTR 引脚。</desc>
+  <defs>
+    <marker id="cascade" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#925520"/>
+    </marker>
+    <marker id="interrupt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c6481"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="402" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g stroke-width="1.5">
+    <rect x="36" y="75" width="242" height="270" rx="12" fill="#e5f5f2" stroke="#78aca5"/>
+    <rect x="366" y="75" width="242" height="270" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="696" y="183" width="108" height="56" rx="12" fill="#f0ebff" stroke="#a397d1"/>
+  </g>
+  <rect x="376" y="198" width="222" height="25" rx="6" fill="#fff2df"/>
+  <g fill="none" stroke-width="2">
+    <path d="M278 211H365" stroke="#925520" marker-end="url(#cascade)"/>
+    <path d="M608 211H695" stroke="#4c6481" marker-end="url(#interrupt)"/>
+  </g>
+  <path d="M52 150H262 M382 150H592" stroke="#aebcd0"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48">
+    <text x="36" y="45" font-size="23" font-weight="700">PC/AT 的 8259A 主从级联</text>
+    <g font-size="19" font-weight="700">
+      <text x="54" y="105">从片 8259A</text>
+      <text x="384" y="105">主片 8259A</text>
+      <text x="750" y="206" text-anchor="middle">CPU</text>
+    </g>
+    <g font-size="15">
+      <text x="54" y="131">端口 0xA0 / 0xA1</text>
+      <text x="384" y="131">端口 0x20 / 0x21</text>
+      <text x="750" y="226" text-anchor="middle">INTR 引脚</text>
+      <text x="54" y="170"><tspan font-weight="700">IR0</tspan><tspan x="110">IRQ8  ·  RTC</tspan></text>
+      <text x="54" y="193"><tspan font-weight="700">IR1</tspan><tspan x="110">IRQ9  ·  ACPI SCI</tspan></text>
+      <text x="54" y="216"><tspan font-weight="700">IR2</tspan><tspan x="110">IRQ10</tspan></text>
+      <text x="54" y="239"><tspan font-weight="700">IR3</tspan><tspan x="110">IRQ11</tspan></text>
+      <text x="54" y="262"><tspan font-weight="700">IR4</tspan><tspan x="110">IRQ12  ·  PS/2 鼠标</tspan></text>
+      <text x="54" y="285"><tspan font-weight="700">IR5</tspan><tspan x="110">IRQ13</tspan></text>
+      <text x="54" y="308"><tspan font-weight="700">IR6</tspan><tspan x="110">IRQ14  ·  IDE</tspan></text>
+      <text x="54" y="331"><tspan font-weight="700">IR7</tspan><tspan x="110">IRQ15</tspan></text>
+      <text x="384" y="170"><tspan font-weight="700">IR0</tspan><tspan x="440">IRQ0  ·  PIT</tspan></text>
+      <text x="384" y="193"><tspan font-weight="700">IR1</tspan><tspan x="440">IRQ1  ·  键盘</tspan></text>
+      <text x="384" y="216"><tspan font-weight="700">IR2</tspan><tspan x="440">级联输入（从片 INT）</tspan></text>
+      <text x="384" y="239"><tspan font-weight="700">IR3</tspan><tspan x="440">IRQ3</tspan></text>
+      <text x="384" y="262"><tspan font-weight="700">IR4</tspan><tspan x="440">IRQ4  ·  COM1</tspan></text>
+      <text x="384" y="285"><tspan font-weight="700">IR5</tspan><tspan x="440">IRQ5</tspan></text>
+      <text x="384" y="308"><tspan font-weight="700">IR6</tspan><tspan x="440">IRQ6</tspan></text>
+      <text x="384" y="331"><tspan font-weight="700">IR7</tspan><tspan x="440">IRQ7</tspan></text>
+    </g>
+    <g font-size="14" text-anchor="middle" font-weight="700">
+      <text x="322" y="198" fill="#784417">从片 INT</text>
+      <text x="322" y="232" fill="#784417">级联</text>
+      <text x="652" y="198">主片 INT</text>
+    </g>
+    <text x="36" y="380" font-size="16" font-weight="600">主片 7 根 + 从片 8 根 = 15 根外部中断线</text>
+  </g>
+</svg>

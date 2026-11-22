@@ -1,0 +1,940 @@
+/* tests/unit/boot_tables_test.c — 固件表与 boot_params 的离线检查
+ *
+ * 不碰 /dev/kvm：把 src/boot/{mptable,acpi,zeropage}.c 原样链接进来，
+ * 让它们往一块 calloc 出来的平坦“guest 内存”里写表，然后逐字段检查：
+ *   - 签名、长度、校验和（MP 两级、RSDP 两个、每张 ACPI 表）
+ *   - MP 表与 MADT 描述的 LAPIC/IOAPIC 地址、ID、CPU 集合彼此一致
+ *   - E820 至少两项、有序不重叠、1MiB 以下有 RAM、表所在区域不是 RAM
+ *   - bzImage 路径：内核自带的 setup header 原样保留，loader 只填自己的字段
+ *   - boot_params 里内核真正会读的字段（type_of_loader、cmd_line_ptr、
+ *     acpi_rsdp_addr）以及命令行长度上限
+ * 可选 --dump DIR：把每张 ACPI 表写成 DIR/<sig>.dat，交给 iasl -d 反汇编。
+ *
+ * 用法：tests/boot_tables.sh（负责编译和调用 iasl），也可以单独运行。
+ */
+#define _GNU_SOURCE
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <asm/bootparam.h>
+
+#include "vmm.h"
+#include "memory.h"
+#include "boot/acpi.h"
+#include "boot/mptable.h"
+#include "boot/zeropage.h"
+#include "pci/pci.h"
+
+/* ------------------------------------------------------------------ */
+/* 桩：用平坦缓冲区代替 guest 内存，其余接口什么也不做                  */
+/* ------------------------------------------------------------------ */
+
+#define RAM_SIZE (512ULL << 20)
+
+static uint8_t *g_ram;
+int vmm_log_level = 0;              /* 只让 vmm_err 输出 */
+
+void vmm_log(int level, const char *file, int line, const char *fmt, ...)
+{
+    va_list ap;
+
+    (void)file; (void)line;
+    if (level > vmm_log_level)
+        return;
+    va_start(ap, fmt);
+    fprintf(stderr, "  [vmm] ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+}
+
+/* 内存走真实的 src/mem.c，这样 E820 和 memslot 的一致性检查查的是真实布局；
+ * 只把注册 memslot 的 ioctl 桩掉。 */
+int kvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
+                               uint64_t gpa, uint64_t size, uint64_t hva)
+{
+    (void)vm_fd; (void)slot; (void)flags; (void)gpa; (void)size; (void)hva;
+    return VMM_OK;
+}
+
+int vmm_register_pio(struct vmm_vm *vm, const struct vmm_io_dev *dev)
+{
+    (void)vm; (void)dev;
+    return VMM_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* 断言                                                               */
+/* ------------------------------------------------------------------ */
+
+static int g_fail, g_pass;
+static const char *g_ctx = "";
+
+#define CHECK(cond, ...) do {                                           \
+    if (cond) {                                                         \
+        g_pass++;                                                       \
+    } else {                                                            \
+        g_fail++;                                                       \
+        fprintf(stderr, "FAIL [%s] %s:%d: ", g_ctx, __FILE__, __LINE__); \
+        fprintf(stderr, __VA_ARGS__);                                   \
+        fprintf(stderr, "\n");                                          \
+    }                                                                   \
+} while (0)
+
+static uint8_t sum8(const void *p, size_t len)
+{
+    const uint8_t *b = p;
+    uint8_t s = 0;
+
+    while (len--)
+        s += *b++;
+    return s;
+}
+
+static uint16_t rd16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
+static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+static uint64_t rd64(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v; }
+
+/* 平台描述：两张表各自解析出来之后放在这里，最后互相比较 */
+struct platform {
+    uint32_t lapic_addr;
+    uint32_t ioapic_addr;
+    int      ioapic_id;
+    int      nr_cpus;
+    int      apic_ids[256];
+    /* PCI INTx：MP table 的 PCI 中断项；DSDT 的 AML 留给一致性检查去搜 */
+    int      nr_pci_irqs;
+    struct { uint8_t slot, pin, gsi; } pci_irqs[PCI_MAX_SLOTS];
+    const uint8_t *dsdt_aml;
+    uint32_t dsdt_aml_len;
+};
+
+/* 假的 PCI 总线：MP table 只看 devs[] 和每个设备的 intx_pin。
+ * slot 0 没有 INTx（host bridge），slot 1 用 INTA，slot 5 用 INTB，
+ * 覆盖 pin 不是 A、slot 不连续的情况。 */
+static struct pci_device g_pci_devs[3];
+static struct pci_bus g_pci;
+static struct acpi_devices g_acpi;
+
+static void fake_pci_setup(void)
+{
+    static const struct { int slot, pin; } layout[] = { {0, 0}, {1, 1}, {5, 2} };
+    unsigned i;
+
+    memset(&g_pci, 0, sizeof(g_pci));
+    for (i = 0; i < sizeof(layout) / sizeof(layout[0]); i++) {
+        g_pci_devs[i].slot     = layout[i].slot;
+        g_pci_devs[i].intx_pin = (uint8_t)layout[i].pin;
+        g_pci.devs[layout[i].slot] = &g_pci_devs[i];
+    }
+}
+#define FAKE_PCI_IRQS 2
+
+/* ------------------------------------------------------------------ */
+/* MP 表                                                              */
+/* ------------------------------------------------------------------ */
+
+static void check_mptable(int nr_cpus, struct platform *pf)
+{
+    const uint8_t *mpf = g_ram + MPTABLE_GPA;
+    const uint8_t *mpc, *p, *end;
+    uint32_t physptr;
+    uint16_t len, count, n = 0;
+    int nr_bus = 0, nr_intsrc = 0, nr_lint = 0, bsp = -1;
+    int isa_bus = -1, pci_bus = -1;
+
+    g_ctx = "mptable";
+    memset(pf, 0, sizeof(*pf));
+    pf->ioapic_id = -1;
+
+    CHECK(!memcmp(mpf, "_MP_", 4), "floating pointer signature");
+    CHECK(mpf[8] == 1, "floating pointer length = %u, want 1", mpf[8]);
+    CHECK(mpf[9] == 1 || mpf[9] == 4, "spec_rev = %u", mpf[9]);
+    CHECK(sum8(mpf, 16) == 0, "floating pointer checksum");
+    CHECK(mpf[11] == 0, "feature1 = %u, want 0 (config table present)", mpf[11]);
+    /* Linux 的 default_find_smp_config() 只扫这几个区间 */
+    CHECK(MPTABLE_GPA < 0x400 ||
+          (MPTABLE_GPA >= 639 * 0x400 && MPTABLE_GPA + 16 <= 640 * 0x400) ||
+          (MPTABLE_GPA >= 0xF0000 && MPTABLE_GPA + 16 <= 0x100000),
+          "floating pointer at 0x%llx is outside the Linux scan windows",
+          (unsigned long long)MPTABLE_GPA);
+
+    physptr = rd32(mpf + 4);
+    CHECK(physptr != 0 && physptr < RAM_SIZE, "physptr = 0x%x", physptr);
+    mpc = g_ram + physptr;
+    len = rd16(mpc + 4);
+    count = rd16(mpc + 34);
+    CHECK(!memcmp(mpc, "PCMP", 4), "config table signature");
+    CHECK(mpc[6] == 1 || mpc[6] == 4, "config table spec = %u", mpc[6]);
+    CHECK(sum8(mpc, len) == 0, "config table checksum over %u bytes", len);
+    CHECK(physptr + len <= MPTABLE_GPA + MPTABLE_MAX_SIZE,
+          "config table overruns MPTABLE_MAX_SIZE");
+    pf->lapic_addr = rd32(mpc + 36);
+    CHECK(pf->lapic_addr != 0, "null local APIC address");
+
+    p = mpc + 44;
+    end = mpc + len;
+    while (p < end) {
+        switch (p[0]) {
+        case 0:                         /* processor, 20 bytes */
+            if (p[3] & 1) {
+                pf->apic_ids[pf->nr_cpus++] = p[1];
+                if (p[3] & 2) {
+                    CHECK(bsp < 0, "more than one BP flag");
+                    bsp = p[1];
+                }
+            }
+            p += 20;
+            break;
+        case 1:                         /* bus */
+            if (!memcmp(p + 2, "ISA   ", 6))
+                isa_bus = p[1];
+            else if (!memcmp(p + 2, "PCI   ", 6))
+                pci_bus = p[1];
+            else
+                CHECK(0, "bus %u has type %.6s", p[1], (const char *)p + 2);
+            nr_bus++;
+            p += 8;
+            break;
+        case 2:                         /* ioapic */
+            CHECK(p[3] & 1, "IOAPIC entry not usable");
+            pf->ioapic_id = p[1];
+            pf->ioapic_addr = rd32(p + 4);
+            p += 8;
+            break;
+        case 3:                         /* I/O interrupt */
+            /* bus 项都排在 intsrc 前面（规范要求的顺序），这里已知 bus id */
+            CHECK(p[1] == 0, "intsrc %d: irqtype %u", nr_intsrc, p[1]);
+            CHECK(p[6] == pf->ioapic_id, "intsrc: dst ioapic %u", p[6]);
+            if (p[4] == isa_bus) {
+                /* 恒等映射：ISA IRQ i -> IOAPIC pin i，和 KVM 默认 GSI 路由一致 */
+                CHECK(p[5] == p[7], "intsrc: ISA IRQ %u -> pin %u (KVM routes "
+                      "GSI identically)", p[5], p[7]);
+                /* irqflag：ISA 默认（0 = 边沿、高有效），SCI 除外：FADT SCI_INT
+                 * 规定 SCI 是 level、active low（ACPI 6.5 Table 5.9），PO/EL
+                 * 编码见 Table 5.26。MADT 不写 ISO 时 Linux 按这个属性配 IRQ 9，
+                 * MP table 写成别的，两份表就描述了两种接线 */
+                CHECK(rd16(p + 2) == (p[5] == ACPI_SCI_IRQ ? 0x0F : 0),
+                      "intsrc: ISA IRQ %u irqflag 0x%x", p[5], rd16(p + 2));
+            } else if (p[4] == pci_bus && pf->nr_pci_irqs < PCI_MAX_SLOTS) {
+                /* srcbusirq：bit 6:2 slot，bit 1:0 pin（0 = INTA） */
+                pf->pci_irqs[pf->nr_pci_irqs].slot = (p[5] >> 2) & 0x1f;
+                pf->pci_irqs[pf->nr_pci_irqs].pin  = p[5] & 3;
+                pf->pci_irqs[pf->nr_pci_irqs].gsi  = p[7];
+                pf->nr_pci_irqs++;
+                /* ISA 占 IOAPIC 0-15 脚，PCI 不能和它们共线 */
+                CHECK(p[7] >= 16 && p[7] < 24, "PCI intsrc -> IOAPIC pin %u", p[7]);
+            } else {
+                CHECK(0, "intsrc %d: unknown source bus %u", nr_intsrc, p[4]);
+            }
+            nr_intsrc++;
+            p += 8;
+            break;
+        case 4:                         /* local interrupt */
+            CHECK((p[1] == 3 && p[7] == 0) || (p[1] == 1 && p[7] == 1),
+                  "lintsrc type %u -> LINT%u", p[1], p[7]);
+            nr_lint++;
+            p += 8;
+            break;
+        default:
+            CHECK(0, "unknown entry type %u (Linux stops parsing here)", p[0]);
+            p = end;
+            break;
+        }
+        n++;
+    }
+    CHECK(p == end, "entries overrun base_table_length");
+    CHECK(n == count, "entry_count = %u, parsed %u", count, n);
+    CHECK(pf->nr_cpus == nr_cpus, "%d processors, want %d", pf->nr_cpus, nr_cpus);
+    CHECK(bsp == 0, "BP flag on APIC ID %d, want 0", bsp);
+    CHECK(nr_bus == 2 && nr_intsrc == 16 + FAKE_PCI_IRQS && nr_lint == 2,
+          "bus %d intsrc %d lint %d", nr_bus, nr_intsrc, nr_lint);
+    /* Linux 拿 PCI 总线号直接当 MP bus id 去查（IO_APIC_get_PCI_irq_vector） */
+    CHECK(pci_bus == 0, "PCI bus has MP bus id %d, must equal PCI bus number 0",
+          pci_bus);
+    CHECK(isa_bus >= 0 && isa_bus != pci_bus, "ISA bus id %d", isa_bus);
+    CHECK(pf->nr_pci_irqs == FAKE_PCI_IRQS, "%d PCI intsrc entries, want %d "
+          "(one per device with INTx)", pf->nr_pci_irqs, FAKE_PCI_IRQS);
+}
+
+/* ------------------------------------------------------------------ */
+/* ACPI                                                               */
+/* ------------------------------------------------------------------ */
+
+static const uint8_t *acpi_table(uint64_t gpa, const char *sig)
+{
+    const uint8_t *t;
+    uint32_t len;
+
+    if (gpa == 0 || gpa >= RAM_SIZE) {
+        CHECK(0, "%s address 0x%llx", sig, (unsigned long long)gpa);
+        return NULL;
+    }
+    t = g_ram + gpa;
+    len = rd32(t + 4);
+    CHECK(!memcmp(t, sig, 4), "signature %.4s, want %s", (const char *)t, sig);
+    CHECK(len >= 36 && gpa + len <= ACPI_TABLES_GPA + ACPI_TABLES_MAX,
+          "%s length %u", sig, len);
+    CHECK(sum8(t, len) == 0, "%s checksum", sig);
+    return t;
+}
+
+static void check_acpi(uint64_t rsdp_gpa, int nr_cpus, struct platform *pf)
+{
+    const uint8_t *rsdp = g_ram + rsdp_gpa;
+    const uint8_t *xsdt, *fadt = NULL, *madt = NULL, *dsdt, *p, *end;
+    uint32_t xlen, i;
+    int nr_lapic = 0;
+
+    g_ctx = "acpi";
+    memset(pf, 0, sizeof(*pf));
+    pf->ioapic_id = -1;
+
+    /* RSDP：扫描路径要求在 [0xE0000, 0x100000) 的 16 字节边界上，两个校验和都对 */
+    CHECK(!memcmp(rsdp, "RSD PTR ", 8), "RSDP signature");
+    CHECK(rsdp_gpa >= 0xE0000 && rsdp_gpa < 0x100000 && !(rsdp_gpa & 15),
+          "RSDP at 0x%llx is not reachable by the legacy scan",
+          (unsigned long long)rsdp_gpa);
+    CHECK(sum8(rsdp, 20) == 0, "RSDP checksum (20 bytes)");
+    CHECK(rsdp[15] >= 2, "RSDP revision %u", rsdp[15]);
+    CHECK(rd32(rsdp + 20) == 36, "RSDP length %u", rd32(rsdp + 20));
+    CHECK(sum8(rsdp, 36) == 0, "RSDP extended checksum (36 bytes)");
+
+    xsdt = acpi_table(rd64(rsdp + 24), "XSDT");
+    if (!xsdt)
+        return;
+    xlen = rd32(xsdt + 4);
+    CHECK(xlen >= 36 + 8 && (xlen - 36) % 8 == 0, "XSDT length %u", xlen);
+    for (i = 36; i + 8 <= xlen; i += 8) {
+        uint64_t a = rd64(xsdt + i);
+        const uint8_t *t = a < RAM_SIZE ? g_ram + a : NULL;
+
+        if (!t)
+            continue;
+        if (!memcmp(t, "FACP", 4))
+            fadt = acpi_table(a, "FACP");
+        else if (!memcmp(t, "APIC", 4))
+            madt = acpi_table(a, "APIC");
+        else
+            CHECK(memcmp(t, "DSDT", 4) && memcmp(t, "FACS", 4),
+                  "%.4s must be referenced from the FADT, not the XSDT",
+                  (const char *)t);
+    }
+    CHECK(fadt != NULL, "XSDT has no FADT");
+    CHECK(madt != NULL, "XSDT has no MADT (Linux would then drop the MP table too)");
+    if (!fadt || !madt)
+        return;
+
+    /* FADT：非 HW_REDUCED 平台必须有 PM1a 事件块与控制块 */
+    CHECK(rd32(fadt + 4) == 276, "FADT length %u", rd32(fadt + 4));
+    CHECK(!(rd32(fadt + 112) & (1u << 20)), "HW_REDUCED_ACPI set: Linux would "
+          "drop the PIT and the 8259");
+    CHECK(rd32(fadt + 56) && fadt[88] >= 4, "PM1a_EVT_BLK 0x%x len %u",
+          rd32(fadt + 56), fadt[88]);
+    CHECK(rd32(fadt + 64) && fadt[89] >= 2, "PM1a_CNT_BLK 0x%x len %u",
+          rd32(fadt + 64), fadt[89]);
+    CHECK(rd32(fadt + 56) == ACPI_PM1A_EVT_PORT && rd32(fadt + 64) == ACPI_PM1A_CNT_PORT,
+          "PM1a ports differ from the acpi_pm device");
+    CHECK(rd16(fadt + 46) == ACPI_SCI_IRQ, "SCI_INT %u", rd16(fadt + 46));
+    /* PWR_BUTTON 清 0 = 固定功能电源按钮（ACPI 6.5 Table 4.8、Table 5.10）。
+     * 置位时 Linux 不创建 LNXPWRBN（drivers/acpi/scan.c），PM1 的电源按钮
+     * 事件没人接，monitor 的 system_powerdown 就不起作用 */
+    CHECK(!(rd32(fadt + 112) & (1u << 4)), "FADT PWR_BUTTON set: no fixed "
+          "power button");
+    CHECK(rd32(fadt + 48) == 0, "SMI_CMD must be 0 (no SMM, always in ACPI mode)");
+    CHECK(rd16(fadt + 109) & (1u << 1), "IAPC_BOOT_ARCH lacks 8042: i8042 "
+          "would not be probed");
+    CHECK(rd32(fadt + 40) == (uint32_t)rd64(fadt + 140),
+          "DSDT 0x%x != X_DSDT 0x%llx", rd32(fadt + 40),
+          (unsigned long long)rd64(fadt + 140));
+
+    /* FACS（ACPI 6.5 5.2.10，Table 5.13）：非 HW_REDUCED 平台必须有；FADT 的
+     * FIRMWARE_CTRL（offset 36）和 X_FIRMWARE_CTRL（offset 132）指向同一处；
+     * 64 字节对齐；落在 ACPI 表区里（表区不是 e820 RAM，见 check_boot_params）。
+     * 全局锁字初值 0，没有 S4BIOS、没有 64 位唤醒，OSPM flags 由固件清 0。
+     * hardware signature 按 acpi.c 的约定是 FACS 之前全部表字节的 FNV-1a，
+     * 这里独立算一遍：表里任何一个字节变了它都要跟着变 */
+    {
+        uint32_t fc = rd32(fadt + 36);
+        uint64_t xfc = rd64(fadt + 132);
+        int in_area = xfc >= ACPI_TABLES_GPA &&
+                      xfc + 64 <= ACPI_TABLES_GPA + ACPI_TABLES_MAX;
+        const uint8_t *facs = g_ram + xfc;
+
+        CHECK(xfc != 0 && fc == xfc, "FIRMWARE_CTRL 0x%x X_FIRMWARE_CTRL 0x%llx",
+              fc, (unsigned long long)xfc);
+        CHECK(!(xfc & 63), "FACS at 0x%llx is not 64-byte aligned",
+              (unsigned long long)xfc);
+        CHECK(in_area, "FACS at 0x%llx is outside the ACPI table area",
+              (unsigned long long)xfc);
+        if (in_area) {
+            uint32_t h = 2166136261u;
+            uint64_t a;
+
+            for (a = ACPI_TABLES_GPA; a < xfc; a++) {
+                h ^= g_ram[a];
+                h *= 16777619u;
+            }
+            CHECK(!memcmp(facs, "FACS", 4), "FACS signature %.4s", (const char *)facs);
+            CHECK(rd32(facs + 4) == 64, "FACS length %u", rd32(facs + 4));
+            CHECK(facs[32] == 3, "FACS version %u", facs[32]);
+            CHECK(rd32(facs + 16) == 0, "FACS global lock 0x%x at boot", rd32(facs + 16));
+            CHECK(rd32(facs + 20) == 0 && rd32(facs + 36) == 0,
+                  "FACS flags 0x%x OSPM flags 0x%x", rd32(facs + 20), rd32(facs + 36));
+            CHECK(rd32(facs + 12) == 0 && rd64(facs + 24) == 0, "FACS waking vectors set");
+            CHECK(rd32(facs + 8) == h, "FACS hardware signature 0x%08x, want 0x%08x",
+                  rd32(facs + 8), h);
+        }
+    }
+
+    /* RESET_REG（offset 116 GAS）+ RESET_VALUE（128），FLAGS bit10 宣告有效。
+     * Linux acpi_reboot() 只接受 bit_width 8、bit_offset 0 的寄存器。
+     * 必须是 i8042 命令口 + 脉冲 reset 命令，VMM 的 reset 退出路径只在那里。 */
+    CHECK(rd32(fadt + 112) & (1u << 10), "FADT lacks RESET_REG_SUP");
+    CHECK(fadt[116] == 1 && fadt[117] == 8 && fadt[118] == 0,
+          "RESET_REG: space %u width %u offset %u, want SystemIO/8/0",
+          fadt[116], fadt[117], fadt[118]);
+    CHECK(rd64(fadt + 120) == 0x64 && fadt[128] == 0xfe,
+          "RESET_REG 0x%llx value 0x%02x, want i8042 0x64 / 0xfe",
+          (unsigned long long)rd64(fadt + 120), fadt[128]);
+
+    /* 扩展睡眠寄存器（offset 244 / 256，各 12 字节 GAS）：
+     * CONFIG_ACPI_REDUCED_HARDWARE_ONLY 内核关机只认这两个。
+     * acpi_hw_extended_sleep() 要求两者地址都非零，按 8 位 SystemIO 访问。 */
+    {
+        static const struct { unsigned off; uint16_t port; const char *name; } sr[] = {
+            { 244, ACPI_SLEEP_CTL_PORT, "SLEEP_CONTROL_REG" },
+            { 256, ACPI_SLEEP_STS_PORT, "SLEEP_STATUS_REG" },
+        };
+        unsigned i;
+
+        for (i = 0; i < 2; i++) {
+            const uint8_t *g = fadt + sr[i].off;
+
+            CHECK(g[0] == 1 && g[1] == 8 && g[2] == 0,
+                  "%s: space %u width %u offset %u, want SystemIO/8/0",
+                  sr[i].name, g[0], g[1], g[2]);
+            CHECK(rd64(g + 4) == sr[i].port, "%s address 0x%llx, the acpi_pm "
+                  "device answers at 0x%x", sr[i].name,
+                  (unsigned long long)rd64(g + 4), sr[i].port);
+        }
+    }
+
+    /* DSDT：\_S5 的 SLP_TYP 必须是 3 位以内，并与 PM1 设备的约定一致 */
+    dsdt = acpi_table(rd64(fadt + 140), "DSDT");
+    if (dsdt) {
+        const uint8_t *aml = dsdt + 36;
+        uint32_t aml_len = rd32(dsdt + 4) - 36;
+        const uint8_t *s5 = memmem(aml, aml_len, "\x08_S5_\x12", 6);
+
+        pf->dsdt_aml     = aml;
+        pf->dsdt_aml_len = aml_len;
+        CHECK(s5 != NULL, "DSDT has no Name(_S5, Package(...))");
+        if (s5) {
+            /* [0]=08 NameOp [1..4]="_S5_" [5]=12 PackageOp [6]=PkgLength
+             * [7]=NumElements [8]=0A BytePrefix [9]=SLP_TYPa [10]=0A [11]=SLP_TYPb */
+            CHECK(!(s5[6] & 0xc0) && s5[7] >= 2 && s5[8] == 0x0a && s5[10] == 0x0a,
+                  "\\_S5 package layout");
+            CHECK(s5[9] <= 7 && s5[11] <= 7, "\\_S5 SLP_TYP exceeds 3 bits "
+                  "(ACPI_SLEEP_TYPE_MAX)");
+            CHECK(s5[9] == 5, "\\_S5 SLP_TYPa = %u, the PM1 device expects 5",
+                  s5[9]);
+        }
+    }
+
+    /* MADT */
+    pf->lapic_addr = rd32(madt + 36);
+    CHECK(rd32(madt + 40) & 1, "MADT lacks PCAT_COMPAT");
+    p = madt + 44;
+    end = madt + rd32(madt + 4);
+    while (p + 2 <= end) {
+        uint8_t type = p[0], len = p[1];
+        static const uint8_t minlen[] = { 8, 12, 10, 8, 6, 12 };
+
+        CHECK(len >= 2 && p + len <= end, "subtable type %u length %u", type, len);
+        if (len < 2 || p + len > end)
+            break;
+        if (type < sizeof(minlen))
+            CHECK(len >= minlen[type], "subtable type %u length %u < %u "
+                  "(BAD_MADT_ENTRY -> ACPI disabled)", type, len, minlen[type]);
+        switch (type) {
+        case 0:
+            CHECK(p[3] != 0xff, "LAPIC entry with APIC ID 0xff is ignored");
+            if (rd32(p + 4) & 1)
+                pf->apic_ids[pf->nr_cpus++] = p[3];
+            else
+                CHECK(rd32(p + 4) & 2, "disabled LAPIC without Online Capable "
+                      "is ignored on ACPI >= 6.3");
+            nr_lapic++;
+            break;
+        case 1:
+            pf->ioapic_id = p[2];
+            pf->ioapic_addr = rd32(p + 4);
+            CHECK(rd32(p + 8) == 0, "IOAPIC GSI base %u", rd32(p + 8));
+            break;
+        case 2:
+            /* KVM 默认路由是恒等的，任何 ISO 都会让 Linux 与 KVM 对不上 */
+            CHECK(0, "unexpected ISO: IRQ %u -> GSI %u", p[3], rd32(p + 4));
+            break;
+        case 4:
+            CHECK(p[5] == 1, "LAPIC NMI on LINT%u, want LINT1", p[5]);
+            break;
+        default:
+            break;
+        }
+        p += len;
+    }
+    CHECK(nr_lapic == nr_cpus && pf->nr_cpus == nr_cpus,
+          "%d LAPIC entries (%d enabled), want %d", nr_lapic, pf->nr_cpus, nr_cpus);
+}
+
+/* ------------------------------------------------------------------ */
+/* 两张表之间、表与 KVM 之间                                           */
+/* ------------------------------------------------------------------ */
+
+/* AML 整数常量的编码（ACPI 6.4 第 20.2.3 节），这里只需要 0..255 */
+static size_t enc_small_int(uint8_t *out, unsigned v)
+{
+    if (v <= 1) {
+        out[0] = (uint8_t)v;            /* ZeroOp / OneOp */
+        return 1;
+    }
+    out[0] = 0x0a;                      /* BytePrefix */
+    out[1] = (uint8_t)v;
+    return 2;
+}
+
+/* MP table 和 DSDT 描述的 PCI 中断接线必须一致：guest 开不开 ACPI，同一个
+ * 设备都应该拿到同一个 GSI。对 MP table 里的每一项，在 DSDT 里找
+ *   Package (4) { 0xSSSSFFFF, pin, Zero, gsi }
+ * 的编码。另外 host bridge 必须以 PNP0A03 出现，_PRT 要列满 32 × 4 项。 */
+static void check_pci_routing(const struct platform *mp,
+                              const struct platform *acpi)
+{
+    static const uint8_t hid[] = { 0x08, '_', 'H', 'I', 'D', 0x0c,
+                                   0x41, 0xd0, 0x0a, 0x03 };  /* EisaId("PNP0A03") */
+    const uint8_t *prt;
+    int i;
+
+    g_ctx = "pci routing";
+    if (!acpi->dsdt_aml) {
+        CHECK(0, "no DSDT to compare against");
+        return;
+    }
+    CHECK(memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, hid, sizeof(hid)) != NULL,
+          "DSDT has no Name(_HID, EisaId(\"PNP0A03\"))");
+
+    /* 08 "_PRT" 12 <PkgLength 2 字节> <NumElements> */
+    prt = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, "\x08_PRT\x12", 6);
+    CHECK(prt != NULL, "DSDT has no Name(_PRT, Package(...))");
+    if (prt)
+        CHECK((prt[6] >> 6) == 1 && prt[8] == PCI_MAX_SLOTS * 4,
+              "_PRT has %u entries, want %d (every slot, INTA..INTD)",
+              prt[8], PCI_MAX_SLOTS * 4);
+
+    for (i = 0; i < mp->nr_pci_irqs; i++) {
+        uint8_t pkg[16];
+        size_t n = 0;
+        uint32_t addr = (uint32_t)mp->pci_irqs[i].slot << 16 | 0xFFFF;
+
+        pkg[n++] = 0x12;                /* PackageOp */
+        n++;                            /* PkgLength，最后填 */
+        pkg[n++] = 4;                   /* NumElements */
+        /* slot 0 的地址 0x0000FFFF 用 WordPrefix 就放得下 */
+        if (addr <= 0xFFFF) {
+            pkg[n++] = 0x0b;            /* WordPrefix */
+            memcpy(pkg + n, &addr, 2);
+            n += 2;
+        } else {
+            pkg[n++] = 0x0c;            /* DWordPrefix */
+            memcpy(pkg + n, &addr, 4);
+            n += 4;
+        }
+        n += enc_small_int(pkg + n, mp->pci_irqs[i].pin);
+        pkg[n++] = 0x00;                /* Source = Zero：直接接在 GSI 上 */
+        n += enc_small_int(pkg + n, mp->pci_irqs[i].gsi);
+        pkg[1] = (uint8_t)(n - 1);
+        CHECK(memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, pkg, n) != NULL,
+              "MP table routes slot %u INT%c to GSI %u, but _PRT has no such "
+              "entry", mp->pci_irqs[i].slot, 'A' + mp->pci_irqs[i].pin,
+              mp->pci_irqs[i].gsi);
+    }
+}
+
+static void check_consistency(const struct platform *mp,
+                              const struct platform *acpi, int nr_cpus)
+{
+    int i;
+
+    g_ctx = "consistency";
+    /* KVM：vCPU 复位时 IA32_APIC_BASE = 0xFEE00000，IOAPIC 固定在 0xFEC00000 */
+    CHECK(mp->lapic_addr == 0xfee00000u && acpi->lapic_addr == 0xfee00000u,
+          "LAPIC address MP 0x%x / MADT 0x%x, KVM uses 0xfee00000",
+          mp->lapic_addr, acpi->lapic_addr);
+    CHECK(mp->ioapic_addr == 0xfec00000u && acpi->ioapic_addr == 0xfec00000u,
+          "IOAPIC address MP 0x%x / MADT 0x%x, KVM uses 0xfec00000",
+          mp->ioapic_addr, acpi->ioapic_addr);
+    CHECK(mp->ioapic_id == acpi->ioapic_id, "IOAPIC ID MP %d / MADT %d",
+          mp->ioapic_id, acpi->ioapic_id);
+    /* KVM 把 LAPIC ID 复位为 vcpu_id，表里必须正好是 0..nr_cpus-1 */
+    for (i = 0; i < nr_cpus; i++) {
+        CHECK(mp->apic_ids[i] == i && acpi->apic_ids[i] == i,
+              "CPU %d: APIC ID MP %d / MADT %d, KVM uses vcpu_id",
+              i, mp->apic_ids[i], acpi->apic_ids[i]);
+        CHECK(acpi->ioapic_id != acpi->apic_ids[i],
+              "IOAPIC ID %d collides with a LAPIC ID", acpi->ioapic_id);
+    }
+    check_pci_routing(mp, acpi);
+}
+
+/* ------------------------------------------------------------------ */
+/* boot_params                                                        */
+/* ------------------------------------------------------------------ */
+
+static int in_ram(const struct boot_params *bp, uint64_t a, uint64_t len)
+{
+    int i;
+
+    for (i = 0; i < bp->e820_entries; i++) {
+        const struct boot_e820_entry *e = &bp->e820_table[i];
+
+        if (e->type == 1 && a < e->addr + e->size && a + len > e->addr)
+            return 1;
+    }
+    return 0;
+}
+
+/* E820 与 memslot 一致：
+ *   每个 E820 RAM 条目完整落在一个 RAM slot 里（否则内核会把没有 slot 的
+ *   地址当 RAM 用，访问变成 KVM_EXIT_MMIO）；
+ *   每个 RAM slot 从头到尾被 E820 条目连续覆盖（否则那段 RAM 内核看不见）；
+ *   hole 里没有任何条目（否则 e820_search_gap() 找不到给 PCI 的空间）。 */
+static void check_e820_matches_slots(struct vmm_vm *vm,
+                                     const struct boot_params *bp)
+{
+    const struct vmm_mem_slot *s;
+    int i;
+
+    for (i = 0; i < bp->e820_entries; i++) {
+        const struct boot_e820_entry *e = &bp->e820_table[i];
+        const struct vmm_mem_slot *in;
+        void *hva;
+
+        CHECK(e->addr + e->size <= VMM_MEM_HOLE_START ||
+              e->addr >= VMM_MEM_HIGH_START,
+              "e820[%d] [0x%llx, 0x%llx) intrudes into the MMIO hole", i,
+              (unsigned long long)e->addr,
+              (unsigned long long)(e->addr + e->size));
+        if (e->type != 1)
+            continue;
+        in = mem_find_slot(vm, e->addr);
+        CHECK(gpa_to_hva(vm, e->addr, e->size, &hva) == GPA_OK && in && in->ram,
+              "e820[%d] RAM [0x%llx, 0x%llx) is not inside one RAM memslot", i,
+              (unsigned long long)e->addr,
+              (unsigned long long)(e->addr + e->size));
+    }
+    for (s = mem_next_ram_slot(vm, 0); s; s = mem_next_ram_slot(vm, s->gpa + s->size)) {
+        uint64_t cur = s->gpa;
+
+        for (i = 0; i < bp->e820_entries; i++) {
+            const struct boot_e820_entry *e = &bp->e820_table[i];
+
+            if (e->addr == cur && cur + e->size <= s->gpa + s->size)
+                cur += e->size;
+        }
+        CHECK(cur == s->gpa + s->size,
+              "memslot %u [0x%llx, 0x%llx) is covered by e820 only up to 0x%llx",
+              s->slot, (unsigned long long)s->gpa,
+              (unsigned long long)(s->gpa + s->size), (unsigned long long)cur);
+    }
+}
+
+static void check_boot_params(struct vmm_vm *vm, uint64_t rsdp_gpa,
+                              const char *cmdline)
+{
+    const struct boot_params *bp = (const void *)(g_ram + ZP_BOOT_PARAMS_GPA);
+    uint64_t prev_end = 0;
+    int i, low_ram = 0;
+
+    g_ctx = "boot_params";
+    CHECK(bp->sentinel == 0, "sentinel != 0 would make the kernel wipe "
+          "acpi_rsdp_addr and ext_* fields");
+    CHECK(bp->hdr.header == 0x53726448 && bp->hdr.boot_flag == 0xAA55,
+          "setup header magic");
+    CHECK(bp->hdr.version != 0, "hdr.version is 0");
+    CHECK(bp->hdr.type_of_loader != 0, "type_of_loader = 0: initrd ignored");
+    CHECK(bp->hdr.cmdline_size == 0, "cmdline_size is a kernel->loader "
+          "field, loader must not write it");
+    CHECK(bp->acpi_rsdp_addr == rsdp_gpa, "acpi_rsdp_addr 0x%llx",
+          (unsigned long long)bp->acpi_rsdp_addr);
+    CHECK(bp->hdr.cmd_line_ptr == ZP_CMDLINE_GPA && bp->ext_cmd_line_ptr == 0,
+          "cmd_line_ptr 0x%x", bp->hdr.cmd_line_ptr);
+    CHECK(!strcmp((const char *)g_ram + ZP_CMDLINE_GPA, cmdline), "cmdline text");
+    /* copy_bootdata() 从 cmd_line_ptr 固定读 COMMAND_LINE_SIZE 字节 */
+    CHECK(in_ram(bp, ZP_CMDLINE_GPA, ZP_CMDLINE_MAX), "cmdline buffer not in RAM");
+
+    /* E820：少于两项会被 append_e820_table() 整个丢弃 */
+    CHECK(bp->e820_entries >= 2 && bp->e820_entries <= 128,
+          "%u e820 entries", bp->e820_entries);
+    for (i = 0; i < bp->e820_entries; i++) {
+        const struct boot_e820_entry *e = &bp->e820_table[i];
+
+        CHECK(e->size != 0, "e820[%d] has size 0", i);
+        CHECK(e->addr >= prev_end, "e820[%d] overlaps or is unsorted", i);
+        prev_end = e->addr + e->size;
+        if (e->type == 1 && e->addr < 0x100000)
+            low_ram = 1;
+    }
+    CHECK(low_ram, "no RAM below 1MiB: real-mode trampoline cannot be placed");
+    check_e820_matches_slots(vm, bp);
+    CHECK(!in_ram(bp, MPTABLE_GPA, MPTABLE_MAX_SIZE), "MP table is in e820 RAM");
+    CHECK(!in_ram(bp, ACPI_TABLES_GPA, ACPI_TABLES_MAX), "ACPI tables are in e820 RAM");
+    CHECK(in_ram(bp, ZP_BOOT_PARAMS_GPA, sizeof(*bp)), "boot_params not in RAM");
+}
+
+/* ------------------------------------------------------------------ */
+
+static int build_all(struct vmm_vm *vm, int nr_cpus, const char *cmdline,
+                     uint64_t *rsdp)
+{
+    struct zp_config zc;
+
+    memset(g_ram, 0, RAM_SIZE);
+    memset(&zc, 0, sizeof(zc));
+    if (mptable_setup(vm, nr_cpus, &g_pci) != VMM_OK)
+        return -1;
+    if (acpi_setup(vm, nr_cpus, &g_acpi, rsdp) != VMM_OK)
+        return -1;
+    zc.cmdline    = cmdline;
+    zc.acpi_rsdp  = *rsdp;
+    zc.kernel_end = 0x2a30000;
+    return zeropage_setup(vm, &zc) == VMM_OK ? 0 : -1;
+}
+
+/* bzImage 路径：内核自带的 setup header 必须原样保留，loader 只填自己的字段 */
+static void check_bzimage_header(struct vmm_vm *vm)
+{
+    const struct boot_params *bp = (const void *)(g_ram + ZP_BOOT_PARAMS_GPA);
+    struct setup_header kh;
+    struct zp_config zc;
+    uint64_t rsdp = 0;
+    static char line[2048];
+
+    g_ctx = "bzImage header";
+    memset(&kh, 0, sizeof(kh));
+    kh.setup_sects      = 31;
+    kh.boot_flag        = 0xAA55;
+    kh.header           = 0x53726448;
+    kh.version          = 0x020f;
+    kh.loadflags        = LOADED_HIGH;
+    kh.code32_start     = 0x1000000;
+    kh.initrd_addr_max  = 0x7fffffff;
+    kh.kernel_alignment = 0x200000;
+    kh.relocatable_kernel = 1;
+    kh.xloadflags       = XLF_KERNEL_64 | XLF_CAN_BE_LOADED_ABOVE_4G;
+    kh.cmdline_size     = 100;          /* 故意比 ZP_CMDLINE_MAX 小 */
+    kh.pref_address     = 0x1000000;
+    kh.init_size        = 0x1c66000;
+
+    memset(g_ram, 0, RAM_SIZE);
+    CHECK(acpi_setup(vm, 1, &g_acpi, &rsdp) == VMM_OK, "acpi_setup");
+    memset(&zc, 0, sizeof(zc));
+    zc.cmdline        = "console=ttyS0";
+    zc.acpi_rsdp      = rsdp;
+    zc.kernel_end     = 0x2c66000;
+    zc.kernel_hdr     = &kh;
+    zc.kernel_hdr_len = sizeof(kh);
+    CHECK(zeropage_setup(vm, &zc) == VMM_OK, "zeropage_setup with a kernel header");
+    CHECK(bp->hdr.version == 0x020f && bp->hdr.cmdline_size == 100 &&
+          bp->hdr.initrd_addr_max == 0x7fffffff && bp->hdr.init_size == 0x1c66000 &&
+          bp->hdr.kernel_alignment == 0x200000 && bp->hdr.setup_sects == 31,
+          "kernel-declared setup header fields were modified");
+    CHECK(bp->hdr.type_of_loader == 0xff, "type_of_loader not filled");
+    CHECK(bp->hdr.loadflags & LOADED_HIGH, "LOADED_HIGH cleared");
+    CHECK(bp->hdr.cmd_line_ptr == ZP_CMDLINE_GPA, "cmd_line_ptr not filled");
+    CHECK(bp->acpi_rsdp_addr == rsdp, "acpi_rsdp_addr not filled");
+    CHECK(bp->sentinel == 0, "sentinel must stay 0");
+
+    /* 超过内核声明的 cmdline_size 必须拒绝 */
+    memset(line, 'a', 101);
+    line[101] = '\0';
+    zc.cmdline = line;
+    fprintf(stderr, "  (the next error line is expected)\n");
+    CHECK(zeropage_setup(vm, &zc) != VMM_OK,
+          "a cmdline longer than the kernel's cmdline_size must be rejected");
+}
+
+/* RAM 超过 hole 起点时：低段 + 高段两个 memslot，E820 逐个对应，
+ * hole 里没有条目，initrd 上限之类的低段逻辑不受高段影响 */
+static void check_split_layout(void)
+{
+    static const uint64_t sizes[] = {
+        VMM_MEM_HOLE_START,                 /* 正好填满低段：只有一个 slot */
+        VMM_MEM_HOLE_START + 0x1000,        /* 高段只有一页 */
+        6ULL << 30,
+    };
+    static struct vmm_vm vm;
+    struct zp_config zc;
+    unsigned i;
+
+    for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+        const struct boot_params *bp;
+        const struct vmm_mem_slot *hi;
+        uint64_t high = sizes[i] - VMM_MEM_HOLE_START;
+
+        g_ctx = "split layout";
+        printf("ram = 0x%llx\n", (unsigned long long)sizes[i]);
+        memset(&vm, 0, sizeof(vm));
+        vm.vm_fd = -1;
+        if (mem_init(&vm, sizes[i]) != VMM_OK) {
+            CHECK(0, "mem_init(0x%llx) failed", (unsigned long long)sizes[i]);
+            continue;
+        }
+        CHECK(vm.mem.ram_size == sizes[i], "ram_size 0x%llx",
+              (unsigned long long)vm.mem.ram_size);
+        CHECK(vm.mem.nr_slots == (high ? 2u : 1u), "%u memslots", vm.mem.nr_slots);
+        hi = mem_find_slot(&vm, VMM_MEM_HIGH_START);
+        if (high)
+            CHECK(hi && hi->ram && hi->size == high,
+                  "high RAM slot at 4GiB should hold the remaining 0x%llx bytes",
+                  (unsigned long long)high);
+        else
+            CHECK(!hi, "no high RAM slot expected");
+
+        memset(&zc, 0, sizeof(zc));
+        zc.cmdline    = "console=ttyS0";
+        zc.kernel_end = 0x2a30000;
+        CHECK(zeropage_setup(&vm, &zc) == VMM_OK, "zeropage_setup");
+        bp = (const void *)((uint8_t *)vm.mem.slots[0].hva + ZP_BOOT_PARAMS_GPA);
+        check_e820_matches_slots(&vm, bp);
+        mem_destroy(&vm);
+    }
+}
+
+static void dump_tables(const char *dir, uint64_t rsdp_gpa)
+{
+    const uint8_t *rsdp = g_ram + rsdp_gpa;
+    const uint8_t *xsdt = g_ram + rd64(rsdp + 24);
+    uint64_t addrs[8];
+    int n = 0, i;
+    uint32_t off;
+    char path[4096];
+
+    addrs[n++] = rd64(rsdp + 24);                       /* XSDT */
+    for (off = 36; off + 8 <= rd32(xsdt + 4) && n < 6; off += 8) {
+        uint64_t a = rd64(xsdt + off);
+
+        addrs[n++] = a;
+        if (!memcmp(g_ram + a, "FACP", 4))
+            addrs[n++] = rd64(g_ram + a + 140);         /* X_DSDT */
+    }
+    for (i = 0; i < n; i++) {
+        const uint8_t *t = g_ram + addrs[i];
+        FILE *fp;
+
+        snprintf(path, sizeof(path), "%s/%.4s.dat", dir, (const char *)t);
+        fp = fopen(path, "wb");
+        if (!fp) {
+            perror(path);
+            g_fail++;
+            continue;
+        }
+        fwrite(t, 1, rd32(t + 4), fp);
+        fclose(fp);
+    }
+}
+
+/* --device pvpanic（devices/pvpanic.h）：DSDT 里有 Name(_HID, "QEMU0001")
+ * 和 IO 端口描述符 IO(Decode16, 0x505, 0x505, 1, 1)。期望字节按规范逐个写出：
+ * NameOp 0x08、StringPrefix 0x0D 加 NUL 结尾（ACPI 6.5 20.2.3、20.2.5.1）；
+ * IO 描述符 0x47、_DEC=1、_MIN/_MAX 小端、_ALN、_LEN（6.4.2.5 Table 6.33），
+ * 后面紧跟 End Tag 0x79 0x00（6.4.2.9）。没挂设备时 DSDT 里不能出现这个 ID，
+ * 否则 guest 驱动会去写一个没人响应的端口。 */
+static void check_pvpanic(const struct platform *acpi, bool want)
+{
+    static const uint8_t hid[] = {
+        0x08, '_', 'H', 'I', 'D', 0x0D, 'Q', 'E', 'M', 'U', '0', '0', '0', '1', 0x00,
+    };
+    static const uint8_t io[] = {
+        0x47, 0x01, 0x05, 0x05, 0x05, 0x05, 0x01, 0x01, 0x79, 0x00,
+    };
+    bool has_hid, has_io;
+
+    if (!acpi->dsdt_aml)
+        return;
+    has_hid = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, hid, sizeof(hid)) != NULL;
+    has_io  = memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, io, sizeof(io)) != NULL;
+    if (want) {
+        CHECK(has_hid, "pvpanic: DSDT has no Name(_HID, \"QEMU0001\")");
+        CHECK(has_io, "pvpanic: DSDT has no IO(Decode16, 0x505, 0x505, 1, 1)");
+    } else {
+        CHECK(!memmem(acpi->dsdt_aml, acpi->dsdt_aml_len, "QEMU0001", 8),
+              "pvpanic not attached but DSDT mentions QEMU0001");
+    }
+}
+
+int main(int argc, char **argv)
+{
+    static const int cpu_counts[] = { 1, 2, 4, VMM_MAX_VCPUS };
+    static struct vmm_vm vm;
+    static char longline[ZP_CMDLINE_MAX + 1];
+    const char *dump_dir = NULL;
+    const char *cmdline = "console=ttyS0 reboot=k panic=-1";
+    struct platform mp, acpi;
+    uint64_t rsdp = 0;
+    unsigned i;
+
+    if (argc == 3 && !strcmp(argv[1], "--dump"))
+        dump_dir = argv[2];
+    else if (argc != 1) {
+        fprintf(stderr, "usage: %s [--dump DIR]\n", argv[0]);
+        return 2;
+    }
+
+    vm.vm_fd = -1;
+    fake_pci_setup();
+    if (mem_init(&vm, RAM_SIZE) != VMM_OK) {
+        fprintf(stderr, "mem_init failed\n");
+        return 2;
+    }
+    g_ram = vm.mem.slots[0].hva;
+
+    for (i = 0; i < sizeof(cpu_counts) / sizeof(cpu_counts[0]); i++) {
+        int n = cpu_counts[i];
+
+        printf("nr_cpus = %d\n", n);
+        g_ctx = "build";
+        /* 1 个 CPU 的那轮不挂 pvpanic，其余挂上；--dump 取 4 个 CPU 那轮，
+         * iasl 往返检查因此也覆盖 pvpanic 的 Device */
+        g_acpi.pvpanic = n > 1;
+        CHECK(build_all(&vm, n, cmdline, &rsdp) == 0, "builders failed");
+        check_mptable(n, &mp);
+        check_acpi(rsdp, n, &acpi);
+        check_consistency(&mp, &acpi, n);
+        check_pvpanic(&acpi, g_acpi.pvpanic);
+        check_boot_params(&vm, rsdp, cmdline);
+        if (dump_dir && n == 4)
+            dump_tables(dump_dir, rsdp);
+    }
+
+    check_bzimage_header(&vm);
+
+    /* 命令行上限：2047 个字符可以，2048 个必须被拒绝 */
+    g_ctx = "cmdline limit";
+    memset(longline, 'a', ZP_CMDLINE_MAX - 1);
+    longline[ZP_CMDLINE_MAX - 1] = '\0';
+    CHECK(build_all(&vm, 1, longline, &rsdp) == 0,
+          "a %d-byte cmdline must be accepted", ZP_CMDLINE_MAX - 1);
+    longline[ZP_CMDLINE_MAX - 1] = 'a';
+    longline[ZP_CMDLINE_MAX] = '\0';
+    fprintf(stderr, "  (the next error line is expected)\n");
+    CHECK(build_all(&vm, 1, longline, &rsdp) != 0,
+          "a %d-byte cmdline must be rejected", ZP_CMDLINE_MAX);
+
+    check_split_layout();
+
+    printf("%d checks passed, %d failed\n", g_pass, g_fail);
+    mem_destroy(&vm);
+    return g_fail ? 1 : 0;
+}

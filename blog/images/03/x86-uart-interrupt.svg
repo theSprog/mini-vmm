@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="310" viewBox="0 0 840 310" role="img" aria-labelledby="title desc">
+  <title id="title">串口收到字节后，x86 如何处理中断</title>
+  <desc id="desc">16550 UART 拉高 IRQ4，中断控制器仲裁后把向量号交给 CPU。CPU 在指令边界检查 IF，保存现场，按向量查 IDT 并跳入内核处理程序。内核读取数据寄存器，把字节放进 tty 缓冲区，最后向中断控制器发送 EOI。</desc>
+  <defs>
+    <marker id="forward" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c6481"/>
+    </marker>
+    <marker id="return" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#925520"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="308" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g stroke-width="1.5">
+    <rect x="28" y="77" width="160" height="143" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="236" y="77" width="160" height="143" rx="12" fill="#e5f5f2" stroke="#78aca5"/>
+    <rect x="444" y="77" width="160" height="143" rx="12" fill="#fff2df" stroke="#c2a174"/>
+    <rect x="652" y="77" width="160" height="143" rx="12" fill="#f0ebff" stroke="#a397d1"/>
+  </g>
+  <g fill="none" stroke="#4c6481" stroke-width="2" marker-end="url(#forward)">
+    <path d="M192 155H232"/>
+    <path d="M400 155H440"/>
+    <path d="M608 155H648"/>
+  </g>
+  <path d="M732 221V267Q732 278 721 278H327Q316 278 316 267V225" fill="none" stroke="#925520" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#return)"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" text-anchor="middle" fill="#142d48">
+    <text x="420" y="48" font-size="23" font-weight="700">一次串口中断在 x86 上的完整路径</text>
+    <g font-size="19" font-weight="700">
+      <text x="108" y="110">① 设备</text>
+      <text x="316" y="110">② 中断控制器</text>
+      <text x="524" y="110">③ CPU</text>
+      <text x="732" y="110">④ 内核</text>
+    </g>
+    <g font-size="15">
+      <text x="108" y="144">16550 UART</text>
+      <text x="108" y="167">收到一个字节</text>
+      <text x="108" y="190">拉高中断线</text>
+      <text x="316" y="144">记录 IRQ4 请求</text>
+      <text x="316" y="167">按优先级仲裁</text>
+      <text x="316" y="190">把向量号交给 CPU</text>
+      <text x="524" y="137">在指令边界检查 IF</text>
+      <text x="524" y="159">可接收时保存现场</text>
+      <text x="524" y="181">RIP / CS / RFLAGS</text>
+      <text x="524" y="203">按向量查 IDT</text>
+      <text x="732" y="144">进入串口处理程序</text>
+      <text x="732" y="167">读取数据寄存器</text>
+      <text x="732" y="190">写入 tty 缓冲区</text>
+    </g>
+    <g font-size="14" font-weight="600">
+      <text x="212" y="143">IRQ4</text>
+      <text x="420" y="143">向量号</text>
+      <text x="628" y="143">跳转</text>
+    </g>
+    <text x="524" y="263" font-size="16" font-weight="600" fill="#784417">⑤ EOI：通知中断控制器，本次处理完毕</text>
+  </g>
+</svg>

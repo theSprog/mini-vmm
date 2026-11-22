@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="560" viewBox="0 0 840 560" role="img" aria-labelledby="title desc">
+  <title id="title">x86 中断控制器全家福</title>
+  <desc id="desc">设备的 ISA 中断线同时接到 8259A 和 IOAPIC。8259A 兼容通路接 BSP LINT0；IOAPIC 按重定向表发送到目标 LAPIC；PCI MSI 绕过两者，直接发送中断消息。各 LAPIC 还接收本地定时器中断，并可由 ICR 发送 IPI；vCPU 用收到的向量查自己的 IDT。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="558" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">x86 中断控制器全家福</text>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#58728d"/>
+    </marker>
+  </defs>
+  <text x="36" y="70" font-size="15" font-weight="400" text-anchor="start" class="ink">mini-vmm 恒等接线示意：同一根 ISA 设备线接两类控制器。</text>
+  <rect x="36" y="112" width="180" height="188" rx="10" class="flag"/>
+  <rect x="303" y="112" width="189" height="188" rx="10" class="panel"/>
+  <rect x="579" y="112" width="225" height="188" rx="10" class="teal"/>
+  <text x="52" y="139" font-size="17" font-weight="700" text-anchor="start" class="ink">8259A 主片＋从片</text>
+  <text x="397" y="139" font-size="17" font-weight="700" text-anchor="middle" class="ink">ISA 设备线</text>
+  <text x="596" y="139" font-size="17" font-weight="700" text-anchor="start" class="ink">IOAPIC · 重定向表</text>
+  <path d="M216 163H303 M492 163H579" class="line"/>
+  <circle cx="216" cy="163" r="2.8" class="pad"/>
+  <circle cx="303" cy="163" r="2.8" class="pad"/>
+  <circle cx="492" cy="163" r="2.8" class="pad"/>
+  <circle cx="579" cy="163" r="2.8" class="pad"/>
+  <text x="52" y="168" font-size="14" font-weight="400" text-anchor="start" class="ink">主片 IR0</text>
+  <text x="319" y="168" font-size="14" font-weight="700" text-anchor="start" class="ink">PIT</text>
+  <text x="473" y="168" font-size="14" font-weight="400" text-anchor="end" class="muted">IRQ0</text>
+  <text x="596" y="168" font-size="14" font-weight="400" text-anchor="start" class="ink">pin 0</text>
+  <text x="786" y="168" font-size="13" font-weight="400" text-anchor="end" class="muted">RTE[0]</text>
+  <path d="M216 191H303 M492 191H579" class="line"/>
+  <circle cx="216" cy="191" r="2.8" class="pad"/>
+  <circle cx="303" cy="191" r="2.8" class="pad"/>
+  <circle cx="492" cy="191" r="2.8" class="pad"/>
+  <circle cx="579" cy="191" r="2.8" class="pad"/>
+  <text x="52" y="196" font-size="14" font-weight="400" text-anchor="start" class="ink">主片 IR1</text>
+  <text x="319" y="196" font-size="14" font-weight="700" text-anchor="start" class="ink">i8042</text>
+  <text x="473" y="196" font-size="14" font-weight="400" text-anchor="end" class="muted">IRQ1</text>
+  <text x="596" y="196" font-size="14" font-weight="400" text-anchor="start" class="ink">pin 1</text>
+  <text x="786" y="196" font-size="13" font-weight="400" text-anchor="end" class="muted">RTE[1]</text>
+  <path d="M216 219H303 M492 219H579" class="line"/>
+  <circle cx="216" cy="219" r="2.8" class="pad"/>
+  <circle cx="303" cy="219" r="2.8" class="pad"/>
+  <circle cx="492" cy="219" r="2.8" class="pad"/>
+  <circle cx="579" cy="219" r="2.8" class="pad"/>
+  <text x="52" y="224" font-size="14" font-weight="400" text-anchor="start" class="ink">主片 IR4</text>
+  <text x="319" y="224" font-size="14" font-weight="700" text-anchor="start" class="ink">串口</text>
+  <text x="473" y="224" font-size="14" font-weight="400" text-anchor="end" class="muted">IRQ4</text>
+  <text x="596" y="224" font-size="14" font-weight="400" text-anchor="start" class="ink">pin 4</text>
+  <text x="786" y="224" font-size="13" font-weight="400" text-anchor="end" class="muted">RTE[4]</text>
+  <path d="M216 247H303 M492 247H579" class="line"/>
+  <circle cx="216" cy="247" r="2.8" class="pad"/>
+  <circle cx="303" cy="247" r="2.8" class="pad"/>
+  <circle cx="492" cy="247" r="2.8" class="pad"/>
+  <circle cx="579" cy="247" r="2.8" class="pad"/>
+  <text x="52" y="252" font-size="14" font-weight="400" text-anchor="start" class="ink">从片 IR0</text>
+  <text x="319" y="252" font-size="14" font-weight="700" text-anchor="start" class="ink">RTC</text>
+  <text x="473" y="252" font-size="14" font-weight="400" text-anchor="end" class="muted">IRQ8</text>
+  <text x="596" y="252" font-size="14" font-weight="400" text-anchor="start" class="ink">pin 8</text>
+  <text x="786" y="252" font-size="13" font-weight="400" text-anchor="end" class="muted">RTE[8]</text>
+  <path d="M216 275H303 M492 275H579" class="line"/>
+  <circle cx="216" cy="275" r="2.8" class="pad"/>
+  <circle cx="303" cy="275" r="2.8" class="pad"/>
+  <circle cx="492" cy="275" r="2.8" class="pad"/>
+  <circle cx="579" cy="275" r="2.8" class="pad"/>
+  <text x="52" y="280" font-size="14" font-weight="400" text-anchor="start" class="ink">从片 IR1</text>
+  <text x="319" y="280" font-size="14" font-weight="700" text-anchor="start" class="ink">ACPI SCI</text>
+  <text x="473" y="280" font-size="14" font-weight="400" text-anchor="end" class="muted">IRQ9</text>
+  <text x="596" y="280" font-size="14" font-weight="400" text-anchor="start" class="ink">pin 9</text>
+  <text x="786" y="280" font-size="13" font-weight="400" text-anchor="end" class="muted">RTE[9]</text>
+  <path d="M145 300V414H180" class="accent"/>
+  <circle cx="145" cy="300" r="4" class="tap"/>
+  <circle cx="180" cy="414" r="4" class="tap"/>
+  <text x="39" y="333" font-size="14" font-weight="700" text-anchor="start" class="goldText">主片 INT</text>
+  <text x="39" y="355" font-size="13" font-weight="400" text-anchor="start" class="goldText">Virtual Wire</text>
+  <text x="39" y="376" font-size="13" font-weight="400" text-anchor="start" class="goldText">仅接 BSP LINT0</text>
+  <path d="M650 300V345 M307 345H711" class="tealWire"/>
+  <path d="M307 345V381 M585 345V381" class="tealWire"/>
+  <circle cx="650" cy="345" r="4" class="tapTeal"/>
+  <text x="477" y="332" font-size="14" font-weight="700" text-anchor="middle" class="tealText">中断消息 · 按目的字段选 LAPIC</text>
+  <path d="M788 359H711V345" class="dash"/>
+  <text x="803" y="319" font-size="14" font-weight="700" text-anchor="end" class="ink">PCI MSI</text>
+  <text x="803" y="338" font-size="12" font-weight="400" text-anchor="end" class="muted">写 0xFEExxxxx</text>
+  <rect x="180" y="381" width="254" height="105" rx="9" class="blue"/>
+  <rect x="458" y="381" width="254" height="105" rx="9" class="blue"/>
+  <text x="307" y="407" font-size="17" font-weight="700" text-anchor="middle" class="ink">BSP · LAPIC 0</text>
+  <text x="585" y="407" font-size="17" font-weight="700" text-anchor="middle" class="ink">AP · LAPIC 1…3</text>
+  <text x="307" y="435" font-size="14" font-weight="400" text-anchor="middle" class="ink">LINT0 · IRR / ISR / TPR</text>
+  <text x="585" y="435" font-size="14" font-weight="400" text-anchor="middle" class="ink">IRR / ISR / TPR</text>
+  <text x="307" y="461" font-size="14" font-weight="400" text-anchor="middle" class="ink">本地定时器 · ICR 发送 IPI</text>
+  <text x="585" y="461" font-size="14" font-weight="400" text-anchor="middle" class="ink">每颗各有本地定时器和 ICR</text>
+  <path d="M307 486V508" class="line" marker-end="url(#arr)"/>
+  <path d="M585 486V508" class="line" marker-end="url(#arr)"/>
+  <text x="307" y="530" font-size="15" font-weight="700" text-anchor="middle" class="ink">vCPU 0 的 IDT</text>
+  <text x="585" y="530" font-size="15" font-weight="700" text-anchor="middle" class="ink">各自 vCPU 的 IDT</text>
+  <text x="801" y="380" font-size="12" font-weight="400" text-anchor="end" class="muted">绕过 PIC / IOAPIC</text>
+</svg>
