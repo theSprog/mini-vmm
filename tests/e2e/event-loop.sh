@@ -20,7 +20,12 @@ VMLINUX="${VMLINUX:-}"
 MEM=512M
 
 # 在 host 上列出 VMM 的每个线程：线程名和它睡在哪个内核函数里
-LIST_THREADS='for t in /proc/$VMM_PID/task/*; do echo "thread $(cat $t/comm) $(cat $t/wchan)"; done'
+# 第三列是 /proc/<pid>/task/<tid>/stat 的 flags 字段（comm 之后第 7 个）。
+# KVM 的 vhost_task（例如 NX 大页恢复线程 kvm-nx-lpage-recovery，第一次
+# KVM_RUN 时创建）挂在 VMM 的线程组里，带 PF_USER_WORKER（include/linux/sched.h），
+# 不是 VMM 创建的线程，判断 VMM 自己的线程时按这一位排除
+LIST_THREADS='for t in /proc/$VMM_PID/task/*; do s=$(cat $t/stat); set -- ${s##*) }; echo "thread $(cat $t/comm) $(cat $t/wchan) $7"; done'
+PF_USER_WORKER=$((0x4000))
 
 # ------------------------------------------------------------------
 auto_tests() {
@@ -37,9 +42,9 @@ initrd_ready "$INITRD" || {
 head1 "I/O 线程"
 
 # guest 停在 shell 提示符时看线程：主线程在 join，I/O 线程在 epoll_wait，
-# 每个 vCPU 一个线程，除此之外没有别的线程。输入经 I/O 线程送进串口，
-# 命令能执行（EVL-42 是 guest 里算出来的，回显的命令行里只有 $((6*7))），
-# Ctrl-A x 也由 I/O 线程识别。
+# 每个 vCPU 一个线程，除此之外 VMM 没有创建别的线程（KVM 的 vhost_task
+# 不算）。输入经 I/O 线程送进串口，命令能执行（EVL-42 是 guest 里算出来
+# 的，回显的命令行里只有 $((6*7))），Ctrl-A x 也由 I/O 线程识别。
 # wchan 是内核函数名：6.x 上 epoll_wait 睡在 do_epoll_wait，ep_poll 没被
 # 内联的内核上显示 ep_poll，两种都接受。
 run_case "threads at the shell prompt: vmm, io, one per vCPU; input and Ctrl-A x via io" \
@@ -48,7 +53,11 @@ run_case "threads at the shell prompt: vmm, io, one per vCPU; input and Ctrl-A x
         -- "$VMM" --mode linux --smp 2 --mem "$MEM" --initrd "$INITRD" "$VMLINUX"
 expect_rc 0
 expect_has "EVL-42"
-names="$(printf '%s\n' "$CUR_OUT" | grep -a '^thread ' | awk '{print $2}' | sort | tr '\n' ' ')"
+names="$(printf '%s\n' "$CUR_OUT" | grep -a '^thread ' |
+    awk -v w="$PF_USER_WORKER" 'int($4 / w) % 2 == 0 {print $2}' | sort | tr '\n' ' ')"
+workers="$(printf '%s\n' "$CUR_OUT" | grep -a '^thread ' |
+    awk -v w="$PF_USER_WORKER" 'int($4 / w) % 2 == 1 {print $2}' | sort | tr '\n' ' ')"
+printf '   kernel user workers in the thread group: %s\n' "${workers:-none}"
 if [ "$names" != "io vcpu0 vcpu1 vmm " ]; then
     printf '   %sFAIL%s thread names are "%s", want "io vcpu0 vcpu1 vmm "\n' \
         "$C_RED" "$C_RST" "$names"

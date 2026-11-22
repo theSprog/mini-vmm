@@ -21,15 +21,21 @@
 #     ahci 中断、libata 没有超时，本身就证明 EOI 回来了；exit-stats 里的
 #     IOAPIC_EOI 次数不少于 guest 数到的 ahci 中断数，是同一件事在 host 侧的
 #     计数。内核态 irqchip 下这条 exit 不会出现。
+#   让 guest 用 PIT：KVM 在 KVM_GET_SUPPORTED_CPUID 里报告 TSC_DEADLINE_TIMER，
+#     加上 KVM 一直报告的 ARAT，Linux 的 apic_needs_pit()（arch/x86/kernel/
+#     apic/apic.c）在检查 noapictimer 之前就返回 false，pit_timer_init() 把
+#     PIT 停掉。此时 noapictimer 让 guest 没有任何 tick 来源，启动卡死；noapic
+#     时 timer 也走 LAPIC，IRQ0 一次不响。所以凡是要 PIT 出 tick 的用例都加
+#     lapic=notscdeadline，清掉 guest 看到的 TSC_DEADLINE_TIMER
 #   XT-PIC：noapic 时 Linux 只用 8259A，timer 和串口的中断都经 PIC 的 INT
 #     输出、KVM_INTERRUPT 注入（ExtINT），/proc/interrupts 的芯片名是 XT-PIC。
 #   PIT 计时：pitprobe（tools/guest/pitprobe.c）让 PIT 通道 2 数 10ms，用 TSC
 #     量窗口长度。kvmclock 打开时 guest 的 "tsc: Detected" 来自 KVM 报的
 #     TSC 频率，与 PIT 无关，所以两者相符说明 PIT 的时间基准是准的。
-#   补发策略：guest 以 noapictimer nohz=off highres=off 启动，tick 只来自
-#     PIT 且保持周期模式，每个 IRQ0 让 jiffies 加一（kernel/time/tick-common.c
-#     tick_periodic 的 do_timer(1)），而 CLOCK_MONOTONIC 来自 TSC/kvmclock，
-#     不受丢 tick 影响。host 上 SIGSTOP 整个 VMM 1 秒模拟“完全得不到 CPU”的
+#   补发策略：guest 以 lapic=notscdeadline noapictimer nohz=off highres=off
+#     启动，tick 只来自 PIT 且保持周期模式，每个 IRQ0 让 jiffies 加一
+#     （kernel/time/tick-common.c tick_periodic 的 do_timer(1)），而
+#     CLOCK_MONOTONIC 来自 TSC/kvmclock，不受丢 tick 影响。host 上 SIGSTOP 整个 VMM 1 秒模拟“完全得不到 CPU”的
 #     过载：补发打开时积压的 tick 在恢复后逐个补上，jiffies 与单调时钟之差
 #     回到 0；关闭时这 1 秒的 tick 合并成一个，jiffies 落后约 1000。
 
@@ -195,7 +201,7 @@ boot_case "[$mode] noapic：所有 ISA 中断走 8259A（XT-PIC）" \
     --cmd 'grep -E "timer|ttyS0" /proc/interrupts' \
     --host "$CLIENT $SOCK 'info irqchip'" \
     --stop 'poweroff -f' \
-    -- "$VMM" --mode linux --mem 256M --kernel-irqchip "$mode" --append noapic \
+    -- "$VMM" --mode linux --mem 256M --kernel-irqchip "$mode" --append 'noapic lapic=notscdeadline' \
           --monitor "$SOCK" --initrd "$INITRD" "$VMLINUX"
 expect_rc 0
 expect_has "guest requested poweroff via ACPI S5"
@@ -242,7 +248,7 @@ boot_case "[$mode] --pit-reinject $policy：VMM 停 1 秒后的 tick 数与漂�
     --host "$CLIENT $SOCK 'info irqchip'" \
     --stop 'poweroff -f' \
     -- "$VMM" --mode linux --mem 256M --kernel-irqchip "$mode" --pit-reinject "$policy" \
-          --append 'noapictimer nohz=off highres=off' \
+          --append 'lapic=notscdeadline noapictimer nohz=off highres=off' \
           --monitor "$SOCK" --initrd "$INITRD" "$VMLINUX"
 expect_rc 0
 expect_has "guest requested poweroff via ACPI S5"
@@ -311,7 +317,7 @@ for mode in on split; do
     calibrate_tests "$mode"
 done
 
-head1 "PIT 补发策略（noapictimer，tick 只来自 PIT）"
+head1 "PIT 补发策略（lapic=notscdeadline noapictimer，tick 只来自 PIT）"
 for mode in on split; do
     for policy in on off; do
         reinject_tests "$mode" "$policy"
@@ -323,7 +329,8 @@ manual_guide() {
 guide "在 host 真实过载下对比补发策略" \
 "# 另开终端制造负载：stress-ng --cpu \$(nproc) --timeout 60
 ./build/vmm --mode linux --kernel-irqchip split --pit-reinject off \\
-    --append 'noapictimer nohz=off highres=off' --monitor /tmp/mon.sock \\
+    --append 'lapic=notscdeadline noapictimer nohz=off highres=off' \\
+    --monitor /tmp/mon.sock \\
     --initrd build/initramfs.cpio.gz guest-kernel/vmlinux
 # guest 里每隔几秒看一次：
 awk '/^now at/{n=\$3} /^jiffies:/{j=\$2} END{print n/1e6 - j}' /proc/timer_list

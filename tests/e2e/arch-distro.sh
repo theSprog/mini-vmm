@@ -84,6 +84,13 @@ DMESG_ALLOWED=(
     # 会被拒绝（KVM_SET_MSRS 返回 0）。换 host 内核后用 KVM_SET_MSRS 写一次
     # 0xC0010015 = 1<<24 看返回值即可重新确认
     "\[Firmware Bug\]: TSC doesn't count with P0 frequency!"
+    # KVM 的 kvm_set_cpu_caps()（arch/x86/kvm/cpuid.c）按 host 的 AMD_SSBD
+    # 合成 CPUID.7.0:EDX[31] SPEC_CTRL_SSBD，但合成 EDX[26] SPEC_CTRL 还要求
+    # host 有 AMD_IBPB_RET（CPUID 0x80000008:EBX[30]）。host 的 /proc/cpuinfo
+    # 有 ibrs、ibpb、ssbd 却没有 amd_ibpb_ret 时，guest 拿到的 CPUID 只有前者，
+    # guest 的 cpuid-deps.c 认为 SPEC_CTRL_SSBD 依赖 SPEC_CTRL，于是报这一行。
+    # VMM 原样透传 KVM_GET_SUPPORTED_CPUID，这一行由 host KVM 和 host CPU 决定
+    "x86 CPU feature dependency check failure: CPU0 has '18\*32\+31' enabled but '18\*32\+26' disabled"
     # srso_select_mitigation() 要 CPUID 0x80000021 的 IBPB_BRTYPE，KVM 只在
     # host 自己有这一位时才提供。host 的
     # /sys/devices/system/cpu/vulnerabilities/spec_rstack_overflow 报
