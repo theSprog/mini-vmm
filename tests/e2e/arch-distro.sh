@@ -78,12 +78,6 @@ IPERF_BYTES=64M
 # err/warn 一律算失败：VMM 的设备或固件表出问题时，最先表现为驱动或
 # ACPI 的一条警告。
 DMESG_ALLOWED=(
-    # bsp_init_amd() 在 CONSTANT_TSC 的 AMD CPU 上要求 MSR_K7_HWCR 的
-    # TscFreqSel（bit 24）为 1。这个 MSR 由 KVM 模拟：6.6 的
-    # kvm_set_msr_common() 只接受 0 或 McStatusWrEn（bit 18），VMM 写 bit 24
-    # 会被拒绝（KVM_SET_MSRS 返回 0）。换 host 内核后用 KVM_SET_MSRS 写一次
-    # 0xC0010015 = 1<<24 看返回值即可重新确认
-    "\[Firmware Bug\]: TSC doesn't count with P0 frequency!"
     # KVM 的 kvm_set_cpu_caps()（arch/x86/kvm/cpuid.c）按 host 的 AMD_SSBD
     # 合成 CPUID.7.0:EDX[31] SPEC_CTRL_SSBD，但合成 EDX[26] SPEC_CTRL 还要求
     # host 有 AMD_IBPB_RET（CPUID 0x80000008:EBX[30]）。host 的 /proc/cpuinfo
@@ -365,6 +359,14 @@ end_case
 
 check_case "dmesg 的 err/warn 都是已查明与 VMM 无关的几条"
 local warns w pat ok
+local -a allowed=("${DMESG_ALLOWED[@]}")
+# AMD/海光 guest 在 constant_tsc 时要求 MSR_K7_HWCR 的 TscFreqSel（bit 24）
+# 为 1，否则打印这一行。VMM 在 vCPU 初始化时置上这一位，只有 host KVM
+# 拒绝写入时这一行才会出现，这时 VMM 会打印一条含 "HWCR.TscFreqSel" 的
+# 告警。所以只在 VMM 报了这条告警时放过它，否则出现就说明 VMM 没写上
+if printf '%s\n' "$CUR_OUT" | grep -q '^\[WARN\] .*HWCR\.TscFreqSel'; then
+    allowed+=("\[Firmware Bug\]: TSC doesn't count with P0 frequency!")
+fi
 # 串口输出的行尾是 \r\n，先去掉 \r 再按整行匹配
 warns="$(printf '%s\n' "$CUR_OUT" | tr -d '\r' | grep -a '^WARN \[' | sed 's/^WARN \[ *[0-9.]*\] //')"
 if ! printf '%s\n' "$CUR_OUT" | tr -d '\r' | grep -qx 'WARN-END'; then
@@ -374,7 +376,7 @@ fi
 while IFS= read -r w; do
     [ -n "$w" ] || continue
     ok=0
-    for pat in "${DMESG_ALLOWED[@]}"; do
+    for pat in "${allowed[@]}"; do
         if printf '%s\n' "$w" | grep -qE -- "$pat"; then ok=1; break; fi
     done
     if [ "$ok" -eq 0 ]; then

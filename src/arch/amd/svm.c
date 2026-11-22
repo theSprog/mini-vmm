@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include "vmm.h"
 #include "kvm_wrappers.h"
 #include "arch/arch.h"
@@ -180,15 +181,6 @@ static int amd_prepare_vm(struct vmm_vm *vm)
  * 已经给出，功能本身也都由 KVM 内核实现，VMM 不需要额外做什么。
  * tools/build_guest_kernel.sh 构建的测试内核开了 CONFIG_KVM_GUEST，启动日志里的
  * "Hypervisor detected: KVM" 和 "kvm-clock: Using msrs" 都依赖这一位。
- *
- * 顺带说明为什么不去改 HWCR（MSR 0xC0010015）的 bit 24 TscFreqSel：
- * guest 内核在 constant_tsc 时检查它，为 0 就打印
- * "[Firmware Bug]: TSC doesn't count with P0 frequency!"（写 1 表示
- * TSC 按 P0 频率计数，这条日志就会消失；写 0 只是多一行日志，行为不变，
- * TSC 在 KVM 下本来就恒定）。但 KVM 的 MSR_K7_HWCR 写处理（host v6.6
- * arch/x86/kvm/x86.c 的 kvm_set_msr_common()）只接受 bit 18 McStatusWrEn，
- * 其余非零位一律拒绝，KVM_SET_MSRS 会返回 0 表示一个都没写成功。
- * 所以这一位用户态改不了，只能保持 KVM 的初值 0。
  */
 #define CPUID_1_ECX_HYPERVISOR (1u << 31)
 
@@ -200,6 +192,39 @@ static void cpuid_mark_hypervisor(struct kvm_cpuid2 *cpuid)
         if (cpuid->entries[i].function == 0x1)
             cpuid->entries[i].ecx |= CPUID_1_ECX_HYPERVISOR;
     }
+}
+
+/* HWCR 的 bit 24 TscFreqSel 表示 TSC 按 P0 频率计数。guest 内核在
+ * constant_tsc 时检查它（arch/x86/kernel/cpu/amd.c 的 bsp_init_amd()、
+ * hygon.c 的 bsp_init_hygon()），为 0 就打印
+ * "[Firmware Bug]: TSC doesn't count with P0 frequency!"。KVM 模拟的 HWCR
+ * 初值是 0，所以由 VMM 置上；TSC 在 KVM 下本来就恒定，这一位只影响这行日志。
+ *
+ * 较老的 host KVM 只接受用户态写 HWCR 的 bit 18 McStatusWrEn，写 bit 24
+ * 会让 KVM_SET_MSRS 返回 0；KVM 提交 8b0e00fba934（"KVM: x86: Virtualize
+ * HWCR.TscFreqSel[bit 24]"）起才接受。写不进不影响运行，只告警一次，
+ * 让 guest 里那行日志有据可查。写在 vm_power_on_save() 之前，HWCR 在 KVM
+ * 的 MSR 列表里，复位时会和其他 MSR 一起恢复成这个值。 */
+#define MSR_K7_HWCR             0xc0010015u
+#define HWCR_TSC_FREQ_SEL       (1ull << 24)
+
+static void hwcr_set_tsc_freq_sel(struct vmm_vcpu *vcpu)
+{
+    union kvm_msrs_one buf;
+
+    memset(&buf, 0, sizeof(buf));
+    buf.hdr.nmsrs = 1;
+    buf.hdr.entries[0].index = MSR_K7_HWCR;
+    if (ioctl(vcpu->fd, KVM_GET_MSRS, &buf.hdr) != 1) {
+        vmm_warn("vCPU %d: cannot read HWCR.TscFreqSel (MSR 0x%x)",
+                 vcpu->id, MSR_K7_HWCR);
+        return;
+    }
+    buf.hdr.entries[0].data |= HWCR_TSC_FREQ_SEL;
+    if (ioctl(vcpu->fd, KVM_SET_MSRS, &buf.hdr) != 1 && vcpu->id == 0)
+        vmm_warn("host KVM rejected HWCR.TscFreqSel (MSR 0x%x bit 24); "
+                 "guest will log a TSC P0 frequency firmware bug",
+                 MSR_K7_HWCR);
 }
 
 static int amd_init_vcpu(struct vmm_vcpu *vcpu)
@@ -234,6 +259,7 @@ static int amd_init_vcpu(struct vmm_vcpu *vcpu)
 
     vmm_dbg("vCPU %d: host CPUID passed through, topology rewritten",
             vcpu->id);
+    hwcr_set_tsc_freq_sel(vcpu);
     return VMM_OK;
 }
 
