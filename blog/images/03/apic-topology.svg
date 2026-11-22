@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="424" viewBox="0 0 840 424" role="img" aria-labelledby="title desc">
+  <title id="title">APIC 体系：从设备中断线到目标 CPU</title>
+  <desc id="desc">PIT、键盘、串口和 RTC 等设备用中断线连接 IOAPIC。IOAPIC 的 MMIO 基址为 0xFEC00000，有 24 个输入引脚，每个引脚对应一个重定向表项。中断请求被转换成总线消息，按目的字段投递给目标 LAPIC。示意图中四颗 CPU 各自有一个 LAPIC，ID 分别为 0 到 3。</desc>
+  <defs>
+    <marker id="wire" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#326e64"/>
+    </marker>
+    <marker id="message" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#274a78"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="422" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g fill="none" stroke-width="2.5">
+    <path d="M113 160V192 M317 160V192 M521 160V192 M725 160V192 M64 192H776" stroke="#4c6481"/>
+    <path d="M419 254V194" stroke="#274a78" marker-end="url(#message)"/>
+  </g>
+  <g fill="none" stroke="#326e64" stroke-width="2" marker-end="url(#wire)">
+    <path d="M281 363V329"/>
+    <path d="M350 363V329"/>
+    <path d="M419 363V329"/>
+    <path d="M488 363V329"/>
+    <path d="M557 363V329"/>
+  </g>
+  <g stroke-width="1.5">
+    <rect x="36" y="66" width="154" height="94" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="49" y="109" width="128" height="34" rx="7" fill="#d5e7fc" stroke="#85a9d5"/>
+    <rect x="240" y="66" width="154" height="94" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="253" y="109" width="128" height="34" rx="7" fill="#d5e7fc" stroke="#85a9d5"/>
+    <rect x="444" y="66" width="154" height="94" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="457" y="109" width="128" height="34" rx="7" fill="#d5e7fc" stroke="#85a9d5"/>
+    <rect x="648" y="66" width="154" height="94" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="661" y="109" width="128" height="34" rx="7" fill="#d5e7fc" stroke="#85a9d5"/>
+    <rect x="252" y="254" width="334" height="74" rx="12" fill="#e5f5f2" stroke="#78aca5"/>
+  </g>
+  <path d="M113 143V161 M317 143V161 M521 143V161 M725 143V161" fill="none" stroke="#4c6481" stroke-width="2.5"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48">
+    <text x="36" y="44" font-size="23" font-weight="700">APIC 体系：线路输入，消息投递</text>
+    <g text-anchor="middle">
+      <text x="113" y="94" font-size="18" font-weight="700">CPU 0</text>
+      <text x="113" y="131" font-size="16" font-weight="600">LAPIC · ID 0</text>
+      <text x="317" y="94" font-size="18" font-weight="700">CPU 1</text>
+      <text x="317" y="131" font-size="16" font-weight="600">LAPIC · ID 1</text>
+      <text x="521" y="94" font-size="18" font-weight="700">CPU 2</text>
+      <text x="521" y="131" font-size="16" font-weight="600">LAPIC · ID 2</text>
+      <text x="725" y="94" font-size="18" font-weight="700">CPU 3</text>
+      <text x="725" y="131" font-size="16" font-weight="600">LAPIC · ID 3</text>
+      <text x="419" y="283" font-size="22" font-weight="700">IOAPIC</text>
+      <text x="419" y="308" font-size="16">24 个输入引脚 · 24 个重定向表项</text>
+      <g font-size="15">
+        <text x="281" y="384">PIT</text>
+        <text x="350" y="384">键盘</text>
+        <text x="419" y="384">串口</text>
+        <text x="488" y="384">RTC</text>
+        <text x="557" y="384">…</text>
+      </g>
+    </g>
+    <g font-size="16">
+      <text x="64" y="221" font-weight="700">系统总线</text>
+      <text x="434" y="226" font-weight="600">中断消息：按目的字段投递到目标 LAPIC</text>
+      <text x="604" y="278" font-weight="600">MMIO 基址</text>
+      <text x="604" y="302">0xFEC00000</text>
+      <text x="604" y="380" fill="#20534a">设备的中断线</text>
+    </g>
+  </g>
+</svg>

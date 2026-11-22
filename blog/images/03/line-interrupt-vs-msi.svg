@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="274" viewBox="0 0 840 274" role="img" aria-labelledby="title desc">
+  <title id="title">传统线中断与 MSI 的接线对照</title>
+  <desc id="desc">传统线中断由设备拉线，IOAPIC 从重定向表读取目的和向量，再发送中断消息。MSI 由设备发起写往 0xFEExxxxx 的内存写事务，平台将其作为中断消息送到目标 LAPIC，绕过 IOAPIC。MSI 消息地址编码目标，写入数据包含向量。</desc>
+  <defs>
+    <marker id="msg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#326e64"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="272" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <rect x="36" y="77" width="130" height="157" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+  <rect x="680" y="77" width="124" height="157" rx="12" fill="#f0ebff" stroke="#a397d1"/>
+  <rect x="331" y="104" width="167" height="59" rx="9" fill="#e5f5f2" stroke="#78aca5"/>
+  <g fill="none" stroke-width="2">
+    <path d="M166 134H331" stroke="#58728d"/>
+    <path d="M498 134H676" stroke="#326e64" marker-end="url(#msg)"/>
+    <path d="M166 208H676" stroke="#326e64" marker-end="url(#msg)"/>
+  </g>
+  <g fill="#f5f8fc" stroke="#58728d">
+    <circle cx="166" cy="134" r="3"/><circle cx="331" cy="134" r="3"/><circle cx="166" cy="208" r="3"/>
+  </g>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48" text-anchor="middle">
+    <text x="36" y="42" font-size="23" font-weight="700" text-anchor="start">传统线中断与 MSI：IOAPIC 在哪条路径上？</text>
+    <g font-size="16" font-weight="700">
+      <text x="101" y="102">设备</text><text x="742" y="102">目标 LAPIC</text>
+      <text x="414.5" y="128">IOAPIC</text>
+      <text x="101" y="139">传统线中断</text><text x="101" y="213">MSI</text>
+    </g>
+    <g font-size="14">
+      <text x="247" y="122">中断线</text>
+      <text x="414.5" y="149">用重定向表查目的和向量</text>
+      <text x="588" y="122" fill="#20534a">中断消息</text>
+      <text x="421" y="195" font-weight="700" fill="#20534a">写 0xFEExxxxx：绕过 IOAPIC</text>
+      <text x="421" y="230" fill="#4c6481">写地址编码目的，写数据包含向量</text>
+    </g>
+  </g>
+</svg>

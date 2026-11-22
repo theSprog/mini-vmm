@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="341" viewBox="0 0 840 341" role="img" aria-labelledby="title desc">
+  <title id="title">MADT：处理器编号与 I/O 中断范围</title>
+  <desc id="desc">示例中类型 0 记录把 CPU 0、1、2 分别对应到 LAPIC ID 0、2、4。两条类型 1 记录给出两个 IOAPIC 的 MMIO 地址与 GSI 基址；每个控制器若各有 24 个输入，则覆盖 GSI 0 至 23 和 24 至 47。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="339" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">MADT：处理器编号与 I/O 中断范围</text>
+  <text x="36" y="83" font-size="14" font-weight="700" text-anchor="start" class="muted">类型 0：CPU 与 Local APIC</text>
+  <text x="365" y="83" font-size="14" font-weight="700" text-anchor="start" class="muted">类型 1：IOAPIC 的地址与 GSI 基址</text>
+  <rect x="36" y="98" width="304" height="206" rx="10" class="panel"/>
+  <rect x="365" y="98" width="439" height="206" rx="10" class="panel"/>
+  <rect x="51" y="132" width="73" height="34" rx="5" class="res"/>
+  <text x="87" y="154" font-size="15" font-weight="700" text-anchor="middle" class="ink">CPU 0</text>
+  <path d="M 124 149 H 169" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(169 149) rotate(0)"/>
+  <rect x="169" y="132" width="155" height="34" rx="5" class="blue"/>
+  <text x="246" y="154" font-size="15" font-weight="700" text-anchor="middle" class="ink">Local APIC ID 0</text>
+  <rect x="51" y="191" width="73" height="34" rx="5" class="res"/>
+  <text x="87" y="213" font-size="15" font-weight="700" text-anchor="middle" class="ink">CPU 1</text>
+  <path d="M 124 208 H 169" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(169 208) rotate(0)"/>
+  <rect x="169" y="191" width="155" height="34" rx="5" class="blue"/>
+  <text x="246" y="213" font-size="15" font-weight="700" text-anchor="middle" class="ink">Local APIC ID 2</text>
+  <rect x="51" y="250" width="73" height="34" rx="5" class="res"/>
+  <text x="87" y="272" font-size="15" font-weight="700" text-anchor="middle" class="ink">CPU 2</text>
+  <path d="M 124 267 H 169" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(169 267) rotate(0)"/>
+  <rect x="169" y="250" width="155" height="34" rx="5" class="blue"/>
+  <text x="246" y="272" font-size="15" font-weight="700" text-anchor="middle" class="ink">Local APIC ID 4</text>
+  <text x="585" y="124" font-size="13" font-weight="400" text-anchor="middle" class="muted">若每个 IOAPIC 各有 24 个输入</text>
+  <rect x="383" y="149" width="201" height="38" rx="0" class="teal"/>
+  <rect x="584" y="149" width="201" height="38" rx="0" class="blue"/>
+  <text x="483" y="173" font-size="17" font-weight="700" text-anchor="middle" class="ink">GSI 0–23</text>
+  <text x="684" y="173" font-size="17" font-weight="700" text-anchor="middle" class="ink">GSI 24–47</text>
+  <path d="M 383 148 V 140 M 584 148 V 140" class="line"/>
+  <text x="392" y="143" font-size="12" font-weight="700" text-anchor="start" class="muted">基址 0</text>
+  <text x="593" y="143" font-size="12" font-weight="700" text-anchor="start" class="muted">基址 24</text>
+  <path d="M 483 187 V 214 M 684 187 V 214" class="line"/>
+  <rect x="383" y="214" width="191" height="69" rx="9" class="teal"/>
+  <text x="398" y="239" font-size="18" font-weight="700" text-anchor="start" class="ink">IOAPIC 0</text>
+  <text x="398" y="261" font-size="14" font-weight="400" text-anchor="start" class="muted">MMIO 0xFEC00000</text>
+  <rect x="594" y="214" width="191" height="69" rx="9" class="blue"/>
+  <text x="609" y="239" font-size="18" font-weight="700" text-anchor="start" class="ink">IOAPIC 1</text>
+  <text x="609" y="261" font-size="14" font-weight="400" text-anchor="start" class="muted">MMIO 0xFEC01000</text>
+  <text x="36" y="326" font-size="14" font-weight="400" text-anchor="start" class="muted">上图是双 IOAPIC 示例；mini-vmm 只有一个，覆盖 GSI 0–23。</text>
+</svg>
