@@ -29,7 +29,7 @@
 | 6 | system-reset ✓ |
 | 7 | arch-distro ✓ |
 | 8 | monitor ✓ · pvpanic ✓ · edu-dev ✓ · pcie-ecam · watchdog · cpu-model · split-irqchip ✓ · cmos-rtc · acpi-pm-timer · hpet · mem-backend · virtqueue · fw-cfg-seabios · iommufd-selftest |
-| 9 | acpi-events ✓ · pci-msix ✓ · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · numa · bochs-display · ovmf-uefi |
+| 9 | acpi-events ✓ · pci-msix ✓ · pci-bridge · pv-features · vpmu · user-lapic · nested-virt · pv-channel · tsc · guest-memfd · numa · bochs-display · ovmf-uefi |
 | 10 | pci-hotplug · guest-pv-probe · cpu-hotplug · exit-cost · kvmclock · dimm-hotplug · nvme · virtio-pci · vfio-user · sev-csv |
 | 11 | ptp-kvm · virtio-blk · virtio-net · virtio-console · virtio-scsi · virtio-input · virtio-vsock · virtio-gpu · virtio-balloon · virtio-mem · custom-virtio · ioeventfd-irqfd · viommu · snapshot |
 | 12 | virtio-mmio · virtqueue-packed · virtio-gpu-3d · vhost-net · vhost-vsock · vhost-user-blk · blk-io-uring · shmem-channel · usb-xhci · vfio-mdev · sriov-emu · guest-agent · dirty-log |
@@ -415,6 +415,20 @@ guest 的时间由两类部件拼成：clocksource 回答“现在几点”，�
 - [ ] guest RAM 可以选择匿名内存、memfd 或 hugetlbfs 作为后端，memfd 和 hugetlbfs 后端可以把 fd 交给其他进程共享
 - [ ] 使用大页后端时 host `/proc/meminfo` 的大页用量与 guest RAM 对得上
 - [ ] 支持启动时预分配并锁定内存
+
+### guest-memfd — 私有内存与共享/私有转换
+
+依赖: mem-backend · 参考: Linux `Documentation/virt/kvm/api.rst`（`KVM_CREATE_GUEST_MEMFD`、`KVM_SET_USER_MEMORY_REGION2`、`KVM_SET_MEMORY_ATTRIBUTES`、`KVM_EXIT_MEMORY_FAULT`、`KVM_CAP_EXIT_HYPERCALL`）、`virt/kvm/guest_memfd.c`、`tools/testing/selftests/kvm/x86/private_mem_conversions_test.c`
+
+前提: host 内核提供 `KVM_CAP_GUEST_MEMFD` 和 `KVM_CAP_MEMORY_ATTRIBUTES`，并且 `KVM_CAP_VM_TYPES` 包含 `KVM_X86_SW_PROTECTED_VM`（内核要开 `CONFIG_KVM_SW_PROTECTED_VM`，发行版内核一般不开）。开始前用 `KVM_CHECK_EXTENSION` 逐个查。
+
+在这之前，guest 的每一页 VMM 都能 mmap 读写。机密虚拟机（SEV-SNP、TDX）要求一部分 guest 内存连 VMM 也碰不到，KVM 为此提供 guest_memfd：一个只交给 KVM 的 fd，默认不能被用户态映射。同一段 GPA 同时挂共享后端（普通 mmap 内存）和私有后端（guest_memfd），由这段 GPA 的内存属性决定 guest 访问哪一份。这个里程碑在 `KVM_X86_SW_PROTECTED_VM` 上做，不需要加密硬件：这种 VM 只隔离映射、不加密，正好把 memslot、属性和转换这套机制单独拿出来学。sev-csv 扩展到 SNP 时复用这里的实现。
+
+- [ ] VMM 用 `KVM_SET_USER_MEMORY_REGION2` 给一段 GPA 同时挂共享内存和 guest_memfd，long64 payload 在这段内存上运行
+- [ ] 同一个 GPA 在共享和私有之间切换时，guest 读到的是对应后端的内容：VMM 写进共享映射的数据只在共享状态下被 guest 看到，guest 在私有状态下写入的数据 VMM 从共享映射读不到
+- [ ] guest 经 `KVM_HC_MAP_GPA_RANGE` 超级调用请求转换（`KVM_CAP_EXIT_HYPERCALL` 让它退出到用户态），VMM 用 `KVM_SET_MEMORY_ATTRIBUTES` 完成转换后 guest 继续运行
+- [ ] 出现 `KVM_EXIT_MEMORY_FAULT` 时 VMM 打印 GPA、长度和 flags，不静默退出；触发它的条件依据 host 内核 `arch/x86/kvm/mmu/mmu.c` 确认后构造用例
+- [ ] host 内核支持 `GUEST_MEMFD_FLAG_MMAP` 时（查 `KVM_CAP_GUEST_MEMFD_FLAGS`），guest RAM 可以只用一个可映射的 guest_memfd 作后端，Linux guest 启动到 shell
 
 ### numa — NUMA 拓扑
 
