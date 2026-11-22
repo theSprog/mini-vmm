@@ -78,12 +78,14 @@ IPERF_BYTES=64M
 # err/warn 一律算失败：VMM 的设备或固件表出问题时，最先表现为驱动或
 # ACPI 的一条警告。
 DMESG_ALLOWED=(
-    # KVM 的 kvm_set_cpu_caps()（arch/x86/kvm/cpuid.c）按 host 的 AMD_SSBD
-    # 合成 CPUID.7.0:EDX[31] SPEC_CTRL_SSBD，但合成 EDX[26] SPEC_CTRL 还要求
-    # host 有 AMD_IBPB_RET（CPUID 0x80000008:EBX[30]）。host 的 /proc/cpuinfo
-    # 有 ibrs、ibpb、ssbd 却没有 amd_ibpb_ret 时，guest 拿到的 CPUID 只有前者，
-    # guest 的 cpuid-deps.c 认为 SPEC_CTRL_SSBD 依赖 SPEC_CTRL，于是报这一行。
-    # VMM 原样透传 KVM_GET_SUPPORTED_CPUID，这一行由 host KVM 和 host CPU 决定
+    # AMD host 上 KVM 的 kvm_set_cpu_caps()（arch/x86/kvm/cpuid.c）从 AMD 的
+    # 能力合成 CPUID.7.0:EDX：只要 host 有 AMD_SSBD 就给 EDX[31]
+    # SPEC_CTRL_SSBD，给 EDX[26] SPEC_CTRL 却要求 AMD_IBRS、AMD_IBPB 和
+    # AMD_IBPB_RET（CPUID 0x80000008:EBX[30]）都在。host 缺 AMD_IBPB_RET 时
+    # guest 只拿到前者，guest 的 cpuid-deps.c 认为 SPEC_CTRL_SSBD 依赖
+    # SPEC_CTRL，于是报这一行。AMD_IBPB_RET 在 /proc/cpuinfo 里没有名字，
+    # 要直接读 host 的 CPUID 0x80000008 EBX 判断。VMM 原样透传
+    # KVM_GET_SUPPORTED_CPUID，这一行由 host KVM 和 host CPU 决定
     "x86 CPU feature dependency check failure: CPU0 has '18\*32\+31' enabled but '18\*32\+26' disabled"
     # srso_select_mitigation() 要 CPUID 0x80000021 的 IBPB_BRTYPE，KVM 只在
     # host 自己有这一位时才提供。host 的
