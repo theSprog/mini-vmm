@@ -1,0 +1,81 @@
+/* include/kvm_wrappers.h — KVM ioctl 的薄封装
+ *
+ * 原则：这一层不做任何策略，只做三件事——
+ *   1) 把 ioctl 的裸整数返回值统一成 VMM_ERR_* 语义
+ *   2) 出错时打一条带 ioctl 名字的日志（否则一堆 -1 根本没法定位）
+ *   3) 把“需要先 memset 结构体再填字段”这类样板代码收敛掉
+ * 结构体定义一律直接用 <linux/kvm.h>，绝不自己抄一份，避免和内核版本漂移。
+ */
+#ifndef KVM_WRAPPERS_H
+#define KVM_WRAPPERS_H
+
+#include <stdint.h>
+#include <stddef.h>
+#include <linux/kvm.h>
+
+/* ---- 系统级（/dev/kvm fd） ---- */
+int  kvm_open(void);                              /* 返回 kvm_fd */
+int  kvm_get_api_version(int kvm_fd);             /* 应为 12 */
+int  kvm_check_extension(int kvm_fd, int cap);    /* KVM_CHECK_EXTENSION */
+int  kvm_get_vcpu_mmap_size(int kvm_fd);          /* kvm_run 页大小 */
+int  kvm_create_vm(int kvm_fd);                   /* 返回 vm_fd */
+
+/* ---- VM 级（vm_fd） ---- */
+int  kvm_create_vcpu(int vm_fd, int vcpu_id);     /* 返回 vcpu_fd */
+int  kvm_set_user_memory_region(int vm_fd, uint32_t slot, uint32_t flags,
+                                uint64_t gpa, uint64_t size, uint64_t hva);
+/* Intel 专用，AMD/海光上不需要调；由 arch 层决定是否调用 */
+int  kvm_set_tss_addr(int vm_fd, uint64_t addr);
+int  kvm_set_identity_map_addr(int vm_fd, uint64_t addr);
+
+/* ---- vCPU 级（vcpu_fd） ---- */
+struct kvm_run *kvm_mmap_run(int vcpu_fd, size_t size);
+int  kvm_get_regs(int vcpu_fd, struct kvm_regs *regs);
+int  kvm_set_regs(int vcpu_fd, const struct kvm_regs *regs);
+int  kvm_get_sregs(int vcpu_fd, struct kvm_sregs *sregs);
+int  kvm_set_sregs(int vcpu_fd, const struct kvm_sregs *sregs);
+int  kvm_run(int vcpu_fd);                        /* 处理 EINTR 重试 */
+int  kvm_get_fpu(int vcpu_fd, struct kvm_fpu *fpu);
+int  kvm_set_guest_debug(int vcpu_fd, const struct kvm_guest_debug *dbg);
+/* KVM_TRANSLATE：按 vCPU 当前的页表把线性地址翻译成 GPA。
+ * 翻译失败（页不存在）返回 VMM_ERR_GUEST，ioctl 本身失败返回 VMM_ERR_SYS。 */
+int  kvm_translate(int vcpu_fd, uint64_t gva, uint64_t *gpa);
+
+/* CPUID 透传：把 host 支持的 CPUID 叶子设给 vCPU。长模式起就需要，
+ * 因为长模式要求 guest 能看到 CPUID.80000001h:EDX.LM。
+ *
+ * kvm_get_supported_cpuid() 返回的缓冲区在 entries[nent] 之后还留了
+ * KVM_CPUID_SPARE 个空条目，调用方可以直接往后追加 KVM 没有提供的子叶
+ * （追加后自增 nent 即可），见 smp_fixup_cpuid() 补 CPUID 叶 0xB。 */
+#define KVM_CPUID_SPARE 8
+
+int  kvm_get_supported_cpuid(int kvm_fd, struct kvm_cpuid2 **out);
+int  kvm_set_cpuid2(int vcpu_fd, struct kvm_cpuid2 *cpuid);
+
+/* MSR 读写（长模式 payload 可用 sregs.efer 代替；snapshot 必需） */
+int  kvm_get_msr(int vcpu_fd, uint32_t index, uint64_t *value);
+int  kvm_set_msr(int vcpu_fd, uint32_t index, uint64_t value);
+
+/* 只装一项的 KVM_GET_MSRS / KVM_SET_MSRS 参数，用 hdr.entries[0] 访问那一项。
+ * struct kvm_msrs 以柔性数组结尾，按 ISO C 它不能作为别的结构体的成员，
+ * 写成 struct { struct kvm_msrs hdr; struct kvm_msr_entry ent[1]; } 只是
+ * GNU 扩展（clang 报 -Wgnu-variable-sized-type-not-at-end）。放进 union
+ * 是 ISO C 允许的，raw 负责给那一项留出空间。 */
+union kvm_msrs_one {
+    struct kvm_msrs hdr;
+    uint8_t raw[sizeof(struct kvm_msrs) + sizeof(struct kvm_msr_entry)];
+};
+
+/* vCPU 的复位状态机（KVM_MP_STATE_*）。AP 唤醒排障用：读到
+ * UNINITIALIZED 说明还没收到 INIT，INIT_RECEIVED 说明在等 SIPI。
+ * 必须在拥有该 vcpu_fd 的线程里调用——KVM 的 vCPU ioctl 要拿
+ * vcpu->mutex，而 KVM_RUN 期间这把锁一直被持有，别的线程会卡住。 */
+int  kvm_get_mp_state(int vcpu_fd, uint32_t *state);
+const char *kvm_mp_state_str(uint32_t state);
+
+/* KVM_GET_STATS_FD：vm_fd 或 vcpu_fd 上都能调，返回只读的统计 fd，
+ * 格式见 kvm_stats.h。对 vcpu_fd 调用同样要拿 vcpu->mutex，所以要么在
+ * vCPU 自己的线程里调，要么等 vCPU 线程停下之后再调。 */
+int  kvm_get_stats_fd(int fd);
+
+#endif /* KVM_WRAPPERS_H */

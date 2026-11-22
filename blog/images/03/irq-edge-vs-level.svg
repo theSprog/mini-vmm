@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="388" viewBox="0 0 840 388" role="img" aria-labelledby="title desc">
+  <title id="title">中断线：边沿触发与电平触发</title>
+  <desc id="desc">两条波形使用相同的电平变化。上升沿触发只在每次 0 变 1 时产生一次请求，高电平持续不会产生新请求。高电平触发在高电平期间一直有效，设备拉低线路后撤销；若 EOI 时线路仍为高，控制器会再次投递。</desc>
+  <defs>
+    <marker id="time-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c6481"/>
+    </marker>
+    <path id="wave" d="M112 144H224V106H424V144H536V106H736V144H790"/>
+    <path id="grid" d="M112 106H790 M112 144H790"/>
+  </defs>
+  <rect x="1" y="1" width="838" height="386" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" fill="#142d48">
+    <text x="36" y="42" font-size="22" font-weight="700">边沿触发</text>
+    <text x="36" y="67" font-size="16">只在 0 → 1 的瞬间产生一次请求；持续为高不会产生新请求。</text>
+    <text x="36" y="217" font-size="22" font-weight="700">电平触发</text>
+    <text x="36" y="242" font-size="16">高电平期间请求一直有效；驱动处理完事件后，设备拉低线路撤销请求。</text>
+    <g font-size="14" text-anchor="end" fill="#4c6481">
+      <text x="98" y="111">1（高）</text>
+      <text x="98" y="149">0（低）</text>
+      <text x="98" y="286">1（高）</text>
+      <text x="98" y="324">0（低）</text>
+    </g>
+    <g fill="none" stroke="#aebcd0" stroke-width="1" stroke-dasharray="4 5">
+      <use href="#grid"/>
+      <use href="#grid" y="175"/>
+    </g>
+    <use href="#wave" fill="none" stroke="#274a78" stroke-width="3" stroke-linejoin="round"/>
+    <g stroke="#925520" stroke-width="2">
+      <path d="M224 106V144 M536 106V144"/>
+      <path d="M224 146V155 M536 146V155" stroke-dasharray="3 3"/>
+      <circle cx="224" cy="106" r="5" fill="#925520" stroke="#f5f8fc"/>
+      <circle cx="536" cy="106" r="5" fill="#925520" stroke="#f5f8fc"/>
+    </g>
+    <g fill="#784417" font-size="15" font-weight="700" text-anchor="middle">
+      <text x="224" y="174">一次请求</text>
+      <text x="536" y="174">一次请求</text>
+    </g>
+    <path d="M36 190H804" stroke="#c8d5e5"/>
+    <g fill="#d9eee9">
+      <rect x="224" y="281" width="200" height="38"/>
+      <rect x="536" y="281" width="200" height="38"/>
+    </g>
+    <use href="#wave" y="175" fill="none" stroke="#326e64" stroke-width="3" stroke-linejoin="round"/>
+    <g fill="#20534a" font-size="15" font-weight="700" text-anchor="middle">
+      <text x="324" y="306">请求持续有效</text>
+      <text x="636" y="306">请求持续有效</text>
+    </g>
+    <text x="112" y="363" font-size="15">EOI 时若线路仍为高，控制器会再次投递。</text>
+    <path d="M678 358H790" fill="none" stroke="#4c6481" stroke-width="1.5" marker-end="url(#time-arrow)"/>
+    <text x="665" y="363" font-size="14" text-anchor="end" fill="#4c6481">时间</text>
+  </g>
+</svg>

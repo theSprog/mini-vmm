@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="354" viewBox="0 0 840 354" role="img" aria-labelledby="title desc">
+  <title id="title">中断到达时 · vCPU 状态与 KVM 动作</title>
+  <desc id="desc">A 正在 host 中处理退出：不额外唤醒，重入前自然检查。B 仍在 guest 中运行：向承载该 vCPU 的物理 CPU 发 IPI 促成退出。C HLT 后 vCPU 线程阻塞：唤醒线程。三种情况最终都在重新进入 guest 前检查待注入事件。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="352" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">中断到达时 · vCPU 状态与 KVM 动作</text>
+  <text x="36" y="71" font-size="15" font-weight="400" text-anchor="start" class="ink">同一时刻的三种状态，一行对应一种处理方式。</text>
+  <rect x="36" y="93" width="768" height="34" rx="6" class="navy"/>
+  <text x="53" y="116" font-size="15" font-weight="700" text-anchor="start" class="white">中断到达时，目标 vCPU 在哪里？</text>
+  <text x="425" y="116" font-size="15" font-weight="700" text-anchor="start" class="white">KVM 要做什么？</text>
+  <rect x="36" y="135" width="361" height="51" rx="7" class="blue"/>
+  <rect x="399" y="135" width="405" height="51" rx="7" class="blue"/>
+  <text x="53" y="157" font-size="16" font-weight="700" text-anchor="start" class="ink">A</text>
+  <text x="82" y="156" font-size="15" font-weight="700" text-anchor="start" class="ink">正在 host 中处理退出</text>
+  <text x="82" y="176" font-size="13" font-weight="400" text-anchor="start" class="muted">已经 #VMEXIT，尚未重入 guest</text>
+  <text x="425" y="156" font-size="15" font-weight="700" text-anchor="start" class="ink">无需额外 kick</text>
+  <text x="425" y="176" font-size="13" font-weight="400" text-anchor="start" class="muted">重入前自然会检查挂起的中断</text>
+  <rect x="36" y="193" width="361" height="51" rx="7" class="teal"/>
+  <rect x="399" y="193" width="405" height="51" rx="7" class="teal"/>
+  <text x="53" y="215" font-size="16" font-weight="700" text-anchor="start" class="ink">B</text>
+  <text x="82" y="214" font-size="15" font-weight="700" text-anchor="start" class="ink">正在 guest 中运行</text>
+  <text x="82" y="234" font-size="13" font-weight="400" text-anchor="start" class="muted">vCPU 此时还没有退出</text>
+  <text x="425" y="214" font-size="15" font-weight="700" text-anchor="start" class="ink">向所在物理 CPU 发 IPI</text>
+  <text x="425" y="234" font-size="13" font-weight="400" text-anchor="start" class="muted">让目标 vCPU 退出，在重入前处理</text>
+  <rect x="36" y="251" width="361" height="51" rx="7" class="flag"/>
+  <rect x="399" y="251" width="405" height="51" rx="7" class="flag"/>
+  <text x="53" y="273" font-size="16" font-weight="700" text-anchor="start" class="ink">C</text>
+  <text x="82" y="272" font-size="15" font-weight="700" text-anchor="start" class="ink">HLT 后线程在 host 里阻塞</text>
+  <text x="82" y="292" font-size="13" font-weight="400" text-anchor="start" class="muted">vCPU 线程在内核中等待</text>
+  <text x="425" y="272" font-size="15" font-weight="700" text-anchor="start" class="ink">唤醒阻塞的 vCPU 线程</text>
+  <text x="425" y="292" font-size="13" font-weight="400" text-anchor="start" class="muted">线程恢复后，在重入前处理</text>
+  <text x="36" y="331" font-size="14" font-weight="700" text-anchor="start" class="ink">B、C 由 kvm_vcpu_kick() 区分：运行中的让它退出，阻塞中的唤醒线程。</text>
+</svg>

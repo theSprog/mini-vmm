@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="395" viewBox="0 0 840 395" role="img" aria-labelledby="title desc">
+  <title id="title">FADT：告诉 Linux 固定硬件在哪里</title>
+  <desc id="desc">FADT 的字段分别给出 PM1 事件与控制端口、SCI 中断号和 CMOS 世纪寄存器编号。HW_REDUCED_ACPI 位决定 Linux 是否应跳过传统定时器和 8259A 初始化。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="393" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">FADT：告诉 Linux 固定硬件在哪里</text>
+  <rect x="35" y="86" width="770" height="227" rx="10" class="panel"/>
+  <rect x="35" y="86" width="256" height="227" rx="10" class="res"/>
+  <text x="50" y="111" font-size="14" font-weight="700" text-anchor="start" class="muted">FADT 字段</text>
+  <text x="393" y="111" font-size="14" font-weight="700" text-anchor="start" class="muted">mini-vmm 中对应的硬件</text>
+  <path d="M 35 122 H 805 M 35 167 H 805 M 35 210 H 805 M 35 254 H 805" class="faint"/>
+  <text x="50" y="149" font-size="14" font-weight="700" text-anchor="start" class="ink">PM1a_EVT_BLK / PM1_EVT_LEN</text>
+  <path d="M 290 144 H 377" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(377 144) rotate(0)"/>
+  <text x="393" y="149" font-size="16" font-weight="700" text-anchor="start" class="ink">I/O 端口 0x600–0x603</text>
+  <text x="613" y="149" font-size="13" font-weight="400" text-anchor="start" class="muted">事件状态与使能</text>
+  <text x="50" y="192" font-size="14" font-weight="700" text-anchor="start" class="ink">PM1a_CNT_BLK / PM1_CNT_LEN</text>
+  <path d="M 290 187 H 377" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(377 187) rotate(0)"/>
+  <text x="393" y="192" font-size="16" font-weight="700" text-anchor="start" class="ink">I/O 端口 0x604–0x605</text>
+  <text x="613" y="192" font-size="13" font-weight="400" text-anchor="start" class="muted">睡眠与关机控制</text>
+  <text x="50" y="236" font-size="14" font-weight="700" text-anchor="start" class="ink">SCI_INT</text>
+  <path d="M 290 231 H 377" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(377 231) rotate(0)"/>
+  <text x="393" y="236" font-size="16" font-weight="700" text-anchor="start" class="ink">中断号 9</text>
+  <text x="613" y="236" font-size="13" font-weight="400" text-anchor="start" class="muted">报告电源键等 ACPI 事件</text>
+  <text x="50" y="281" font-size="14" font-weight="700" text-anchor="start" class="ink">CENTURY</text>
+  <path d="M 290 276 H 377" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(377 276) rotate(0)"/>
+  <text x="393" y="281" font-size="16" font-weight="700" text-anchor="start" class="ink">CMOS 寄存器编号 0x32</text>
+  <text x="613" y="281" font-size="13" font-weight="400" text-anchor="start" class="muted">RTC 的世纪值，不是 I/O 端口</text>
+  <rect x="35" y="329" width="770" height="44" rx="7" class="flag"/>
+  <text x="50" y="356" font-size="15" font-weight="700" text-anchor="start" class="goldText">Flags[20] = 0</text>
+  <text x="179" y="356" font-size="15" font-weight="400" text-anchor="start" class="ink">不宣告 HW-reduced；Linux 不会因此跳过 PIT 和 8259A 的初始化。</text>
+</svg>

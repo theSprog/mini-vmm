@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="354" viewBox="0 0 840 354" role="img" aria-labelledby="title desc">
+  <title id="title">8254 PIT 接线</title>
+  <desc id="desc">固定 CLK 并行接到三个独立通道。GATE0 和 GATE1 固定接高电平，GATE2 由端口 0x61 的 bit 0 驱动。各通道分别输出 OUT0、OUT1、OUT2。</desc>
+  <defs>
+    <marker id="gate-in" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#6353a0"/>
+    </marker>
+    <marker id="irq-out" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#925520"/>
+    </marker>
+    <marker id="signal-out" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#58728d"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="352" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">8254 PIT 接线</text>
+  <text x="36" y="73" font-size="15" class="ink">CLK 和 GATE 都是输入；OUT 是计数器输出。</text>
+  <rect x="34" y="96" width="772" height="232" rx="12" class="panel"/>
+  <text x="53" y="122" font-size="16" font-weight="700" text-anchor="start" class="ink">接线：三个通道各自计数，共用一个 CLK</text>
+  <rect x="50" y="173" width="151" height="70" rx="8" class="teal"/>
+  <text x="125.5" y="194" font-size="14" font-weight="700" text-anchor="middle" class="ink">PC 晶振 ÷ 12</text>
+  <text x="125.5" y="214" font-size="14" font-weight="700" text-anchor="middle" class="tealText">约 1.193182 MHz</text>
+  <text x="125.5" y="231" font-size="12" font-weight="400" text-anchor="middle" class="muted">每拍约 838 ns</text>
+  <path d="M201 208H225 M225 160V272" class="tealWire"/>
+  <path d="M225 160H269" class="tealWire"/>
+  <circle cx="225" cy="160" r="4" class="tapTeal"/>
+  <rect x="269" y="140" width="239" height="40" rx="6" class="blue"/>
+  <path d="M449 133H477V145" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <text x="441" y="137" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">固定高电平（GATE0 输入）</text>
+  <path d="M508 160H591" class="accent" marker-end="url(#irq-out)"/>
+  <text x="283" y="165" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 0 · 0x40</text>
+  <text x="495" y="165" font-size="13" font-weight="400" text-anchor="end" class="muted">16 位倒计数</text>
+  <text x="548" y="152" font-size="12" font-weight="700" text-anchor="middle" class="goldText">OUT0</text>
+  <text x="602" y="158" font-size="15" font-weight="700" text-anchor="start" class="ink">IRQ0 · 系统时钟中断</text>
+  <text x="602" y="177" font-size="12" font-weight="400" text-anchor="start" class="muted">中断控制器识别 OUT0 上升沿</text>
+  <path d="M225 216H269" class="tealWire"/>
+  <circle cx="225" cy="216" r="4" class="tapTeal"/>
+  <rect x="269" y="196" width="239" height="40" rx="6" class="res"/>
+  <path d="M449 189H477V201" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <text x="441" y="193" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">固定高电平（GATE1 输入）</text>
+  <path d="M508 216H591" class="line" marker-end="url(#signal-out)"/>
+  <text x="283" y="221" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 1 · 0x41</text>
+  <text x="495" y="221" font-size="13" font-weight="400" text-anchor="end" class="muted">16 位倒计数</text>
+  <text x="548" y="208" font-size="12" font-weight="700" text-anchor="middle" class="muted">OUT1</text>
+  <text x="602" y="214" font-size="15" font-weight="700" text-anchor="start" class="ink">DRAM 刷新</text>
+  <text x="602" y="233" font-size="12" font-weight="400" text-anchor="start" class="muted">早期 PC 用途</text>
+  <path d="M225 272H269" class="tealWire"/>
+  <circle cx="225" cy="272" r="4" class="tapTeal"/>
+  <rect x="269" y="252" width="239" height="40" rx="6" class="teal"/>
+  <path d="M449 245H477V257" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <text x="441" y="249" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">0x61 bit 0（GATE2 输入）</text>
+  <path d="M508 272H591" class="line" marker-end="url(#signal-out)"/>
+  <text x="283" y="277" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 2 · 0x42</text>
+  <text x="495" y="277" font-size="13" font-weight="400" text-anchor="end" class="muted">16 位倒计数</text>
+  <text x="548" y="264" font-size="12" font-weight="700" text-anchor="middle" class="muted">OUT2</text>
+  <text x="602" y="270" font-size="15" font-weight="700" text-anchor="start" class="ink">0x61 bit 5 · 读回 OUT2</text>
+  <text x="602" y="289" font-size="12" font-weight="400" text-anchor="start" class="muted">当作秒表；也可接 PC 喇叭</text>
+  <text x="53" y="313" font-size="14" font-weight="400" text-anchor="start" class="ink">软件写 0x43 选通道和模式，再向该通道端口写入初值 N；GATE 控制计数。</text>
+</svg>
