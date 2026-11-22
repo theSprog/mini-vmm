@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="563" viewBox="0 0 840 563" role="img" aria-labelledby="title desc">
+  <title id="title">LAPIC 两级使能：从 MSR 位域找到 SVR</title>
+  <desc id="desc">MSR 0x1B 标识整个 64 位 IA32_APIC_BASE 寄存器。寄存器的 Base 字段指定 xAPIC MMIO 页首，默认是 0xFEE00000。它的 bit 11 是硬件使能，bit 8 是 BSP 标志。页首后 0x0F0 字节处是 32 位 SVR，默认地址为 0xFEE000F0。SVR 的 bit 8 是软件使能，bits 7 至 0 是伪中断向量。普通 Fixed 中断必须通过两级使能检查。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #142d48; }
+    .mono { font-family: ui-monospace, 'DejaVu Sans Mono', monospace; }
+    .muted { fill: #4c6481; }
+    .addr-label { fill: #20534a; }
+    .switch-label { fill: #784417; }
+    .other { fill: #e9eff6; stroke: #a5b8cc; }
+    .addr { fill: #d9eee9; stroke: #78aca5; }
+    .switch { fill: #fff2df; stroke: #c2a174; }
+    .vector { fill: #dbeafe; stroke: #85a9d5; }
+    .zoom { fill: none; stroke: #7589a0; stroke-width: 1.35; stroke-dasharray: 4 4; }
+    .map { fill: none; stroke: #326e64; stroke-width: 2; stroke-linejoin: round; }
+  </style>
+  <rect x="1" y="1" width="838" height="561" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <text x="36" y="44" font-size="23" font-weight="700">LAPIC 两级使能：从 MSR 位域找到 SVR</text>
+  <text x="36" y="70" font-size="15">两条位域属于同一颗 CPU 的两个寄存器；中间的刻度是 MMIO 页内的字节偏移。</text>
+
+  <!-- One 64-bit MSR: 11 px per bit. -->
+  <text x="68" y="104" font-size="18" font-weight="700">IA32_APIC_BASE</text>
+  <text x="772" y="104" font-size="14" text-anchor="end" class="mono muted">MSR 0x1B · 64 bits</text>
+  <g font-size="12" text-anchor="middle" class="mono muted">
+    <text x="73.5" y="124">63</text>
+    <text x="200" y="124" text-anchor="end">52</text>
+    <text x="207" y="124" text-anchor="start">51</text>
+    <text x="634.5" y="124">12</text>
+    <text x="766.5" y="124">0</text>
+  </g>
+  <g>
+    <rect x="68" y="131" width="132" height="30" class="other" data-bits="63:52"/>
+    <rect x="200" y="131" width="440" height="30" class="addr" data-bits="51:12"/>
+    <rect x="640" y="131" width="11" height="30" class="switch" data-bits="11"/>
+    <rect x="651" y="131" width="11" height="30" class="other" data-bits="10"/>
+    <rect x="662" y="131" width="11" height="30" class="other" data-bits="9"/>
+    <rect x="673" y="131" width="11" height="30" class="other" data-bits="8"/>
+    <rect x="684" y="131" width="88" height="30" class="other" data-bits="7:0"/>
+    <text x="134" y="151" font-size="13" text-anchor="middle" class="muted">保留</text>
+    <text x="420" y="151" font-size="15" font-weight="700" text-anchor="middle" class="addr-label">Base · 页地址高位</text>
+    <text x="728" y="151" font-size="13" text-anchor="middle" class="muted">保留</text>
+  </g>
+  <text x="68" y="185" font-size="12" class="muted">Base 字段中，超出 CPU 支持的位也保留。</text>
+  <path d="M640 161L484 181 M684 161L772 181" class="zoom"/>
+  <g font-size="12" text-anchor="middle" class="mono muted">
+    <text x="520" y="192">11</text>
+    <text x="592" y="192">10</text>
+    <text x="664" y="192">9</text>
+    <text x="736" y="192">8</text>
+  </g>
+  <g text-anchor="middle">
+    <rect x="484" y="198" width="72" height="40" class="switch"/>
+    <rect x="556" y="198" width="72" height="40" class="other"/>
+    <rect x="628" y="198" width="72" height="40" class="other"/>
+    <rect x="700" y="198" width="72" height="40" class="other"/>
+    <text x="520" y="215" font-size="14" font-weight="700" class="switch-label">① EN</text>
+    <text x="520" y="231" font-size="12" class="switch-label">硬件使能</text>
+    <text x="592" y="223" font-size="13">x2APIC</text>
+    <text x="664" y="223" font-size="13" class="muted">保留</text>
+    <text x="736" y="215" font-size="14" font-weight="700">BSP</text>
+    <text x="736" y="231" font-size="12">启动核标志</text>
+  </g>
+
+  <!-- The Base field maps to offset 0 of the page; the SVR offset is a byte position. -->
+  <path d="M420 161V209H68V291" class="map"/>
+  <circle cx="420" cy="161" r="3.5" fill="#326e64"/>
+  <text x="83" y="231" font-size="13" class="addr-label">Base 左移 12 位，得到页基址</text>
+  <text x="83" y="251" font-size="14" font-weight="700" class="mono addr-label">0xFEE00 &lt;&lt; 12 = 0xFEE0_0000</text>
+  <text x="772" y="275" font-size="15" font-weight="700" text-anchor="end">xAPIC MMIO 页 · 4 KiB</text>
+  <rect x="68" y="291" width="704" height="18" rx="3" class="addr"/>
+  <path d="M68 284V315 M109.25 284V315 M772 287V313" class="map"/>
+  <circle cx="68" cy="291" r="3.5" fill="#326e64"/>
+  <circle cx="109.25" cy="309" r="3.5" fill="#326e64"/>
+  <text x="68" y="277" font-size="12" class="mono addr-label">+0x000</text>
+  <text x="772" y="329" font-size="12" text-anchor="end" class="mono muted">+0xFFF</text>
+  <path d="M109.25 312V356H68V374" class="zoom"/>
+  <text x="122" y="332" font-size="14" font-weight="700" class="addr-label">+0x0F0 · 距页首 240 字节</text>
+
+  <!-- Separate 32-bit register, enlarged from its position on the page. -->
+  <text x="68" y="394" font-size="18" font-weight="700">SVR · 伪中断向量寄存器</text>
+  <text x="772" y="394" font-size="14" text-anchor="end" class="mono muted">0xFEE0_00F0 · 32 bits</text>
+  <g font-size="12" text-anchor="middle" class="mono muted">
+    <text x="79" y="420">31</text>
+    <text x="563" y="420">9</text>
+    <text x="585" y="420">8</text>
+    <text x="607" y="420">7</text>
+    <text x="761" y="420">0</text>
+  </g>
+  <rect x="68" y="427" width="506" height="34" class="other" data-bits="31:9"/>
+  <rect x="574" y="427" width="22" height="34" class="switch" data-bits="8"/>
+  <rect x="596" y="427" width="176" height="34" class="vector" data-bits="7:0"/>
+  <text x="321" y="449" font-size="14" text-anchor="middle" class="muted">其他位（略）</text>
+  <text x="585" y="449" font-size="13" font-weight="700" text-anchor="middle" class="switch-label">②</text>
+  <text x="684" y="449" font-size="14" font-weight="700" text-anchor="middle">伪中断向量</text>
+  <path d="M585 461V480H566" fill="none" stroke="#925520" stroke-width="1.5"/>
+  <text x="558" y="485" font-size="14" font-weight="700" text-anchor="end" class="switch-label">② 软件使能</text>
+  <text x="684" y="484" font-size="13" text-anchor="middle" class="muted">Linux 通常设为 0xFF</text>
+
+  <rect x="68" y="505" width="704" height="34" rx="7" class="switch"/>
+  <text x="420" y="527" font-size="15" font-weight="700" text-anchor="middle">普通 Fixed 中断：① EN = 1 且 ② SVR[8] = 1 才通过使能检查</text>
+</svg>

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="374" viewBox="0 0 840 374" role="img" aria-labelledby="title desc">
+  <title id="title">Linux 启动需要的平台能力</title>
+  <desc id="desc">Linux 内核需要中断、时间、设备和多核四类能力；固件用 E820、MP table、ACPI 和启动协议把平台描述告诉内核。</desc>
+  <defs>
+    <marker id="down" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#4c6481"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="372" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <g fill="none" stroke="#4c6481" stroke-width="2" stroke-linejoin="round">
+    <path d="M420 75V96 M121 96H719"/>
+    <path d="M121 96V123" marker-end="url(#down)"/>
+    <path d="M320 96V123" marker-end="url(#down)"/>
+    <path d="M520 96V123" marker-end="url(#down)"/>
+    <path d="M719 96V123" marker-end="url(#down)"/>
+    <path d="M121 249V273H719V249 M320 249V273 M520 249V273"/>
+    <path d="M420 273V294" marker-end="url(#down)"/>
+  </g>
+  <rect x="270" y="25" width="300" height="50" rx="12" fill="#183a5a"/>
+  <g stroke-width="1.5">
+    <rect x="29" y="125" width="184" height="124" rx="12" fill="#e7f2ff" stroke="#85a9d5"/>
+    <rect x="228" y="125" width="184" height="124" rx="12" fill="#e5f5f2" stroke="#78aca5"/>
+    <rect x="428" y="125" width="184" height="124" rx="12" fill="#fff2df" stroke="#c2a174"/>
+    <rect x="627" y="125" width="184" height="124" rx="12" fill="#f0ebff" stroke="#a397d1"/>
+    <rect x="180" y="296" width="480" height="53" rx="12" fill="#e7eef7" stroke="#8da3bc"/>
+  </g>
+  <g font-family="system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" text-anchor="middle" fill="#142d48">
+    <text x="420" y="57" fill="#fff" font-size="21" font-weight="700">Linux 内核的需求</text>
+    <g font-size="21" font-weight="700">
+      <text x="121" y="158">中断</text>
+      <text x="320" y="158">时间</text>
+      <text x="520" y="158">设备</text>
+      <text x="719" y="158">多核</text>
+    </g>
+    <g font-size="16">
+      <text x="121" y="185">PIC / IOAPIC</text><text x="121" y="207">LAPIC</text><text x="121" y="229">中断注入</text>
+      <text x="320" y="185">PIT / LAPIC timer</text><text x="320" y="207">TSC</text><text x="320" y="229">频率校准</text>
+      <text x="520" y="185">串口 / RTC</text><text x="520" y="207">键盘控制器</text><text x="520" y="229">电源管理</text>
+      <text x="719" y="185">多个 vCPU</text><text x="719" y="207">AP 唤醒</text><text x="719" y="229">CPU 拓扑</text>
+    </g>
+    <text x="420" y="318" font-size="17" font-weight="700">固件：把这些平台能力告诉内核</text>
+    <text x="420" y="339" font-size="15">E820 / MP table / ACPI / 启动协议</text>
+  </g>
+</svg>

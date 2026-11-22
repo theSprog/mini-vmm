@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="504" viewBox="0 0 840 504" role="img" aria-labelledby="title desc">
+  <title id="title">ACPI 表树：沿物理地址找到机器说明书</title>
+  <desc id="desc">操作系统找到 RSDP 后沿 XSDT 地址读取顶层表。XSDT 指向 FADT 和 MADT；DSDT 和 FACS 不由 XSDT 直接引用，而由 FADT 指向。图中的地址对应文中启动日志。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="502" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">ACPI 表树：沿物理地址找到机器说明书</text>
+  <text x="36" y="75" font-size="14" font-weight="700" text-anchor="start" class="muted">RSDP 的入口：传统内存扫描、UEFI 配置表或 Linux 启动参数</text>
+  <rect x="273" y="90" width="294" height="73" rx="9" class="teal"/>
+  <text x="288" y="115" font-size="18" font-weight="700" text-anchor="start" class="ink">RSDP · 0xE0000</text>
+  <text x="288" y="137" font-size="14" font-weight="400" text-anchor="start" class="muted">签名 “RSD PTR ”；ACPI 2.0+ 为 36 字节</text>
+  <rect x="273" y="202" width="294" height="70" rx="9" class="blue"/>
+  <text x="288" y="227" font-size="18" font-weight="700" text-anchor="start" class="ink">XSDT · 0xE0030</text>
+  <text x="288" y="249" font-size="14" font-weight="400" text-anchor="start" class="muted">表头后是一串 64 位物理地址</text>
+  <path d="M 420 163 V 202" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(420 202) rotate(90)"/>
+  <text x="434" y="188" font-size="13" font-weight="400" text-anchor="start" class="muted">XsdtAddress</text>
+  <path d="M 420 272 V 289 H 187 M 420 289 H 654" class="line"/>
+  <path d="M 187 289 V 311" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(187 311) rotate(90)"/>
+  <path d="M 654 289 V 311" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(654 311) rotate(90)"/>
+  <rect x="36" y="311" width="302" height="69" rx="9" class="blue"/>
+  <text x="51" y="336" font-size="18" font-weight="700" text-anchor="start" class="ink">FADT（FACP）· 0xE0070</text>
+  <text x="51" y="358" font-size="14" font-weight="400" text-anchor="start" class="muted">PM1 寄存器、SCI、传统设备标志</text>
+  <rect x="504" y="311" width="300" height="69" rx="9" class="blue"/>
+  <text x="519" y="336" font-size="18" font-weight="700" text-anchor="start" class="ink">MADT（APIC）· 0xE01D0</text>
+  <text x="519" y="358" font-size="14" font-weight="400" text-anchor="start" class="muted">LAPIC、IOAPIC、IRQ 覆盖和 NMI</text>
+  <text x="200" y="304" font-size="13" font-weight="400" text-anchor="start" class="muted">条目 0</text>
+  <text x="667" y="304" font-size="13" font-weight="400" text-anchor="start" class="muted">条目 1</text>
+  <path d="M 187 380 V 401 M 136 401 H 369" class="line"/>
+  <path d="M 136 401 V 424 M 369 401 V 424" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(136 424) rotate(90)"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(369 424) rotate(90)"/>
+  <text x="126" y="418" font-size="11" text-anchor="end" class="muted">FIRMWARE_CTRL</text>
+  <text x="381" y="418" font-size="11" class="muted">DSDT / X_DSDT</text>
+  <rect x="36" y="424" width="200" height="54" rx="7" class="purple"/>
+  <text x="50" y="446" font-size="16" font-weight="700" class="ink">FACS</text>
+  <text x="50" y="464" font-size="13" class="muted">固件控制结构</text>
+  <rect x="259" y="424" width="220" height="54" rx="7" class="purple"/>
+  <text x="273" y="446" font-size="16" font-weight="700" class="ink">DSDT · 0xE0190</text>
+  <text x="273" y="464" font-size="13" class="muted">AML：设备与方法</text>
+  <text x="504" y="418" font-size="13" font-weight="400" text-anchor="start" class="muted">其他机器的 XSDT 还可列出 HPET、MCFG 等。</text>
+  <text x="504" y="438" font-size="13" font-weight="400" text-anchor="start" class="muted">图中地址和 XSDT 条目对应正文启动日志。</text>
+</svg>

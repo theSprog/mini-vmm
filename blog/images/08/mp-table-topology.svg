@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="en" width="840" height="552" viewBox="0 0 840 552" role="img" aria-labelledby="title desc">
+  <title id="title">MP table: PCMP records and interrupt topology</title>
+  <desc id="desc">In the four-vCPU example, the floating pointer at 0x9FC00 stores the physical address of the PCMP base table. The table begins with its 44-byte header followed by five record types. One highlighted type 3 record routes ISA IRQ 4 to input INTIN4 of IOAPIC ID 4. The circuit on the right shows the same connection.</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="550" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">MP table: PCMP records and interrupt topology</text>
+  <text x="35" y="81" font-size="14" font-weight="700" text-anchor="start" class="muted">Guest physical memory</text>
+  <text x="512" y="81" font-size="14" font-weight="700" text-anchor="start" class="muted">Interrupt topology · 4 vCPUs</text>
+  <rect x="35" y="95" width="438" height="51" rx="7" class="res"/>
+  <text x="47" y="116" font-size="14" font-weight="700" text-anchor="start" class="ink">0x9FC00   _MP_ floating pointer · 16 B</text>
+  <text x="47" y="135" font-size="13" font-weight="400" text-anchor="start" class="muted">Configuration table pointer = 0x9FC10</text>
+  <rect x="35" y="159" width="438" height="251" rx="8" class="panel"/>
+  <rect x="35" y="159" width="438" height="55" rx="8" class="blue"/>
+  <text x="47" y="181" font-size="16" font-weight="700" text-anchor="start" class="ink">0x9FC10   PCMP base table · 44 B header</text>
+  <text x="47" y="201" font-size="12" font-weight="400" text-anchor="start" class="muted">Signature · length · checksum · entry count · LAPIC base</text>
+  <rect x="36" y="214" width="436" height="28" rx="0" class="res"/>
+  <text x="47" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Offset</text>
+  <text x="121" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Type</text>
+  <text x="168" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Bytes</text>
+  <text x="222" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Count</text>
+  <text x="309" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Record</text>
+  <rect x="36" y="338" width="436" height="33" rx="0" class="flag"/>
+  <path d="M 109 214 V 410 M 157 214 V 410 M 211 214 V 410 M 296 214 V 410 M 35 242 H 473 M 35 274 H 473 M 35 306 H 473 M 35 338 H 473 M 35 371 H 473" class="faint"/>
+  <text x="47" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">+0x2C</text>
+  <text x="130" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">0</text>
+  <text x="181" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">20</text>
+  <text x="222" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">4</text>
+  <text x="307" y="263" font-size="13" font-weight="400" text-anchor="start" class="ink">Processor</text>
+  <text x="47" y="295" font-size="14" font-weight="400" text-anchor="start" class="ink">+0x7C</text>
+  <text x="130" y="295" font-size="14" font-weight="400" text-anchor="start" class="ink">1</text>
+  <text x="181" y="295" font-size="14" font-weight="400" text-anchor="start" class="ink">8</text>
+  <text x="222" y="295" font-size="14" font-weight="400" text-anchor="start" class="ink">2</text>
+  <text x="307" y="295" font-size="13" font-weight="400" text-anchor="start" class="ink">Bus</text>
+  <text x="47" y="327" font-size="14" font-weight="400" text-anchor="start" class="ink">+0x8C</text>
+  <text x="130" y="327" font-size="14" font-weight="400" text-anchor="start" class="ink">2</text>
+  <text x="181" y="327" font-size="14" font-weight="400" text-anchor="start" class="ink">8</text>
+  <text x="222" y="327" font-size="14" font-weight="400" text-anchor="start" class="ink">1</text>
+  <text x="307" y="327" font-size="13" font-weight="400" text-anchor="start" class="ink">I/O APIC</text>
+  <text x="47" y="359" font-size="14" font-weight="700" text-anchor="start" class="goldText">+0x94</text>
+  <text x="130" y="359" font-size="14" font-weight="700" text-anchor="start" class="goldText">3</text>
+  <text x="181" y="359" font-size="14" font-weight="700" text-anchor="start" class="goldText">8</text>
+  <text x="222" y="359" font-size="14" font-weight="700" text-anchor="start" class="goldText">16 + PCI</text>
+  <text x="307" y="359" font-size="13" font-weight="700" text-anchor="start" class="goldText">I/O IRQ assignment</text>
+  <text x="47" y="394" font-size="14" font-weight="400" text-anchor="start" class="ink">varies</text>
+  <text x="130" y="394" font-size="14" font-weight="400" text-anchor="start" class="ink">4</text>
+  <text x="181" y="394" font-size="14" font-weight="400" text-anchor="start" class="ink">8</text>
+  <text x="222" y="394" font-size="14" font-weight="400" text-anchor="start" class="ink">2</text>
+  <text x="307" y="394" font-size="13" font-weight="400" text-anchor="start" class="ink">Local IRQ assignment</text>
+  <text x="35" y="435" font-size="15" font-weight="700" text-anchor="start" class="goldText">One type 3 record: ISA IRQ 4 (hex)</text>
+  <rect x="35" y="449" width="58" height="39" rx="0" class="res"/>
+  <text x="64" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">03</text>
+  <text x="64" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">type</text>
+  <rect x="93" y="449" width="52" height="39" rx="0" class="res"/>
+  <text x="119" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">00</text>
+  <text x="119" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">INT</text>
+  <rect x="145" y="449" width="60" height="39" rx="0" class="res"/>
+  <text x="175" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">0000</text>
+  <text x="175" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">flags</text>
+  <rect x="205" y="449" width="64.5" height="39" rx="0" class="flag"/>
+  <text x="237.25" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">01</text>
+  <text x="237.25" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">bus ID</text>
+  <rect x="269.5" y="449" width="61" height="39" rx="0" class="flag"/>
+  <text x="300" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">04</text>
+  <text x="300" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">IRQ</text>
+  <rect x="330.5" y="449" width="65" height="39" rx="0" class="flag"/>
+  <text x="363" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">04</text>
+  <text x="363" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">APIC ID</text>
+  <rect x="395.5" y="449" width="77.5" height="39" rx="0" class="flag"/>
+  <text x="434.25" y="465" font-size="14" font-weight="700" text-anchor="middle" class="ink">04</text>
+  <text x="434.25" y="482" font-size="11" font-weight="400" text-anchor="middle" class="muted">INTIN</text>
+  <text x="35" y="513" font-size="13" font-weight="400" text-anchor="start" class="muted">Offset is relative to PCMP. Bytes are per record.</text>
+  <text x="35" y="532" font-size="13" font-weight="400" text-anchor="start" class="muted">The PCI record count depends on the configured devices.</text>
+  <rect x="512" y="105" width="139" height="58" rx="7" class="flag"/>
+  <text x="525" y="128" font-size="15" font-weight="700" text-anchor="start" class="ink">ISA · bus ID 1</text>
+  <text x="525" y="148" font-size="13" font-weight="400" text-anchor="start" class="goldText">IRQ 0–15</text>
+  <rect x="671" y="105" width="134" height="58" rx="7" class="res"/>
+  <text x="684" y="128" font-size="15" font-weight="700" text-anchor="start" class="ink">PCI · bus ID 0</text>
+  <text x="684" y="148" font-size="13" font-weight="400" text-anchor="start" class="muted">INTx (if present)</text>
+  <path d="M 581 163 V 213" class="accent"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="accent" transform="translate(581 213) rotate(90)"/>
+  <path d="M 737 163 V 213" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(737 213) rotate(90)"/>
+  <text x="589" y="190" font-size="13" font-weight="700" text-anchor="start" class="goldText">IRQ 4</text>
+  <rect x="512" y="213" width="293" height="92" rx="8" class="blue"/>
+  <rect x="524" y="213" width="114" height="27" rx="4" class="flag"/>
+  <rect x="678" y="213" width="115" height="27" rx="4" class="res"/>
+  <text x="581" y="231" font-size="13" font-weight="700" text-anchor="middle" class="goldText">INTIN4</text>
+  <text x="735" y="231" font-size="13" font-weight="400" text-anchor="middle" class="ink">Routed INTIN</text>
+  <text x="658" y="263" font-size="17" font-weight="700" text-anchor="middle" class="ink">I/O APIC · ID 4</text>
+  <text x="658" y="286" font-size="13" font-weight="400" text-anchor="middle" class="muted">MMIO 0xFEC00000</text>
+  <path d="M 658 305 V 343 M 547 343 H 768" class="line"/>
+  <text x="668" y="328" font-size="12" font-weight="400" text-anchor="start" class="muted">APIC messages to target(s)</text>
+  <path d="M 547 343 V 367" class="line"/>,  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(547 367) rotate(90)"/>,  <rect x="512" y="367" width="70" height="73" rx="7" class="teal"/>,  <text x="547" y="387" font-size="14" font-weight="700" text-anchor="middle" class="ink">vCPU 0</text>,  <path d="M 512 398 H 582" class="faint"/>,  <text x="547" y="416" font-size="13" font-weight="700" text-anchor="middle" class="ink">LAPIC 0</text>,  <text x="547" y="430" font-size="10" font-weight="400" text-anchor="middle" class="muted">BSP</text>
+  <path d="M 621 343 V 367" class="line"/>,  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(621 367) rotate(90)"/>,  <rect x="586" y="367" width="70" height="73" rx="7" class="teal"/>,  <text x="621" y="387" font-size="14" font-weight="700" text-anchor="middle" class="ink">vCPU 1</text>,  <path d="M 586 398 H 656" class="faint"/>,  <text x="621" y="416" font-size="13" font-weight="700" text-anchor="middle" class="ink">LAPIC 1</text>
+  <path d="M 695 343 V 367" class="line"/>,  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(695 367) rotate(90)"/>,  <rect x="660" y="367" width="70" height="73" rx="7" class="teal"/>,  <text x="695" y="387" font-size="14" font-weight="700" text-anchor="middle" class="ink">vCPU 2</text>,  <path d="M 660 398 H 730" class="faint"/>,  <text x="695" y="416" font-size="13" font-weight="700" text-anchor="middle" class="ink">LAPIC 2</text>
+  <path d="M 769 343 V 367" class="line"/>,  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(769 367) rotate(90)"/>,  <rect x="734" y="367" width="70" height="73" rx="7" class="teal"/>,  <text x="769" y="387" font-size="14" font-weight="700" text-anchor="middle" class="ink">vCPU 3</text>,  <path d="M 734 398 H 804" class="faint"/>,  <text x="769" y="416" font-size="13" font-weight="700" text-anchor="middle" class="ink">LAPIC 3</text>
+  <text x="512" y="461" font-size="13" font-weight="400" text-anchor="start" class="muted">LAPIC base: 0xFEE00000 (per vCPU)</text>
+  <path d="M 512 471 H 805" class="faint"/>
+  <text x="512" y="491" font-size="13" font-weight="700" text-anchor="start" class="ink">Local inputs on all LAPICs:</text>
+  <text x="512" y="513" font-size="13" font-weight="400" text-anchor="start" class="ink">8259A ExtINT</text>
+  <path d="M 605 508 H 636" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(636 508) rotate(0)"/>
+  <text x="645" y="513" font-size="13" font-weight="700" text-anchor="start" class="ink">LINT0</text>
+  <text x="512" y="532" font-size="13" font-weight="400" text-anchor="start" class="ink">NMI</text>
+  <path d="M 605 527 H 636" class="line"/>
+  <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(636 527) rotate(0)"/>
+  <text x="645" y="532" font-size="13" font-weight="700" text-anchor="start" class="ink">LINT1</text>
+</svg>
