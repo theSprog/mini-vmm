@@ -32,7 +32,7 @@
   <rect x="35" y="86" width="256" height="227" rx="10" class="res"/>
   <text x="50" y="111" font-size="14" font-weight="700" text-anchor="start" class="muted">FADT 字段</text>
   <text x="393" y="111" font-size="14" font-weight="700" text-anchor="start" class="muted">mini-vmm 中对应的硬件</text>
-  <path d="M 35 122 H 805 M 35 167 H 805 M 35 210 H 805 M 35 254 H 805" class="faint"/>
+  <path d="M 35 122 H 805 M 35 167 H 805 M 35 210 H 805 M 35 254 H 805" class="faint" data-svgprobe-allow="stroke-shape"/>
   <text x="50" y="149" font-size="14" font-weight="700" text-anchor="start" class="ink">PM1a_EVT_BLK / PM1_EVT_LEN</text>
   <path d="M 290 144 H 377" class="line"/>
   <path d="M -8 -4 L 0 0 L -8 4" class="line" transform="translate(377 144) rotate(0)"/>

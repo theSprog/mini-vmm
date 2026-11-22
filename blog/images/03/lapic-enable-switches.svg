@@ -68,10 +68,10 @@
   <text x="83" y="251" font-size="14" font-weight="700" class="mono addr-label">0xFEE00 &lt;&lt; 12 = 0xFEE0_0000</text>
   <text x="772" y="275" font-size="15" font-weight="700" text-anchor="end">xAPIC MMIO 页 · 4 KiB</text>
   <rect x="68" y="291" width="704" height="18" rx="3" class="addr"/>
-  <path d="M68 284V315 M109.25 284V315 M772 287V313" class="map"/>
+  <path d="M68 284V315 M109.25 284V315 M772 287V313" class="map" data-svgprobe-allow="stroke-shape"/>
   <circle cx="68" cy="291" r="3.5" fill="#326e64"/>
   <circle cx="109.25" cy="309" r="3.5" fill="#326e64"/>
-  <text x="68" y="277" font-size="12" class="mono addr-label">+0x000</text>
+  <text x="76" y="277" font-size="12" class="mono addr-label">+0x000</text>
   <text x="772" y="329" font-size="12" text-anchor="end" class="mono muted">+0xFFF</text>
   <path d="M109.25 312V356H68V374" class="zoom"/>
   <text x="122" y="332" font-size="14" font-weight="700" class="addr-label">+0x0F0 · 距页首 240 字节</text>

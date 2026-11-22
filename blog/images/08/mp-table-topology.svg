@@ -44,7 +44,7 @@
   <text x="222" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Count</text>
   <text x="309" y="233" font-size="13" font-weight="700" text-anchor="start" class="muted">Record</text>
   <rect x="36" y="338" width="436" height="33" rx="0" class="flag"/>
-  <path d="M 109 214 V 410 M 157 214 V 410 M 211 214 V 410 M 296 214 V 410 M 35 242 H 473 M 35 274 H 473 M 35 306 H 473 M 35 338 H 473 M 35 371 H 473" class="faint"/>
+  <path d="M 109 214 V 410 M 157 214 V 410 M 211 214 V 410 M 296 214 V 410 M 35 242 H 473 M 35 274 H 473 M 35 306 H 473 M 35 338 H 473 M 35 371 H 473" class="faint" data-svgprobe-allow="stroke-shape"/>
   <text x="47" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">+0x2C</text>
   <text x="130" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">0</text>
   <text x="181" y="263" font-size="14" font-weight="400" text-anchor="start" class="ink">20</text>

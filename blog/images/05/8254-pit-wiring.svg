@@ -50,7 +50,7 @@
   <path d="M225 160H269" class="tealWire"/>
   <circle cx="225" cy="160" r="4" class="tapTeal"/>
   <rect x="269" y="140" width="239" height="40" rx="6" class="blue"/>
-  <path d="M449 133H477V145" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <path d="M449 133H477V140" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
   <text x="441" y="137" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">固定高电平（GATE0 输入）</text>
   <path d="M508 160H591" class="accent" marker-end="url(#irq-out)"/>
   <text x="283" y="165" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 0 · 0x40</text>
@@ -61,7 +61,7 @@
   <path d="M225 216H269" class="tealWire"/>
   <circle cx="225" cy="216" r="4" class="tapTeal"/>
   <rect x="269" y="196" width="239" height="40" rx="6" class="res"/>
-  <path d="M449 189H477V201" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <path d="M449 189H477V196" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
   <text x="441" y="193" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">固定高电平（GATE1 输入）</text>
   <path d="M508 216H591" class="line" marker-end="url(#signal-out)"/>
   <text x="283" y="221" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 1 · 0x41</text>
@@ -72,7 +72,7 @@
   <path d="M225 272H269" class="tealWire"/>
   <circle cx="225" cy="272" r="4" class="tapTeal"/>
   <rect x="269" y="252" width="239" height="40" rx="6" class="teal"/>
-  <path d="M449 245H477V257" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
+  <path d="M449 245H477V252" fill="none" stroke="#6353a0" stroke-width="1.5" marker-end="url(#gate-in)"/>
   <text x="441" y="249" font-size="11" font-weight="700" text-anchor="end" fill="#533c86">0x61 bit 0（GATE2 输入）</text>
   <path d="M508 272H591" class="line" marker-end="url(#signal-out)"/>
   <text x="283" y="277" font-size="15" font-weight="700" text-anchor="start" class="ink">通道 2 · 0x42</text>

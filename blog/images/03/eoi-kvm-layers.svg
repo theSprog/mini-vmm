@@ -33,7 +33,7 @@
   <rect x="36" y="177" width="768" height="166" rx="9" class="panel"/>
   <rect x="47" y="194" width="746" height="65" rx="7" class="teal"/>
   <rect x="47" y="263" width="746" height="65" rx="7" class="purple"/>
-  <path d="M172 94V167 M172 194V327" class="faint"/>
+  <path d="M172 94V167 M172 194V259 M172 263V327" class="faint"/>
   <text x="64" y="126" font-size="17" font-weight="700" text-anchor="start" class="ink">Guest</text>
   <text x="64" y="147" font-size="13" font-weight="400" text-anchor="start" class="muted">vCPU 执行</text>
   <text x="63" y="189" font-size="11" font-weight="700" text-anchor="start" class="muted">Host</text>
@@ -44,7 +44,7 @@
   <path d="M179 261H788" class="dash"/>
   <path d="M197 140H241L298 234H663L719 140H778" class="accent"/>
   <text x="260" y="155" font-size="13" font-weight="700" text-anchor="start" class="goldText">#VMEXIT</text>
-  <text x="653" y="162" font-size="13" font-weight="700" text-anchor="start" class="goldText">VMRUN</text>
+  <text x="645" y="162" font-size="13" font-weight="700" text-anchor="start" class="goldText">VMRUN</text>
   <circle cx="216" cy="140" r="10" class="tap"/>
   <text x="216" y="144" font-size="13" font-weight="700" text-anchor="middle" class="white">1</text>
   <circle cx="323" cy="234" r="10" class="tap"/>
@@ -54,7 +54,7 @@
   <circle cx="743" cy="140" r="10" class="tap"/>
   <text x="743" y="144" font-size="13" font-weight="700" text-anchor="middle" class="white">4</text>
   <text x="225" y="121" font-size="14" font-weight="700" text-anchor="middle" class="ink">写 LAPIC EOI</text>
-  <text x="313" y="218" font-size="14" font-weight="700" text-anchor="middle" class="ink">解码 MMIO</text>
+  <text x="335" y="218" font-size="14" font-weight="700" text-anchor="middle" class="ink">解码 MMIO</text>
   <text x="500" y="218" font-size="14" font-weight="700" text-anchor="middle" class="ink">KVM 内部更新 LAPIC</text>
   <text x="747" y="121" font-size="14" font-weight="700" text-anchor="middle" class="ink">Guest 继续</text>
   <text x="478" y="301" font-size="14" font-weight="400" text-anchor="middle" class="muted">本次处理不返回用户态</text>
