@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="486" viewBox="0 0 840 486" role="img" aria-labelledby="title desc">
+  <title id="title">端口 0x61：主板如何接到 PIT 通道 2</title>
+  <desc id="desc">0x43 是 PIT 的模式控制端口，通道 2 的初值通过 0x42 写入。0x61 是主板控制和状态端口：bit 0 写入后驱动 GATE2，bit 1 允许 OUT2 送到扬声器，读取 bit 5 可看到 OUT2 的电平，bit 4 是刷新翻转位。其他位不展开。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .gate-label { fill: #533c86; }
+    .out-label { fill: #20534a; }
+    .speaker-label { fill: #784417; }
+    .wire { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+  </style>
+  <rect x="1" y="1" width="838" height="484" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <text x="36" y="43" font-size="23" font-weight="700">0x61：主板把通道 2 的引脚接给软件</text>
+  <text x="36" y="71" font-size="14">PIT 内部：0x43 选通道和模式，0x42 写通道 2 初值。</text>
+  <text x="36" y="94" font-size="14">PIT 外部：0x61 控制 GATE2 和扬声器，也能读回 OUT2。</text>
+
+  <rect x="36" y="113" width="768" height="113" rx="10" fill="#fff" stroke="#a5b8cc"/>
+  <text x="52" y="140" font-size="16" font-weight="700">主板控制／状态端口 0x61</text>
+  <text x="788" y="140" text-anchor="end" font-size="13" class="muted">8 位 · 只展开相关位</text>
+  <g stroke="#a5b8cc">
+    <rect x="44" y="166" width="188" height="40" fill="#e9eff6" data-bits="7:6"/>
+    <rect x="232" y="166" width="94" height="40" fill="#e5f5f2" data-bits="5"/>
+    <rect x="326" y="166" width="94" height="40" fill="#e9eff6" data-bits="4"/>
+    <rect x="420" y="166" width="188" height="40" fill="#e9eff6" data-bits="3:2"/>
+    <rect x="608" y="166" width="94" height="40" fill="#fff2df" data-bits="1"/>
+    <rect x="702" y="166" width="94" height="40" fill="#f0ebff" data-bits="0"/>
+  </g>
+  <g text-anchor="middle">
+    <g font-size="12" class="muted">
+      <text x="138" y="161">7:6</text><text x="279" y="161">5</text><text x="373" y="161">4</text>
+      <text x="514" y="161">3:2</text><text x="655" y="161">1</text><text x="749" y="161">0</text>
+    </g>
+    <g font-size="13">
+      <text x="138" y="191" class="muted">其他位</text>
+      <text x="279" y="191" font-weight="700" class="out-label">读 · OUT2</text>
+      <text x="373" y="191">读 · 刷新翻转</text>
+      <text x="514" y="191" class="muted">其他位</text>
+      <text x="655" y="191" font-weight="700" class="speaker-label">写 · 喇叭使能</text>
+      <text x="749" y="191" font-weight="700" class="gate-label">写 · GATE2</text>
+    </g>
+  </g>
+
+  <path d="M749 206V298" class="wire" stroke="#6353a0" marker-end="url(#arrow)"/>
+  <text x="760" y="259" font-size="13" class="gate-label">门控输入</text>
+  <path d="M655 206V264H578V294" class="wire" stroke="#925520" marker-end="url(#arrow)"/>
+  <text x="645" y="257" text-anchor="end" font-size="12" class="speaker-label">bit 1 = 1 才接通喇叭</text>
+  <path d="M373 244V208" class="wire" stroke="#7589a0" marker-end="url(#arrow)"/>
+  <text x="386" y="249" font-size="13" class="muted">刷新翻转信号</text>
+
+  <rect x="680" y="298" width="124" height="77" rx="8" fill="#e7f2ff" stroke="#85a9d5"/>
+  <text x="749" y="318" text-anchor="middle" font-size="12" font-weight="700" class="gate-label">GATE2</text>
+  <text x="749" y="344" text-anchor="middle" font-size="15" font-weight="700">PIT 通道 2</text>
+  <text x="749" y="362" text-anchor="middle" font-size="12" class="muted">固定 CLK 驱动</text>
+  <path d="M680 350H279V208" class="wire" stroke="#326e64" marker-end="url(#arrow)"/>
+  <text x="295" y="371" font-size="13" class="out-label">OUT2：计数器的输出电平</text>
+  <path d="M578 350V331" class="wire" stroke="#326e64" marker-end="url(#arrow)"/>
+  <circle cx="578" cy="350" r="3.8" fill="#326e64"/>
+  <rect x="529" y="294" width="98" height="35" rx="7" fill="#fff2df" stroke="#c2a174"/>
+  <text x="578" y="317" text-anchor="middle" font-size="13" font-weight="700" class="speaker-label">扬声器门控</text>
+  <path d="M529 311.5H494" class="wire" stroke="#925520" marker-end="url(#arrow)"/>
+  <text x="482" y="316" text-anchor="end" font-size="14" font-weight="700">PC 喇叭</text>
+
+  <rect x="36" y="411" width="768" height="42" rx="8" fill="#e7eef7" stroke="#9bb0c7"/>
+  <text x="52" y="437" font-size="14" font-weight="700">静音计数：设 bit 0 = 1、bit 1 = 0；读 bit 5 仍能看到 OUT2。</text>
+</svg>

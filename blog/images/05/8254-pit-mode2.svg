@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="399" viewBox="0 0 840 399" role="img" aria-labelledby="title desc">
+  <title id="title">8254 PIT 例子：Mode 2 周期计数</title>
+  <desc id="desc">通道 0 的 GATE 固定为高。装入 N = 4 后，每四拍 OUT0 输出一个一拍宽的低脉冲，并在回到高电平时触发 IRQ0。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="397" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">8254 PIT 例子：Mode 2 周期计数</text>
+  <text x="36" y="73" font-size="15" class="ink">同一时间轴上，从上到下对照 CLK、计数值和 OUT0。</text>
+  <g transform="translate(0 -250)">
+    <rect x="34" y="346" width="772" height="277" rx="12" class="panel"/>
+    <text x="53" y="373" font-size="16" font-weight="700" text-anchor="start" class="ink">例子：通道 0 设为周期模式（Mode 2），装入 N = 4</text>
+    <path d="M240 428V416H480V428 M480 416H720V428" class="line"/>
+    <text x="360" y="409" font-size="13" font-weight="700" text-anchor="middle" class="ink">4 个 CLK 周期</text>
+    <text x="600" y="409" font-size="13" font-weight="700" text-anchor="middle" class="ink">再数 4 拍</text>
+    <path d="M240 437V556" class="faint"/>
+    <path d="M300 437V556" class="faint"/>
+    <path d="M360 437V556" class="faint"/>
+    <path d="M420 437V556" class="faint"/>
+    <path d="M480 437V556" class="dash"/>
+    <path d="M540 437V556" class="faint"/>
+    <path d="M600 437V556" class="faint"/>
+    <path d="M660 437V556" class="faint"/>
+    <path d="M720 437V556" class="dash"/>
+    <text x="53" y="464" font-size="14" font-weight="700" text-anchor="start" class="ink">输入 CLK</text>
+    <path d="M200 452H240V468H270V452H300V468H330V452H360V468H390V452H420V468H450V452H480V468H510V452H540V468H570V452H600V468H630V452H660V468H690V452H720V468H750V452H775" class="tealWire"/>
+    <text x="53" y="500" font-size="14" font-weight="700" text-anchor="start" class="ink">通道 0 计数值</text>
+    <text x="270" y="500" font-size="15" font-weight="700" text-anchor="middle" class="tealText">4</text>
+    <text x="330" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">3</text>
+    <text x="390" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">2</text>
+    <text x="450" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">1</text>
+    <text x="510" y="500" font-size="15" font-weight="700" text-anchor="middle" class="tealText">4</text>
+    <text x="570" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">3</text>
+    <text x="630" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">2</text>
+    <text x="690" y="500" font-size="15" font-weight="700" text-anchor="middle" class="ink">1</text>
+    <text x="750" y="500" font-size="15" font-weight="700" text-anchor="middle" class="tealText">4</text>
+    <text x="53" y="533" font-size="14" font-weight="700" text-anchor="start" class="ink">输出 OUT0</text>
+    <text x="53" y="553" font-size="12" font-weight="400" text-anchor="start" class="goldText">IRQ0 看上升沿</text>
+    <path d="M200 529H420V550H480V529H660V550H720V529H775" class="line" style="stroke:#925520;stroke-width:2.5"/>
+    <circle cx="480" cy="529" r="4.5" class="tap"/>
+    <circle cx="720" cy="529" r="4.5" class="tap"/>
+    <text x="480" y="574" font-size="14" font-weight="700" text-anchor="middle" class="goldText">IRQ0</text>
+    <text x="720" y="574" font-size="14" font-weight="700" text-anchor="middle" class="goldText">IRQ0</text>
+    <text x="53" y="604" font-size="14" font-weight="400" text-anchor="start" class="ink">同样的输入频率：N = 4 只是为了看清波形；把 N 改为 1193，就约每 1 ms 发一次 IRQ0。</text>
+  </g>
+</svg>

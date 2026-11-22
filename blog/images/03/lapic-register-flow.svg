@@ -1,0 +1,370 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="934" viewBox="0 0 840 934" role="img" aria-labelledby="title desc">
+  <title id="title">xAPIC LAPIC 寄存器位域</title>
+  <desc id="desc">每行标出 MMIO 偏移和按位宽排列的字段，从左到右是第 31 位至第 0 位。ISR、TMR 和 IRR 各由八个 32 位寄存器组成，按向量号分组画出；下方的图例展开窄字段的缩写。</desc>
+  <!-- Register layouts: Intel SDM Vol. 3A, Advanced Programmable Interrupt Controller (APIC). -->
+  <style>
+    text { fill: #142d48; font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .muted { fill: #4c6481; }
+    .field, .flag, .reserved, .bitmap { stroke: #7b92ad; }
+    .field { fill: #dbeafe; }
+    .flag { fill: #fff2df; }
+    .reserved { fill: #e9eff6; }
+    .bitmap { fill: #d9eee9; }
+  </style>
+  <rect x="1" y="1" width="838" height="932" rx="19" fill="#f5f8fc" stroke="#c8d5e5"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start">xAPIC · LAPIC 寄存器位域</text>
+  <text x="36" y="70" font-size="15" font-weight="400" text-anchor="start">左列是 MMIO 偏移；灰格为保留位。字段按位宽绘制。</text>
+  <text x="36" y="107" font-size="16" font-weight="700" text-anchor="start">标识、优先级与控制</text>
+  <text x="174" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">31</text>
+  <text x="194" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">30</text>
+  <text x="214" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">29</text>
+  <text x="234" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">28</text>
+  <text x="254" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">27</text>
+  <text x="274" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">26</text>
+  <text x="294" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">25</text>
+  <text x="314" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">24</text>
+  <text x="334" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">23</text>
+  <text x="354" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">22</text>
+  <text x="374" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">21</text>
+  <text x="394" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">20</text>
+  <text x="414" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">19</text>
+  <text x="434" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">18</text>
+  <text x="454" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">17</text>
+  <text x="474" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">16</text>
+  <text x="494" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">15</text>
+  <text x="514" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">14</text>
+  <text x="534" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">13</text>
+  <text x="554" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">12</text>
+  <text x="574" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">11</text>
+  <text x="594" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">10</text>
+  <text x="614" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">9</text>
+  <text x="634" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">8</text>
+  <text x="654" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">7</text>
+  <text x="674" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">6</text>
+  <text x="694" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">5</text>
+  <text x="714" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">4</text>
+  <text x="734" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">3</text>
+  <text x="754" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">2</text>
+  <text x="774" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">1</text>
+  <text x="794" y="129" font-size="11" font-weight="600" text-anchor="middle" class="muted">0</text>
+  <g data-offset="0x020">
+    <title>0x020 ID：31:24 APIC ID</title>
+  <text x="36" y="146" font-size="13" font-weight="700" text-anchor="start">ID</text>
+  <text x="36" y="159" font-size="11" font-weight="400" text-anchor="start" class="muted">0x020</text>
+    <rect x="164" y="137" width="160" height="24" class="field" data-bits="31:24"/>
+  <text x="244" y="153" font-size="13" font-weight="650" text-anchor="middle">APIC ID</text>
+    <rect x="324" y="137" width="480" height="24" class="reserved" data-bits="23:0"/>
+  <text x="564" y="153" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+  </g>
+  <g data-offset="0x030">
+    <title>0x030 Version：24 B；23:16 最大 LVT 索引；7:0 版本</title>
+  <text x="36" y="179" font-size="13" font-weight="700" text-anchor="start">Version</text>
+  <text x="36" y="192" font-size="11" font-weight="400" text-anchor="start" class="muted">0x030</text>
+    <rect x="164" y="170" width="140" height="24" class="reserved" data-bits="31:25"/>
+  <text x="234" y="186" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="304" y="170" width="20" height="24" class="flag" data-bits="24"/>
+  <text x="314" y="186" font-size="11" font-weight="650" text-anchor="middle">B</text>
+    <rect x="324" y="170" width="160" height="24" class="field" data-bits="23:16"/>
+  <text x="404" y="186" font-size="13" font-weight="650" text-anchor="middle">最大 LVT 索引</text>
+    <rect x="484" y="170" width="160" height="24" class="reserved" data-bits="15:8"/>
+  <text x="564" y="186" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="644" y="170" width="160" height="24" class="field" data-bits="7:0"/>
+  <text x="724" y="186" font-size="13" font-weight="650" text-anchor="middle">版本</text>
+  </g>
+  <g data-offset="0x080">
+    <title>0x080 TPR：7:4 优先级类；3:0 子优先级</title>
+  <text x="36" y="212" font-size="13" font-weight="700" text-anchor="start">TPR</text>
+  <text x="36" y="225" font-size="11" font-weight="400" text-anchor="start" class="muted">0x080</text>
+    <rect x="164" y="203" width="480" height="24" class="reserved" data-bits="31:8"/>
+  <text x="404" y="219" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="644" y="203" width="80" height="24" class="field" data-bits="7:4"/>
+  <text x="684" y="219" font-size="13" font-weight="650" text-anchor="middle">优先级类</text>
+    <rect x="724" y="203" width="80" height="24" class="field" data-bits="3:0"/>
+  <text x="764" y="219" font-size="13" font-weight="650" text-anchor="middle">子优先级</text>
+  </g>
+  <g data-offset="0x0A0">
+    <title>0x0A0 PPR：7:4 优先级类；3:0 子优先级</title>
+  <text x="36" y="245" font-size="13" font-weight="700" text-anchor="start">PPR</text>
+  <text x="36" y="258" font-size="11" font-weight="400" text-anchor="start" class="muted">0x0A0</text>
+    <rect x="164" y="236" width="480" height="24" class="reserved" data-bits="31:8"/>
+  <text x="404" y="252" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="644" y="236" width="80" height="24" class="field" data-bits="7:4"/>
+  <text x="684" y="252" font-size="13" font-weight="650" text-anchor="middle">优先级类</text>
+    <rect x="724" y="236" width="80" height="24" class="field" data-bits="3:0"/>
+  <text x="764" y="252" font-size="13" font-weight="650" text-anchor="middle">子优先级</text>
+  </g>
+  <g data-offset="0x0B0">
+    <title>0x0B0 EOI：31:0 EOI（写 0）</title>
+  <text x="36" y="278" font-size="13" font-weight="700" text-anchor="start">EOI</text>
+  <text x="36" y="291" font-size="11" font-weight="400" text-anchor="start" class="muted">0x0B0</text>
+    <rect x="164" y="269" width="640" height="24" class="field" data-bits="31:0"/>
+  <text x="484" y="285" font-size="13" font-weight="650" text-anchor="middle">EOI（写 0）</text>
+  </g>
+  <g data-offset="0x0F0">
+    <title>0x0F0 SVR：12 B；9 F；8 E；7:0 伪中断向量</title>
+  <text x="36" y="311" font-size="13" font-weight="700" text-anchor="start">SVR</text>
+  <text x="36" y="324" font-size="11" font-weight="400" text-anchor="start" class="muted">0x0F0</text>
+    <rect x="164" y="302" width="380" height="24" class="reserved" data-bits="31:13"/>
+  <text x="354" y="318" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="544" y="302" width="20" height="24" class="flag" data-bits="12"/>
+  <text x="554" y="318" font-size="11" font-weight="650" text-anchor="middle">B</text>
+    <rect x="564" y="302" width="40" height="24" class="reserved" data-bits="11:10"/>
+    <rect x="604" y="302" width="20" height="24" class="flag" data-bits="9"/>
+  <text x="614" y="318" font-size="11" font-weight="650" text-anchor="middle">F</text>
+    <rect x="624" y="302" width="20" height="24" class="flag" data-bits="8"/>
+  <text x="634" y="318" font-size="11" font-weight="650" text-anchor="middle">E</text>
+    <rect x="644" y="302" width="160" height="24" class="field" data-bits="7:0"/>
+  <text x="724" y="318" font-size="13" font-weight="650" text-anchor="middle">伪中断向量</text>
+  </g>
+  <text x="164" y="351" font-size="13" font-weight="400" text-anchor="start">B  EOI 广播抑制（Version：能力位；SVR：控制位）   ·   F  焦点处理器检查   ·   E  软件使能</text>
+  <path d="M36 368H804" stroke="#c8d5e5"/>
+  <text x="36" y="394" font-size="16" font-weight="700" text-anchor="start">向量位图 · 每组 8 × 32 位</text>
+  <text x="804" y="394" font-size="13" font-weight="400" text-anchor="end" class="muted">每格标出对应的向量号范围</text>
+  <text x="36" y="420" font-size="13" font-weight="700" text-anchor="start">ISR</text>
+  <text x="36" y="435" font-size="11" font-weight="400" text-anchor="start" class="muted">0x100–0x170</text>
+    <rect x="164" y="410" width="80" height="34" class="bitmap"/>
+  <text x="204" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x100</text>
+  <text x="204" y="437" font-size="12" font-weight="650" text-anchor="middle">0–31</text>
+    <rect x="244" y="410" width="80" height="34" class="bitmap"/>
+  <text x="284" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x110</text>
+  <text x="284" y="437" font-size="12" font-weight="650" text-anchor="middle">32–63</text>
+    <rect x="324" y="410" width="80" height="34" class="bitmap"/>
+  <text x="364" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x120</text>
+  <text x="364" y="437" font-size="12" font-weight="650" text-anchor="middle">64–95</text>
+    <rect x="404" y="410" width="80" height="34" class="bitmap"/>
+  <text x="444" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x130</text>
+  <text x="444" y="437" font-size="12" font-weight="650" text-anchor="middle">96–127</text>
+    <rect x="484" y="410" width="80" height="34" class="bitmap"/>
+  <text x="524" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x140</text>
+  <text x="524" y="437" font-size="12" font-weight="650" text-anchor="middle">128–159</text>
+    <rect x="564" y="410" width="80" height="34" class="bitmap"/>
+  <text x="604" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x150</text>
+  <text x="604" y="437" font-size="12" font-weight="650" text-anchor="middle">160–191</text>
+    <rect x="644" y="410" width="80" height="34" class="bitmap"/>
+  <text x="684" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x160</text>
+  <text x="684" y="437" font-size="12" font-weight="650" text-anchor="middle">192–223</text>
+    <rect x="724" y="410" width="80" height="34" class="bitmap"/>
+  <text x="764" y="423" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x170</text>
+  <text x="764" y="437" font-size="12" font-weight="650" text-anchor="middle">224–255</text>
+  <text x="36" y="462" font-size="13" font-weight="700" text-anchor="start">TMR</text>
+  <text x="36" y="477" font-size="11" font-weight="400" text-anchor="start" class="muted">0x180–0x1F0</text>
+    <rect x="164" y="452" width="80" height="34" class="bitmap"/>
+  <text x="204" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x180</text>
+  <text x="204" y="479" font-size="12" font-weight="650" text-anchor="middle">0–31</text>
+    <rect x="244" y="452" width="80" height="34" class="bitmap"/>
+  <text x="284" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x190</text>
+  <text x="284" y="479" font-size="12" font-weight="650" text-anchor="middle">32–63</text>
+    <rect x="324" y="452" width="80" height="34" class="bitmap"/>
+  <text x="364" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1A0</text>
+  <text x="364" y="479" font-size="12" font-weight="650" text-anchor="middle">64–95</text>
+    <rect x="404" y="452" width="80" height="34" class="bitmap"/>
+  <text x="444" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1B0</text>
+  <text x="444" y="479" font-size="12" font-weight="650" text-anchor="middle">96–127</text>
+    <rect x="484" y="452" width="80" height="34" class="bitmap"/>
+  <text x="524" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1C0</text>
+  <text x="524" y="479" font-size="12" font-weight="650" text-anchor="middle">128–159</text>
+    <rect x="564" y="452" width="80" height="34" class="bitmap"/>
+  <text x="604" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1D0</text>
+  <text x="604" y="479" font-size="12" font-weight="650" text-anchor="middle">160–191</text>
+    <rect x="644" y="452" width="80" height="34" class="bitmap"/>
+  <text x="684" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1E0</text>
+  <text x="684" y="479" font-size="12" font-weight="650" text-anchor="middle">192–223</text>
+    <rect x="724" y="452" width="80" height="34" class="bitmap"/>
+  <text x="764" y="465" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x1F0</text>
+  <text x="764" y="479" font-size="12" font-weight="650" text-anchor="middle">224–255</text>
+  <text x="36" y="504" font-size="13" font-weight="700" text-anchor="start">IRR</text>
+  <text x="36" y="519" font-size="11" font-weight="400" text-anchor="start" class="muted">0x200–0x270</text>
+    <rect x="164" y="494" width="80" height="34" class="bitmap"/>
+  <text x="204" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x200</text>
+  <text x="204" y="521" font-size="12" font-weight="650" text-anchor="middle">0–31</text>
+    <rect x="244" y="494" width="80" height="34" class="bitmap"/>
+  <text x="284" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x210</text>
+  <text x="284" y="521" font-size="12" font-weight="650" text-anchor="middle">32–63</text>
+    <rect x="324" y="494" width="80" height="34" class="bitmap"/>
+  <text x="364" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x220</text>
+  <text x="364" y="521" font-size="12" font-weight="650" text-anchor="middle">64–95</text>
+    <rect x="404" y="494" width="80" height="34" class="bitmap"/>
+  <text x="444" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x230</text>
+  <text x="444" y="521" font-size="12" font-weight="650" text-anchor="middle">96–127</text>
+    <rect x="484" y="494" width="80" height="34" class="bitmap"/>
+  <text x="524" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x240</text>
+  <text x="524" y="521" font-size="12" font-weight="650" text-anchor="middle">128–159</text>
+    <rect x="564" y="494" width="80" height="34" class="bitmap"/>
+  <text x="604" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x250</text>
+  <text x="604" y="521" font-size="12" font-weight="650" text-anchor="middle">160–191</text>
+    <rect x="644" y="494" width="80" height="34" class="bitmap"/>
+  <text x="684" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x260</text>
+  <text x="684" y="521" font-size="12" font-weight="650" text-anchor="middle">192–223</text>
+    <rect x="724" y="494" width="80" height="34" class="bitmap"/>
+  <text x="764" y="507" font-size="11" font-weight="400" text-anchor="middle" class="muted">0x270</text>
+  <text x="764" y="521" font-size="12" font-weight="650" text-anchor="middle">224–255</text>
+  <path d="M36 546H804" stroke="#c8d5e5"/>
+  <text x="36" y="571" font-size="16" font-weight="700" text-anchor="start">IPI 与本地向量表</text>
+  <text x="174" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">31</text>
+  <text x="194" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">30</text>
+  <text x="214" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">29</text>
+  <text x="234" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">28</text>
+  <text x="254" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">27</text>
+  <text x="274" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">26</text>
+  <text x="294" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">25</text>
+  <text x="314" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">24</text>
+  <text x="334" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">23</text>
+  <text x="354" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">22</text>
+  <text x="374" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">21</text>
+  <text x="394" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">20</text>
+  <text x="414" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">19</text>
+  <text x="434" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">18</text>
+  <text x="454" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">17</text>
+  <text x="474" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">16</text>
+  <text x="494" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">15</text>
+  <text x="514" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">14</text>
+  <text x="534" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">13</text>
+  <text x="554" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">12</text>
+  <text x="574" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">11</text>
+  <text x="594" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">10</text>
+  <text x="614" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">9</text>
+  <text x="634" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">8</text>
+  <text x="654" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">7</text>
+  <text x="674" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">6</text>
+  <text x="694" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">5</text>
+  <text x="714" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">4</text>
+  <text x="734" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">3</text>
+  <text x="754" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">2</text>
+  <text x="774" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">1</text>
+  <text x="794" y="591" font-size="11" font-weight="600" text-anchor="middle" class="muted">0</text>
+  <g data-offset="0x300">
+    <title>0x300 ICR 低字：19:18 SH；15 T；14 L；12 S；11 D；10:8 投递；7:0 向量</title>
+  <text x="36" y="608" font-size="13" font-weight="700" text-anchor="start">ICR 低字</text>
+  <text x="36" y="621" font-size="11" font-weight="400" text-anchor="start" class="muted">0x300</text>
+    <rect x="164" y="599" width="240" height="24" class="reserved" data-bits="31:20"/>
+  <text x="284" y="615" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="404" y="599" width="40" height="24" class="flag" data-bits="19:18"/>
+  <text x="424" y="615" font-size="11" font-weight="650" text-anchor="middle">SH</text>
+    <rect x="444" y="599" width="40" height="24" class="reserved" data-bits="17:16"/>
+    <rect x="484" y="599" width="20" height="24" class="flag" data-bits="15"/>
+  <text x="494" y="615" font-size="11" font-weight="650" text-anchor="middle">T</text>
+    <rect x="504" y="599" width="20" height="24" class="flag" data-bits="14"/>
+  <text x="514" y="615" font-size="11" font-weight="650" text-anchor="middle">L</text>
+    <rect x="524" y="599" width="20" height="24" class="reserved" data-bits="13"/>
+    <rect x="544" y="599" width="20" height="24" class="flag" data-bits="12"/>
+  <text x="554" y="615" font-size="11" font-weight="650" text-anchor="middle">S</text>
+    <rect x="564" y="599" width="20" height="24" class="flag" data-bits="11"/>
+  <text x="574" y="615" font-size="11" font-weight="650" text-anchor="middle">D</text>
+    <rect x="584" y="599" width="60" height="24" class="field" data-bits="10:8"/>
+  <text x="614" y="615" font-size="13" font-weight="650" text-anchor="middle">投递</text>
+    <rect x="644" y="599" width="160" height="24" class="field" data-bits="7:0"/>
+  <text x="724" y="615" font-size="13" font-weight="650" text-anchor="middle">向量</text>
+  </g>
+  <g data-offset="0x310">
+    <title>0x310 ICR 高字：31:24 目的字段</title>
+  <text x="36" y="641" font-size="13" font-weight="700" text-anchor="start">ICR 高字</text>
+  <text x="36" y="654" font-size="11" font-weight="400" text-anchor="start" class="muted">0x310</text>
+    <rect x="164" y="632" width="160" height="24" class="field" data-bits="31:24"/>
+  <text x="244" y="648" font-size="13" font-weight="650" text-anchor="middle">目的字段</text>
+    <rect x="324" y="632" width="480" height="24" class="reserved" data-bits="23:0"/>
+  <text x="564" y="648" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+  </g>
+  <g data-offset="0x320">
+    <title>0x320 LVT Timer：18:17 TM；16 M；12 S；7:0 向量</title>
+  <text x="36" y="674" font-size="13" font-weight="700" text-anchor="start">LVT Timer</text>
+  <text x="36" y="687" font-size="11" font-weight="400" text-anchor="start" class="muted">0x320</text>
+    <rect x="164" y="665" width="260" height="24" class="reserved" data-bits="31:19"/>
+  <text x="294" y="681" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="424" y="665" width="40" height="24" class="flag" data-bits="18:17"/>
+  <text x="444" y="681" font-size="11" font-weight="650" text-anchor="middle">TM</text>
+    <rect x="464" y="665" width="20" height="24" class="flag" data-bits="16"/>
+  <text x="474" y="681" font-size="11" font-weight="650" text-anchor="middle">M</text>
+    <rect x="484" y="665" width="60" height="24" class="reserved" data-bits="15:13"/>
+    <rect x="544" y="665" width="20" height="24" class="flag" data-bits="12"/>
+  <text x="554" y="681" font-size="11" font-weight="650" text-anchor="middle">S</text>
+    <rect x="564" y="665" width="80" height="24" class="reserved" data-bits="11:8"/>
+  <text x="604" y="681" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="644" y="665" width="160" height="24" class="field" data-bits="7:0"/>
+  <text x="724" y="681" font-size="13" font-weight="650" text-anchor="middle">向量</text>
+  </g>
+  <g data-offset="0x350 / 0x360">
+    <title>0x350 / 0x360 LVT LINT0 / 1：16 M；15 T；14 R；13 P；12 S；10:8 投递；7:0 向量；两个偏移的位布局相同</title>
+  <text x="36" y="707" font-size="13" font-weight="700" text-anchor="start">LVT LINT0 / 1</text>
+  <text x="36" y="720" font-size="11" font-weight="400" text-anchor="start" class="muted">0x350 / 0x360</text>
+    <rect x="164" y="698" width="300" height="24" class="reserved" data-bits="31:17"/>
+  <text x="314" y="714" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="464" y="698" width="20" height="24" class="flag" data-bits="16"/>
+  <text x="474" y="714" font-size="11" font-weight="650" text-anchor="middle">M</text>
+    <rect x="484" y="698" width="20" height="24" class="flag" data-bits="15"/>
+  <text x="494" y="714" font-size="11" font-weight="650" text-anchor="middle">T</text>
+    <rect x="504" y="698" width="20" height="24" class="flag" data-bits="14"/>
+  <text x="514" y="714" font-size="11" font-weight="650" text-anchor="middle">R</text>
+    <rect x="524" y="698" width="20" height="24" class="flag" data-bits="13"/>
+  <text x="534" y="714" font-size="11" font-weight="650" text-anchor="middle">P</text>
+    <rect x="544" y="698" width="20" height="24" class="flag" data-bits="12"/>
+  <text x="554" y="714" font-size="11" font-weight="650" text-anchor="middle">S</text>
+    <rect x="564" y="698" width="20" height="24" class="reserved" data-bits="11"/>
+    <rect x="584" y="698" width="60" height="24" class="field" data-bits="10:8"/>
+  <text x="614" y="714" font-size="13" font-weight="650" text-anchor="middle">投递</text>
+    <rect x="644" y="698" width="160" height="24" class="field" data-bits="7:0"/>
+  <text x="724" y="714" font-size="13" font-weight="650" text-anchor="middle">向量</text>
+  </g>
+  <text x="164" y="744" font-size="13" font-weight="400" text-anchor="start">SH  目的简写   ·   D  目的模式   ·   S  投递状态   ·   T  触发方式   ·   L  电平</text>
+  <text x="164" y="765" font-size="13" font-weight="400" text-anchor="start">M  屏蔽   ·   P  输入极性   ·   R  远程 IRR   ·   TM  定时器模式</text>
+  <path d="M36 783H804" stroke="#c8d5e5"/>
+  <text x="36" y="808" font-size="16" font-weight="700" text-anchor="start">本地定时器</text>
+  <text x="174" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">31</text>
+  <text x="194" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">30</text>
+  <text x="214" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">29</text>
+  <text x="234" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">28</text>
+  <text x="254" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">27</text>
+  <text x="274" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">26</text>
+  <text x="294" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">25</text>
+  <text x="314" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">24</text>
+  <text x="334" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">23</text>
+  <text x="354" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">22</text>
+  <text x="374" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">21</text>
+  <text x="394" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">20</text>
+  <text x="414" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">19</text>
+  <text x="434" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">18</text>
+  <text x="454" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">17</text>
+  <text x="474" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">16</text>
+  <text x="494" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">15</text>
+  <text x="514" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">14</text>
+  <text x="534" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">13</text>
+  <text x="554" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">12</text>
+  <text x="574" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">11</text>
+  <text x="594" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">10</text>
+  <text x="614" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">9</text>
+  <text x="634" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">8</text>
+  <text x="654" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">7</text>
+  <text x="674" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">6</text>
+  <text x="694" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">5</text>
+  <text x="714" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">4</text>
+  <text x="734" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">3</text>
+  <text x="754" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">2</text>
+  <text x="774" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">1</text>
+  <text x="794" y="827" font-size="11" font-weight="600" text-anchor="middle" class="muted">0</text>
+  <g data-offset="0x380">
+    <title>0x380 初始计数：31:0 初始计数值</title>
+  <text x="36" y="843" font-size="13" font-weight="700" text-anchor="start">初始计数</text>
+  <text x="36" y="856" font-size="11" font-weight="400" text-anchor="start" class="muted">0x380</text>
+    <rect x="164" y="834" width="640" height="24" class="field" data-bits="31:0"/>
+  <text x="484" y="850" font-size="13" font-weight="650" text-anchor="middle">初始计数值</text>
+  </g>
+  <g data-offset="0x390">
+    <title>0x390 当前计数：31:0 当前计数值</title>
+  <text x="36" y="870" font-size="13" font-weight="700" text-anchor="start">当前计数</text>
+  <text x="36" y="883" font-size="11" font-weight="400" text-anchor="start" class="muted">0x390</text>
+    <rect x="164" y="861" width="640" height="24" class="field" data-bits="31:0"/>
+  <text x="484" y="877" font-size="13" font-weight="650" text-anchor="middle">当前计数值</text>
+  </g>
+  <g data-offset="0x3E0">
+    <title>0x3E0 分频配置：3 N；1:0 N</title>
+  <text x="36" y="897" font-size="13" font-weight="700" text-anchor="start">分频配置</text>
+  <text x="36" y="910" font-size="11" font-weight="400" text-anchor="start" class="muted">0x3E0</text>
+    <rect x="164" y="888" width="560" height="24" class="reserved" data-bits="31:4"/>
+  <text x="444" y="904" font-size="13" font-weight="400" text-anchor="middle" class="muted">保留</text>
+    <rect x="724" y="888" width="20" height="24" class="flag" data-bits="3"/>
+  <text x="734" y="904" font-size="11" font-weight="650" text-anchor="middle">N</text>
+    <rect x="744" y="888" width="20" height="24" class="reserved" data-bits="2"/>
+    <rect x="764" y="888" width="40" height="24" class="flag" data-bits="1:0"/>
+  <text x="784" y="904" font-size="11" font-weight="650" text-anchor="middle">N</text>
+  </g>
+  <text x="164" y="925" font-size="13" font-weight="400" text-anchor="start">N  分频编码（bit 3 与 bits 1:0）</text>
+</svg>

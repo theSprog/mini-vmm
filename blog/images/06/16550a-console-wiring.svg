@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="485" viewBox="0 0 840 485" role="img" aria-labelledby="title desc">
+  <title id="title">16550A：guest 的控制台接到了哪里？</title>
+  <desc id="desc">mini-vmm 在用户态模拟 COM1，guest 经 PIO 访问。发送字节从 THR 到 host stdout；host stdin 的输入经 I/O 线程进入接收 FIFO，guest 读 RBR 取出。两条数据线以 DLAB 为零为前提。中断条件经 IER 使能、IIR 记录和 MCR.OUT2 门控，正常非回环时可经 KVM 的中断控制器送 IRQ4 给 guest。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .white { fill: #fff; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .navy { fill: #183a5a; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .purple { fill: #f0ebff; stroke: #a397d1; }
+    .line, .faint, .accent, .tealWire, .dash { fill: none; }
+    .line { stroke: #58728d; stroke-width: 1.5; }
+    .faint { stroke: #bdcbd9; }
+    .accent { stroke: #925520; stroke-width: 2; }
+    .tealWire { stroke: #326e64; stroke-width: 2; }
+    .dash { stroke: #7589a0; stroke-width: 1.4; stroke-dasharray: 4 4; }
+    .pad { fill: #f5f8fc; stroke: #58728d; }
+    .tap { fill: #925520; stroke: #fff2df; }
+    .tapTeal { fill: #326e64; stroke: #e5f5f2; }
+  </style>
+  <rect x="1" y="1" width="838" height="483" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" text-anchor="start" class="ink">16550A：guest 的控制台接到了哪里？</text>
+  <defs>
+    <marker id="data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#58728d"/>
+    </marker>
+    <marker id="rx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#326e64"/>
+    </marker>
+    <marker id="irq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#925520"/>
+    </marker>
+  </defs>
+  <text x="36" y="72" font-size="15" font-weight="400" text-anchor="start" class="ink">从 guest 看是 COM1（0x3F8–0x3FF）；mini-vmm 把它接到 host 的标准输入、输出。</text>
+  <rect x="36" y="100" width="196" height="239" rx="10" class="panel"/>
+  <rect x="256" y="100" width="340" height="239" rx="10" class="blue"/>
+  <rect x="620" y="100" width="184" height="239" rx="10" class="panel"/>
+  <text x="52" y="129" font-size="17" font-weight="700" text-anchor="start" class="ink">Guest · Linux</text>
+  <text x="274" y="129" font-size="17" font-weight="700" text-anchor="start" class="ink">VMM · 16550A 模型</text>
+  <text x="638" y="129" font-size="17" font-weight="700" text-anchor="start" class="ink">Host 终端</text>
+  <path d="M52 141H216 M274 141H577 M638 141H787" class="faint"/>
+  <text x="52" y="175" font-size="15" font-weight="700" text-anchor="start" class="ink">printk / shell 输出</text>
+  <text x="52" y="195" font-size="13" font-weight="400" text-anchor="start" class="ink">写 THR · 端口 0x3F8</text>
+  <text x="52" y="244" font-size="15" font-weight="700" text-anchor="start" class="ink">ttyS0 收到字符</text>
+  <text x="52" y="264" font-size="13" font-weight="400" text-anchor="start" class="ink">读 RBR · 端口 0x3F8</text>
+  <rect x="281" y="157" width="119" height="46" rx="6" class="panel"/>
+  <text x="340.5" y="177" font-size="15" font-weight="700" text-anchor="middle" class="ink">THR</text>
+  <text x="340.5" y="193" font-size="12" font-weight="400" text-anchor="middle" class="muted">发送保持寄存器</text>
+  <rect x="281" y="226" width="93" height="59" rx="6" class="teal"/>
+  <rect x="430" y="226" width="142" height="59" rx="6" class="teal"/>
+  <text x="327.5" y="250" font-size="15" font-weight="700" text-anchor="middle" class="ink">RBR</text>
+  <text x="327.5" y="270" font-size="12" font-weight="400" text-anchor="middle" class="muted">读出字节</text>
+  <text x="501" y="250" font-size="15" font-weight="700" text-anchor="middle" class="ink">接收 FIFO</text>
+  <text x="501" y="270" font-size="12" font-weight="400" text-anchor="middle" class="muted">I/O 线程放入字节</text>
+  <path d="M232 180H279" class="line" marker-end="url(#data)"/>
+  <path d="M400 180H618" class="line" marker-end="url(#data)"/>
+  <path d="M620 255H574" class="tealWire" marker-end="url(#rx)"/>
+  <path d="M430 255H376" class="tealWire" marker-end="url(#rx)"/>
+  <path d="M281 255H234" class="tealWire" marker-end="url(#rx)"/>
+  <text x="638" y="175" font-size="15" font-weight="700" text-anchor="start" class="ink">stdout</text>
+  <text x="638" y="195" font-size="13" font-weight="400" text-anchor="start" class="ink">日志和 shell 回显</text>
+  <text x="638" y="249" font-size="15" font-weight="700" text-anchor="start" class="ink">stdin</text>
+  <text x="638" y="269" font-size="13" font-weight="400" text-anchor="start" class="ink">键盘输入</text>
+  <text x="52" y="314" font-size="13" font-weight="400" text-anchor="start" class="muted">读写同址，方向不同。</text>
+  <text x="274" y="314" font-size="13" font-weight="400" text-anchor="start" class="muted">图中为 DLAB = 0 的正常收发路径。</text>
+  <text x="52" y="375" font-size="14" font-weight="700" text-anchor="start" class="goldText">Guest 的 IRQ4 处理程序</text>
+  <rect x="266" y="386" width="190" height="49" rx="8" class="flag"/>
+  <text x="361" y="407" font-size="14" font-weight="700" text-anchor="middle" class="ink">KVM · 中断控制器</text>
+  <text x="361" y="426" font-size="12" font-weight="400" text-anchor="middle" class="goldText">把 IRQ4 送给 guest</text>
+  <rect x="571" y="386" width="233" height="49" rx="8" class="flag"/>
+  <text x="687.5" y="407" font-size="14" font-weight="700" text-anchor="middle" class="ink">IER 使能 · IIR 标识中断</text>
+  <text x="687.5" y="426" font-size="12" font-weight="400" text-anchor="middle" class="goldText">MCR.OUT2 打开才拉线</text>
+  <path d="M520 339V363H687V384" class="accent" marker-end="url(#irq)"/>
+  <path d="M571 410H458" class="accent" marker-end="url(#irq)"/>
+  <text x="514" y="397" font-size="12" font-weight="400" text-anchor="middle" class="goldText">KVM_IRQ_LINE</text>
+  <path d="M266 410H132V341" class="accent" marker-end="url(#irq)"/>
+  <text x="36" y="462" font-size="14" font-weight="400" text-anchor="start" class="ink">蓝灰：发送字节　　绿色：接收字节　　橙色：中断通知（不搬运字节）</text>
+</svg>
