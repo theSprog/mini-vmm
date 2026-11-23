@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="712" viewBox="0 0 840 712" role="img" aria-labelledby="title desc">
+  <title id="title">PCI 访问在 mini-vmm 里怎么走</title>
+  <desc id="desc">guest 的端口或 MMIO 访问经 KVM exit 进入 I/O 总线。配置路径中，conf1 端口先选寄存器，再经 pci_cfg_read 或 pci_cfg_write 访问配置空间；写及 Command 或 BAR 时，bars_update 按需通过 vmm_io_move 更新设备表。BAR 访问路径用地址查同一张设备表，命中后调用 pci-test 的寄存器回调。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .goldText { fill: #784417; }
+    .tealText { fill: #20534a; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .wire, .access, .update { fill: none; stroke-width: 1.8; }
+    .wire { stroke: #58728d; }
+    .access { stroke: #326e64; }
+    .update { stroke: #925520; stroke-dasharray: 5 4; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="context-stroke"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="838" height="710" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">PCI 访问在 mini-vmm 里怎么走</text>
+
+  <rect x="180" y="65" width="480" height="60" rx="8" class="panel"/>
+  <text x="420" y="89" font-size="17" font-weight="700" text-anchor="middle" class="ink">guest</text>
+  <text x="420" y="110" font-size="14" text-anchor="middle" class="muted">通过 conf1 端口访问配置空间，或访问 BAR 地址</text>
+  <path d="M420 126 V169" class="wire" marker-end="url(#arrow)"/>
+  <text x="434" y="153" font-size="13" class="muted mono">KVM_EXIT_IO / KVM_EXIT_MMIO</text>
+
+  <rect x="180" y="170" width="480" height="66" rx="8" class="panel"/>
+  <text x="420" y="197" font-size="16" font-weight="700" text-anchor="middle" class="ink mono">io_bus_dispatch_pio() / io_bus_dispatch_mmio()</text>
+  <text x="420" y="220" font-size="14" text-anchor="middle" class="muted">src/io_bus.c · vCPU 持有 io_lock</text>
+  <path d="M420 237 V258" class="wire"/>
+  <path d="M420 258 H186 V304" class="wire" marker-end="url(#arrow)"/>
+  <path d="M420 258 H654 V523" class="access" marker-end="url(#arrow)"/>
+  <text x="198" y="285" font-size="14" font-weight="700" class="ink">配置端口 0xCF8–0xCFF</text>
+  <text x="664" y="285" font-size="14" font-weight="700" class="tealText">BAR 地址</text>
+
+  <rect x="36" y="305" width="300" height="88" rx="8" class="blue"/>
+  <text x="186" y="329" font-size="17" font-weight="700" text-anchor="middle" class="ink">conf1 · src/pci/pci.c</text>
+  <text x="186" y="353" font-size="14" text-anchor="middle" class="muted">0xCF8：选中设备和寄存器</text>
+  <text x="186" y="374" font-size="14" text-anchor="middle" class="muted">0xCFC–0xCFF：读写所选数据</text>
+  <path d="M186 394 V421" class="wire" marker-end="url(#arrow)"/>
+
+  <rect x="36" y="422" width="300" height="62" rx="8" class="blue"/>
+  <text x="186" y="447" font-size="14" font-weight="700" text-anchor="middle" class="ink mono">pci_cfg_read() / pci_cfg_write()</text>
+  <text x="186" y="469" font-size="14" text-anchor="middle" class="muted mono">cfg[256] + wmask[256]</text>
+  <path d="M186 485 V523" class="update" marker-end="url(#arrow)"/>
+  <text x="198" y="508" font-size="14" class="goldText">写到 Command 或 BAR</text>
+
+  <rect x="36" y="524" width="300" height="64" rx="8" class="flag"/>
+  <text x="186" y="550" font-size="16" font-weight="700" text-anchor="middle" class="ink mono">bars_update()</text>
+  <text x="186" y="573" font-size="14" text-anchor="middle" class="goldText">重算 BAR 基址和 decode 状态</text>
+  <path d="M337 556 H502" class="update" marker-end="url(#arrow)"/>
+  <text x="420" y="547" font-size="13" font-weight="700" text-anchor="middle" class="goldText mono">vmm_io_move()</text>
+  <text x="420" y="576" font-size="13" text-anchor="middle" class="goldText">按需更新表项</text>
+
+  <rect x="504" y="524" width="300" height="64" rx="8" class="teal"/>
+  <text x="654" y="550" font-size="17" font-weight="700" text-anchor="middle" class="ink">PIO / MMIO 设备表</text>
+  <text x="654" y="573" font-size="14" text-anchor="middle" class="tealText">src/io_bus.c · 按当前地址范围查找</text>
+  <path d="M654 589 V630" class="access" marker-end="url(#arrow)"/>
+  <text x="664" y="614" font-size="14" class="tealText">命中 BAR</text>
+
+  <rect x="504" y="631" width="300" height="60" rx="8" class="teal"/>
+  <text x="654" y="656" font-size="17" font-weight="700" text-anchor="middle" class="ink">pci-test 的寄存器回调</text>
+  <text x="654" y="677" font-size="14" text-anchor="middle" class="tealText mono">src/devices/pci_test.c</text>
+</svg>

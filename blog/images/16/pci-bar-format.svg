@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="344" viewBox="0 0 840 344" role="img" aria-labelledby="title desc">
+  <title id="title">BAR · 地址和属性放在同一个寄存器里</title>
+  <desc id="desc">内存 BAR 的低 dword 中，31:4 是基址字段，3 是预取属性 P，2:1 是地址类型，0 固定为 0。I/O BAR 中 31:2 是基址字段，1 保留为 0，0 固定为 1。64 位内存 BAR 的相邻后一个 dword 保存基址高 32 位。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+  </style>
+  <rect x="1" y="1" width="838" height="342" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">BAR · 地址和属性放在同一个寄存器里</text>
+  <text x="36" y="73" font-size="15" font-weight="700" class="ink">内存 BAR · 低 32 位</text>
+  <rect x="36" y="104" width="672" height="38" class="blue" data-bits="31:4"/>
+  <text x="372" y="94" font-size="12" font-weight="700" text-anchor="middle" class="muted">31:4</text>
+  <text x="372" y="128" font-size="15" font-weight="700" text-anchor="middle" class="ink">基址字段</text>
+  <rect x="708" y="104" width="24" height="38" class="flag" data-bits="3"/>
+  <text x="720" y="94" font-size="12" font-weight="700" text-anchor="middle" class="muted">3</text>
+  <text x="720" y="128" font-size="12" font-weight="700" text-anchor="middle" class="ink">P</text>
+  <rect x="732" y="104" width="48" height="38" class="flag" data-bits="2:1"/>
+  <text x="756" y="94" font-size="12" font-weight="700" text-anchor="middle" class="muted">2:1</text>
+  <text x="756" y="128" font-size="12" font-weight="700" text-anchor="middle" class="ink">Type</text>
+  <rect x="780" y="104" width="24" height="38" class="flag" data-bits="0"/>
+  <text x="792" y="94" font-size="12" font-weight="700" text-anchor="middle" class="muted">0</text>
+  <text x="792" y="128" font-size="12" font-weight="700" text-anchor="middle" class="ink">0</text>
+  <text x="36" y="167" font-size="14" class="ink">P = 1：可预取。Type = 00：32 位地址；10：64 位地址。</text>
+  <text x="36" y="189" font-size="14" class="ink">64 位内存 BAR 占两个相邻的 BAR 槽位，后一个保存基址高 32 位。</text>
+  <text x="36" y="227" font-size="15" font-weight="700" class="ink">I/O BAR · 32 位</text>
+  <rect x="36" y="256" width="720" height="38" class="blue" data-bits="31:2"/>
+  <text x="396" y="246" font-size="12" font-weight="700" text-anchor="middle" class="muted">31:2</text>
+  <text x="396" y="280" font-size="15" font-weight="700" text-anchor="middle" class="ink">基址字段</text>
+  <rect x="756" y="256" width="24" height="38" class="res" data-bits="1"/>
+  <text x="768" y="246" font-size="12" font-weight="700" text-anchor="middle" class="muted">1</text>
+  <text x="768" y="280" font-size="12" text-anchor="middle" class="muted">0</text>
+  <rect x="780" y="256" width="24" height="38" class="flag" data-bits="0"/>
+  <text x="792" y="246" font-size="12" font-weight="700" text-anchor="middle" class="muted">0</text>
+  <text x="792" y="280" font-size="12" font-weight="700" text-anchor="middle" class="ink">1</text>
+  <text x="36" y="320" font-size="14" class="ink">bit 1 保留，读回 0；bit 0 固定为 1，表示 I/O BAR。</text>
+</svg>

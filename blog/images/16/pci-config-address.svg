@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="215" viewBox="0 0 840 215" role="img" aria-labelledby="title desc">
+  <title id="title">CONFIG_ADDRESS · 配置机制 1</title>
+  <desc id="desc">端口 0xCF8 的 32 位寄存器。bit 31 是使能位，30:24 保留，23:16 是 Bus，15:11 是 Device，10:8 是 Function，7:2 选择配置空间中的 dword，1:0 固定为零。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+  </style>
+  <rect x="1" y="1" width="838" height="213" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">CONFIG_ADDRESS · 配置机制 1</text>
+  <text x="36" y="73" font-size="15" class="ink">I/O 端口 0xCF8 · 32 位 · 字段按位宽绘制</text>
+  <rect x="36" y="109" width="24" height="38" class="flag" data-bits="31"/>
+  <text x="48" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">31</text>
+  <text x="48" y="133" font-size="12" font-weight="700" text-anchor="middle" class="ink">E</text>
+  <rect x="60" y="109" width="168" height="38" class="res" data-bits="30:24"/>
+  <text x="144" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">30:24</text>
+  <text x="144" y="133" font-size="15" text-anchor="middle" class="muted">保留</text>
+  <rect x="228" y="109" width="192" height="38" class="blue" data-bits="23:16"/>
+  <text x="324" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">23:16</text>
+  <text x="324" y="133" font-size="15" font-weight="700" text-anchor="middle" class="ink">Bus</text>
+  <rect x="420" y="109" width="120" height="38" class="blue" data-bits="15:11"/>
+  <text x="480" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">15:11</text>
+  <text x="480" y="133" font-size="15" font-weight="700" text-anchor="middle" class="ink">Device</text>
+  <rect x="540" y="109" width="72" height="38" class="blue" data-bits="10:8"/>
+  <text x="576" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">10:8</text>
+  <text x="576" y="133" font-size="13" font-weight="700" text-anchor="middle" class="ink">Function</text>
+  <rect x="612" y="109" width="144" height="38" class="teal" data-bits="7:2"/>
+  <text x="684" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">7:2</text>
+  <text x="684" y="133" font-size="15" font-weight="700" text-anchor="middle" class="ink">Register</text>
+  <rect x="756" y="109" width="48" height="38" class="res" data-bits="1:0"/>
+  <text x="780" y="99" font-size="12" font-weight="700" text-anchor="middle" class="muted">1:0</text>
+  <text x="780" y="133" font-size="13" text-anchor="middle" class="muted">00</text>
+  <text x="36" y="174" font-size="14" class="ink">E = 1 时才进行配置访问；标准配置机制 1 的保留位读回为 0。</text>
+  <text x="36" y="196" font-size="14" class="ink">Register 选择一个 4 字节对齐的 dword，最低两位固定为 0。</text>
+</svg>

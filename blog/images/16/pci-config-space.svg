@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="292" viewBox="0 0 840 292" role="img" aria-labelledby="title desc">
+  <title id="title">PCI 配置空间 · 每个 function 一份</title>
+  <desc id="desc">每个 function 的配置空间从偏移零开始。标准 PCI 的 256 字节中，0x000 至 0x03F 是标准头部，0x040 至 0x0FF 是其余标准配置空间。PCIe 保留这 256 字节，再增加 0x100 至 0xFFF 的扩展区，总计 4096 字节。各区宽度不按容量比例。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .bracket { fill: none; stroke: #58728d; stroke-width: 1.5; }
+  </style>
+  <rect x="1" y="1" width="838" height="290" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">PCI 配置空间 · 每个 function 一份</text>
+  <text x="36" y="71" font-size="14" class="muted">偏移从 0 开始，区间包含两端；各区宽度不按容量比例。</text>
+
+  <text x="276" y="105" font-size="15" font-weight="700" text-anchor="middle" class="ink">标准 PCI · 256 字节</text>
+  <path d="M36 126 V114 H516 V126" class="bracket"/>
+
+  <rect x="36" y="135" width="212" height="72" class="blue"/>
+  <text x="142" y="164" font-size="17" font-weight="700" text-anchor="middle" class="ink">标准头部</text>
+  <text x="142" y="188" font-size="14" text-anchor="middle" class="muted mono">0x000–0x03F</text>
+  <rect x="248" y="135" width="268" height="72" class="panel"/>
+  <text x="382" y="164" font-size="17" font-weight="700" text-anchor="middle" class="ink">其余标准配置空间</text>
+  <text x="382" y="188" font-size="14" text-anchor="middle" class="muted mono">0x040–0x0FF</text>
+  <rect x="516" y="135" width="288" height="72" class="teal"/>
+  <text x="660" y="164" font-size="17" font-weight="700" text-anchor="middle" class="ink">PCIe 扩展区</text>
+  <text x="660" y="188" font-size="14" text-anchor="middle" class="muted mono">0x100–0xFFF</text>
+
+  <path d="M36 216 V228 H804 V216" class="bracket"/>
+  <text x="420" y="255" font-size="15" font-weight="700" text-anchor="middle" class="ink">PCIe · 4096 字节（含前 256 字节）</text>
+</svg>

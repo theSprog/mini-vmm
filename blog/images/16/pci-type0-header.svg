@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="628" viewBox="0 0 840 628" role="img" aria-labelledby="title desc">
+  <title id="title">PCI Type 0 · 配置空间头</title>
+  <desc id="desc">普通 PCI 设备配置空间的前 64 字节。每行 4 字节，偏移从 0x00 到 0x3C；右侧是低位字节，左侧是高位字节。0x10 至 0x24 是六个 BAR 槽位。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+  </style>
+  <rect x="1" y="1" width="838" height="626" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">PCI Type 0 · 配置空间头</text>
+  <text x="36" y="73" font-size="15" class="ink">每行 4 字节 · 右侧为低位字节，位号相对于所在行</text>
+  <text x="36" y="103" font-size="13" font-weight="700" class="muted">偏移</text>
+  <text x="209" y="103" font-size="13" font-weight="700" text-anchor="middle" class="muted">31:24</text>
+  <text x="379" y="103" font-size="13" font-weight="700" text-anchor="middle" class="muted">23:16</text>
+  <text x="549" y="103" font-size="13" font-weight="700" text-anchor="middle" class="muted">15:8</text>
+  <text x="719" y="103" font-size="13" font-weight="700" text-anchor="middle" class="muted">7:0</text>
+  <text x="36" y="135" font-size="15" font-weight="700" class="ink mono">0x00</text>
+  <rect x="124" y="116" width="340" height="29" class="blue"/>
+  <text x="294" y="135" font-size="14" font-weight="700" text-anchor="middle" class="ink">Device ID</text>
+  <rect x="464" y="116" width="340" height="29" class="blue"/>
+  <text x="634" y="135" font-size="14" font-weight="700" text-anchor="middle" class="ink">Vendor ID</text>
+  <text x="36" y="164" font-size="15" font-weight="700" class="ink mono">0x04</text>
+  <rect x="124" y="145" width="340" height="29" class="panel"/>
+  <text x="294" y="164" font-size="14" text-anchor="middle" class="ink">Status</text>
+  <rect x="464" y="145" width="340" height="29" class="flag"/>
+  <text x="634" y="164" font-size="14" font-weight="700" text-anchor="middle" class="ink">Command</text>
+  <text x="36" y="193" font-size="15" font-weight="700" class="ink mono">0x08</text>
+  <rect x="124" y="174" width="510" height="29" class="blue"/>
+  <text x="379" y="193" font-size="14" font-weight="700" text-anchor="middle" class="ink">Class Code</text>
+  <rect x="634" y="174" width="170" height="29" class="blue"/>
+  <text x="719" y="193" font-size="14" font-weight="700" text-anchor="middle" class="ink">Revision ID</text>
+  <text x="36" y="222" font-size="15" font-weight="700" class="ink mono">0x0C</text>
+  <rect x="124" y="203" width="170" height="29" class="panel"/>
+  <text x="209" y="222" font-size="14" text-anchor="middle" class="ink">BIST</text>
+  <rect x="294" y="203" width="170" height="29" class="panel"/>
+  <text x="379" y="222" font-size="14" text-anchor="middle" class="ink">Header Type</text>
+  <rect x="464" y="203" width="170" height="29" class="panel"/>
+  <text x="549" y="222" font-size="14" text-anchor="middle" class="ink">Latency Timer</text>
+  <rect x="634" y="203" width="170" height="29" class="panel"/>
+  <text x="719" y="222" font-size="14" text-anchor="middle" class="ink">Cache Line Size</text>
+  <text x="36" y="251" font-size="15" font-weight="700" class="ink mono">0x10</text>
+  <rect x="124" y="232" width="680" height="29" class="teal"/>
+  <text x="464" y="251" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR0</text>
+  <text x="36" y="280" font-size="15" font-weight="700" class="ink mono">0x14</text>
+  <rect x="124" y="261" width="680" height="29" class="teal"/>
+  <text x="464" y="280" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR1</text>
+  <text x="36" y="309" font-size="15" font-weight="700" class="ink mono">0x18</text>
+  <rect x="124" y="290" width="680" height="29" class="teal"/>
+  <text x="464" y="309" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR2</text>
+  <text x="36" y="338" font-size="15" font-weight="700" class="ink mono">0x1C</text>
+  <rect x="124" y="319" width="680" height="29" class="teal"/>
+  <text x="464" y="338" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR3</text>
+  <text x="36" y="367" font-size="15" font-weight="700" class="ink mono">0x20</text>
+  <rect x="124" y="348" width="680" height="29" class="teal"/>
+  <text x="464" y="367" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR4</text>
+  <text x="36" y="396" font-size="15" font-weight="700" class="ink mono">0x24</text>
+  <rect x="124" y="377" width="680" height="29" class="teal"/>
+  <text x="464" y="396" font-size="14" font-weight="700" text-anchor="middle" class="ink">BAR5</text>
+  <text x="36" y="425" font-size="15" font-weight="700" class="ink mono">0x28</text>
+  <rect x="124" y="406" width="680" height="29" class="panel"/>
+  <text x="464" y="425" font-size="14" text-anchor="middle" class="ink">CardBus CIS Pointer</text>
+  <text x="36" y="454" font-size="15" font-weight="700" class="ink mono">0x2C</text>
+  <rect x="124" y="435" width="340" height="29" class="blue"/>
+  <text x="294" y="454" font-size="14" font-weight="700" text-anchor="middle" class="ink">Subsystem ID</text>
+  <rect x="464" y="435" width="340" height="29" class="blue"/>
+  <text x="634" y="454" font-size="14" font-weight="700" text-anchor="middle" class="ink">Subsystem Vendor ID</text>
+  <text x="36" y="483" font-size="15" font-weight="700" class="ink mono">0x30</text>
+  <rect x="124" y="464" width="680" height="29" class="panel"/>
+  <text x="464" y="483" font-size="14" text-anchor="middle" class="ink">Expansion ROM Base Address</text>
+  <text x="36" y="512" font-size="15" font-weight="700" class="ink mono">0x34</text>
+  <rect x="124" y="493" width="510" height="29" class="res"/>
+  <text x="379" y="512" font-size="14" text-anchor="middle" class="muted">保留</text>
+  <rect x="634" y="493" width="170" height="29" class="panel"/>
+  <text x="719" y="512" font-size="14" text-anchor="middle" class="ink">Capabilities Ptr</text>
+  <text x="36" y="541" font-size="15" font-weight="700" class="ink mono">0x38</text>
+  <rect x="124" y="522" width="680" height="29" class="res"/>
+  <text x="464" y="541" font-size="14" text-anchor="middle" class="muted">保留</text>
+  <text x="36" y="570" font-size="15" font-weight="700" class="ink mono">0x3C</text>
+  <rect x="124" y="551" width="170" height="29" class="panel"/>
+  <text x="209" y="570" font-size="14" text-anchor="middle" class="ink">Max_Lat</text>
+  <rect x="294" y="551" width="170" height="29" class="panel"/>
+  <text x="379" y="570" font-size="14" text-anchor="middle" class="ink">Min_Gnt</text>
+  <rect x="464" y="551" width="170" height="29" class="panel"/>
+  <text x="549" y="570" font-size="14" text-anchor="middle" class="ink">Interrupt Pin</text>
+  <rect x="634" y="551" width="170" height="29" class="panel"/>
+  <text x="719" y="570" font-size="14" text-anchor="middle" class="ink">Interrupt Line</text>
+  <text x="36" y="608" font-size="14" class="muted">每行偏移对应右侧最低字节。例如 Vendor ID 在 0x00，Device ID 在 0x02。</text>
+</svg>

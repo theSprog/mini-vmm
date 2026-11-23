@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="301" viewBox="0 0 840 301" role="img" aria-labelledby="title desc">
+  <title id="title">Command · 设备的总开关</title>
+  <desc id="desc">配置空间偏移 0x04 的 16 位寄存器。bit 0 使能 I/O 响应，bit 1 使能内存响应，bit 2 允许设备发起总线事务，bit 10 禁止设备断言 INTx。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+  </style>
+  <rect x="1" y="1" width="838" height="299" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">Command · 设备的总开关</text>
+  <text x="36" y="73" font-size="15" class="ink">配置空间偏移 0x04 · 16 位 · 灰色字段不展开</text>
+  <rect x="36" y="108" width="240" height="38" class="res" data-bits="15:11"/>
+  <text x="156" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">15:11</text>
+  <text x="156" y="132" font-size="15" text-anchor="middle" class="muted">保留</text>
+  <rect x="276" y="108" width="48" height="38" class="flag" data-bits="10"/>
+  <text x="300" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">10</text>
+  <text x="300" y="132" font-size="12" font-weight="700" text-anchor="middle" class="ink">INTx</text>
+  <rect x="324" y="108" width="336" height="38" class="res" data-bits="9:3"/>
+  <text x="492" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">9:3</text>
+  <text x="492" y="132" font-size="15" text-anchor="middle" class="muted">其他位</text>
+  <rect x="660" y="108" width="48" height="38" class="teal" data-bits="2"/>
+  <text x="684" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">2</text>
+  <text x="684" y="132" font-size="12" font-weight="700" text-anchor="middle" class="ink">BM</text>
+  <rect x="708" y="108" width="48" height="38" class="blue" data-bits="1"/>
+  <text x="732" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">1</text>
+  <text x="732" y="132" font-size="12" font-weight="700" text-anchor="middle" class="ink">MEM</text>
+  <rect x="756" y="108" width="48" height="38" class="blue" data-bits="0"/>
+  <text x="780" y="98" font-size="12" font-weight="700" text-anchor="middle" class="muted">0</text>
+  <text x="780" y="132" font-size="12" font-weight="700" text-anchor="middle" class="ink">I/O</text>
+  <rect x="36" y="164" width="374" height="50" rx="8" class="blue"/>
+  <text x="50" y="184" font-size="14" font-weight="700" class="ink">bit 0 · I/O Space</text>
+  <text x="50" y="203" font-size="13" class="ink">1 = 响应落在 I/O BAR 内的访问</text>
+  <rect x="430" y="164" width="374" height="50" rx="8" class="blue"/>
+  <text x="444" y="184" font-size="14" font-weight="700" class="ink">bit 1 · Memory Space</text>
+  <text x="444" y="203" font-size="13" class="ink">1 = 响应落在内存 BAR 内的访问</text>
+  <rect x="36" y="225" width="374" height="50" rx="8" class="teal"/>
+  <text x="50" y="245" font-size="14" font-weight="700" class="ink">bit 2 · Bus Master</text>
+  <text x="50" y="264" font-size="13" class="ink">1 = 允许设备主动发起访问（如 DMA）</text>
+  <rect x="430" y="225" width="374" height="50" rx="8" class="flag"/>
+  <text x="444" y="245" font-size="14" font-weight="700" class="ink">bit 10 · Interrupt Disable</text>
+  <text x="444" y="264" font-size="13" class="ink">1 = 禁止设备拉起 INTx</text>
+</svg>

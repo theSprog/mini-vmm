@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:lang="zh-CN" width="840" height="330" viewBox="0 0 840 330" role="img" aria-labelledby="title desc">
+  <title id="title">大小探测 · 4 KiB 内存 BAR</title>
+  <desc id="desc">32 位不可预取内存 BAR 写入 0xFFFFFFFF 后读回 0xFFFFF000：31:12 是可写地址位，11:4 是对齐所需的固定 0，3:0 是本例全为 0 的类型和属性。屏蔽低四位后在 32 位内取反加一，得到 0x1000，即 4 KiB。</desc>
+  <style>
+    text { font-family: system-ui, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; }
+    .ink { fill: #142d48; }
+    .muted { fill: #4c6481; }
+    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .surface { fill: #f5f8fc; stroke: #c8d5e5; }
+    .panel { fill: #fff; stroke: #a5b8cc; }
+    .blue { fill: #dbeafe; stroke: #85a9d5; }
+    .res { fill: #e9eff6; stroke: #a5b8cc; }
+    .flag { fill: #fff2df; stroke: #c2a174; }
+    .teal { fill: #d9eee9; stroke: #78aca5; }
+  </style>
+  <rect x="1" y="1" width="838" height="328" rx="19" class="surface"/>
+  <text x="36" y="44" font-size="23" font-weight="700" class="ink">大小探测 · 4 KiB 内存 BAR</text>
+  <text x="36" y="73" font-size="15" class="ink">例：32 位、不可预取 · 基址按 4 KiB 对齐</text>
+  <text x="36" y="105" font-size="15" font-weight="700" class="ink">① 写全 1</text>
+  <text x="804" y="105" font-size="15" font-weight="700" text-anchor="end" class="ink mono">0xFFFFFFFF</text>
+  <rect x="36" y="115" width="768" height="32" class="panel" data-bits="31:0"/>
+  <text x="420" y="136" font-size="15" font-weight="700" text-anchor="middle" class="ink">全部 32 位都写入 1</text>
+  <text x="36" y="177" font-size="15" font-weight="700" class="ink">② 读回 BAR</text>
+  <text x="804" y="177" font-size="15" font-weight="700" text-anchor="end" class="ink mono">0xFFFFF000</text>
+  <rect x="36" y="207" width="480" height="34" class="blue" data-bits="31:12"/>
+  <text x="276" y="197" font-size="12" font-weight="700" text-anchor="middle" class="muted">31:12</text>
+  <text x="276" y="229" font-size="15" font-weight="700" text-anchor="middle" class="ink">可写地址位 → 全 1</text>
+  <rect x="516" y="207" width="192" height="34" class="res" data-bits="11:4"/>
+  <text x="612" y="197" font-size="12" font-weight="700" text-anchor="middle" class="muted">11:4</text>
+  <text x="612" y="229" font-size="15" text-anchor="middle" class="muted">固定为 0</text>
+  <rect x="708" y="207" width="96" height="34" class="flag" data-bits="3:0"/>
+  <text x="756" y="197" font-size="12" font-weight="700" text-anchor="middle" class="muted">3:0</text>
+  <text x="756" y="229" font-size="14" font-weight="700" text-anchor="middle" class="ink">0000</text>
+  <text x="36" y="262" font-size="14" class="ink">11:4 因对齐固定为 0；3:0 是类型和属性，本例也都是 0。</text>
+  <rect x="36" y="277" width="768" height="34" rx="7" class="teal"/>
+  <text x="50" y="299" font-size="14" font-weight="700" class="ink">③ 屏蔽低 4 位 → 0xFFFFF000 → 32 位取反加 1</text>
+  <text x="790" y="299" font-size="14" font-weight="700" text-anchor="end" class="ink">0x1000 = 4 KiB</text>
+</svg>
