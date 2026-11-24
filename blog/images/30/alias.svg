@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="380" viewBox="0 0 1060 380" role="img" aria-label="同一物理代码的两个虚拟地址别名">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="380" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">同一物理代码的两个虚拟地址别名</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">软件断点修改字节；硬件执行断点匹配线性地址。</text>
+<text x="272" y="104" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#24384b">break *0x1000</text>
+<rect x="30" y="128" width="222" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="141.0" y="152.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GVA 0x1000</text>
+<text x="141.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">映射 A</text>
+<rect x="293" y="128" width="222" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="404.0" y="152.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GVA 0x2000</text>
+<text x="404.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">映射 B</text>
+<path d="M141 188 L273 245" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M404 188 L273 245" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="135" y="248" width="276" height="70" rx="10" fill="#fbecec" stroke="#bd5454" stroke-width="1.5"/>
+<text x="273.0" y="277.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GPA 0x3000</text>
+<text x="273.0" y="300.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">CC 01 D8</text>
+<text x="272" y="347" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#24384b">从 0x2000 执行也会 #BP</text>
+<text x="787" y="104" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#24384b">hbreak *0x1000</text>
+<rect x="545" y="128" width="222" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="656.0" y="152.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GVA 0x1000</text>
+<text x="656.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">映射 A</text>
+<rect x="808" y="128" width="222" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="919.0" y="152.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GVA 0x2000</text>
+<text x="919.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">映射 B</text>
+<path d="M656 188 L788 245" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M919 188 L788 245" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="650" y="248" width="276" height="70" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="788.0" y="277.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GPA 0x3000</text>
+<text x="788.0" y="300.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">48 01 D8 / DR0=0x1000</text>
+<text x="787" y="347" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#24384b">从 0x2000 执行不会匹配 DR0</text>
+</svg>

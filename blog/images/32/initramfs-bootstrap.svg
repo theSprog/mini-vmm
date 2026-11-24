@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="450" viewBox="0 0 1000 450" role="img">
+<title>挂载根文件系统的循环依赖</title><desc>模块若仅在根盘中，就需要先拥有读盘能力；内存中的 cpio 内容提供独立起点。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="450" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">挂载根文件系统的循环依赖</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">模块若仅在根盘中，就需要先拥有读盘能力；内存中的 cpio 内容提供独立起点。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="25" y="94" width="445" height="305" rx="8" fill="#fafcfe" stroke="#b34848" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="38" y="118" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#b34848" text-anchor="start">只依赖磁盘：循环</text>
+<rect x="55" y="140" width="380" height="64" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="245" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">根盘 ext4</text>
+<text x="245" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">包含 ahci.ko / sd_mod.ko / ext4.ko</text>
+<rect x="55" y="282" width="380" height="64" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="245" y="310" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">内核的读盘能力</text>
+<text x="245" y="332" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">需要这些驱动已可用</text>
+<polyline points="125,204 125,282" fill="none" stroke="#b34848" stroke-width="2" stroke-linejoin="round" marker-end="url(#red)"/>
+<text x="135" y="250" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#b34848" text-anchor="start">读取模块</text>
+<polyline points="355,282 355,204" fill="none" stroke="#b34848" stroke-width="2" stroke-linejoin="round" marker-end="url(#red)"/>
+<text x="345" y="250" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#b34848" text-anchor="end">挂载根盘</text>
+<rect x="495" y="94" width="480" height="305" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="508" y="118" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">引入独立的临时根</text>
+<rect x="515" y="140" width="200" height="64" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="615" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">内存 rootfs</text>
+<text x="615" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">cpio 解包</text>
+<rect x="745" y="140" width="210" height="64" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="850" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">磁盘 ext4</text>
+<text x="850" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">完整发行版</text>
+<rect x="515" y="270" width="440" height="65" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="735" y="298" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Linux 内核 / VFS</text>
+<text x="735" y="320" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">内建解包能力 + 已加载的驱动</text>
+<polyline points="615,204 615,270" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)"/>
+<text x="625" y="240" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#237b68" text-anchor="start">供给模块</text>
+<polyline points="850,270 850,204" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="860" y="240" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#2463a3" text-anchor="start">可挂载</text>
+<text x="28" y="432" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">Arch 本次所需驱动已内建；显式 MODULES 配置防止未来变为模块时失去启动依赖。</text>
+</svg>

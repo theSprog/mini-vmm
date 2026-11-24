@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" role="img">
+<title>离线验收网络：隔离 namespace 内的服务</title><desc>DHCP、HTTP 与 guest 共用一条虚拟以太网链路；不需要真实互联网。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="430" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">离线验收网络：隔离 namespace 内的服务</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">DHCP、HTTP 与 guest 共用一条虚拟以太网链路；不需要真实互联网。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="944" height="285" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">user + net namespace（unshare -rn）</text>
+<rect x="47" y="135" width="310" height="220" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="60" y="159" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">Host 侧服务</text>
+<rect x="65" y="175" width="274" height="55" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="202" y="198" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">dnsmasq</text>
+<text x="202" y="220" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">DHCP → 10.0.2.15</text>
+<rect x="65" y="272" width="274" height="55" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="202" y="295" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">http.server</text>
+<text x="202" y="317" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">arch-image/repo/</text>
+<rect x="400" y="202" width="160" height="84" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="480" y="240" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">tap0</text>
+<text x="480" y="262" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">10.0.2.2</text>
+<rect x="600" y="135" width="350" height="220" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="613" y="159" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">mini-vmm / Guest</text>
+<rect x="616" y="202" width="145" height="84" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="688" y="240" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">e1000</text>
+<text x="688" y="262" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">VMM 模型</text>
+<rect x="777" y="202" width="157" height="84" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="855" y="240" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">enp0s2</text>
+<text x="855" y="262" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">10.0.2.15</text>
+<polyline points="339,202 370,202 370,222 400,222" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="339,299 370,299 370,266 400,266" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="560,244 616,244" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<polyline points="761,244 777,244" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<text x="28" y="412" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">HTTP 提供本地 tree 包及仓库数据库；DHCPACK、HTTP 200 与 guest 安装结果相互印证。</text>
+</svg>

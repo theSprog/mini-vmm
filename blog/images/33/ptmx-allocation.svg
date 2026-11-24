@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" role="img">
+<title>一个分配入口，多对独立的 PTY</title><desc>/dev/ptmx 不是所有 master 共用的数据通道；每次 open 获得新的 pair。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="430" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">一个分配入口，多对独立的 PTY</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">/dev/ptmx 不是所有 master 共用的数据通道；每次 open 获得新的 pair。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="160" width="225" height="85" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="140" y="198" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">/dev/ptmx</text>
+<text x="140" y="220" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">open() 分配入口</text>
+<rect x="315" y="95" width="657" height="285" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="328" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">内核 PTY 实例与 devpts</text>
+<rect x="335" y="140" width="178" height="65" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="424" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">master fd 7</text>
+<text x="424" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">持有者的 fd</text>
+<rect x="750" y="140" width="202" height="65" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="851" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">/dev/pts/3</text>
+<text x="851" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">独立 slave 节点</text>
+<rect x="535" y="140" width="193" height="65" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="631" y="167" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#213247" text-anchor="middle">PTY 实例 3</text>
+<text x="631" y="187" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">关联的两端</text>
+<polyline points="513,172 535,172" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round"/>
+<polyline points="728,172 750,172" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round"/>
+<polyline points="253,202 280,202 280,172 335,172" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" stroke-dasharray="6 5"/>
+<rect x="335" y="258" width="178" height="65" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="424" y="286" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">master fd 8</text>
+<text x="424" y="308" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">持有者的 fd</text>
+<rect x="750" y="258" width="202" height="65" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="851" y="286" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">/dev/pts/4</text>
+<text x="851" y="308" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">独立 slave 节点</text>
+<rect x="535" y="258" width="193" height="65" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="631" y="285" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#213247" text-anchor="middle">PTY 实例 4</text>
+<text x="631" y="305" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">关联的两端</text>
+<polyline points="513,290 535,290" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round"/>
+<polyline points="728,290 750,290" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round"/>
+<polyline points="253,202 280,202 280,290 335,290" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" stroke-dasharray="6 5"/>
+<text x="28" y="412" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">编号与 fd 仅示例；grantpt/unlockpt 准备 slave，master 通常没有独立 /dev/ptm/N 路径。</text>
+</svg>

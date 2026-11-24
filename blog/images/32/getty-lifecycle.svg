@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="455" viewBox="0 0 1000 455" role="img">
+<title>登录服务的进程树与稳定的 TTY</title><desc>进程身份与终端对象相互独立；systemd 管理服务而不是每次登录重建设备。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="455" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">登录服务的进程树与稳定的 TTY</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">进程身份与终端对象相互独立；systemd 管理服务而不是每次登录重建设备。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="560" height="307" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">用户态：serial-getty@ttyS0.service</text>
+<rect x="48" y="135" width="245" height="65" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="170" y="163" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">systemd · PID 1</text>
+<text x="170" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">Restart=always</text>
+<rect x="320" y="135" width="248" height="65" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="444" y="163" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">agetty / login</text>
+<text x="444" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">同一服务主进程的 exec</text>
+<rect x="320" y="278" width="248" height="65" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="444" y="306" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Bash 子进程</text>
+<text x="444" y="328" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">本章 login 等待它退出</text>
+<polyline points="293,166 320,166" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<polyline points="444,200 444,278" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)"/>
+<text x="455" y="244" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#a35c18" text-anchor="start">fork / wait</text>
+<polyline points="320,310 170,310 170,200" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" stroke-dasharray="6 5"/>
+<text x="64" y="296" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">退出后服务重启</text>
+<rect x="628" y="95" width="344" height="307" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="641" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">内核对象</text>
+<rect x="648" y="157" width="304" height="65" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="800" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">/dev/ttyS0</text>
+<text x="800" y="207" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">持续存在的 TTY</text>
+<rect x="648" y="288" width="304" height="55" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="800" y="311" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">虚拟 UART</text>
+<text x="800" y="333" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">硬件不重新初始化</text>
+<polyline points="568,166 648,166" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="568,310 610,310 610,198 648,198" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="800,222 800,288" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<text x="28" y="437" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">本章观察到 login 等待 Bash；具体 fork/exec 与 PAM 清理行为依实现而异。</text>
+</svg>

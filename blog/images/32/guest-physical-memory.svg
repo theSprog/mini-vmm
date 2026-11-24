@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="480" viewBox="0 0 1000 480" role="img">
+<title>入口时的 Guest 物理地址空间</title><desc>依据本章装载日志绘制；区间位置为示意，非线性比例。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="480" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">入口时的 Guest 物理地址空间</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">依据本章装载日志绘制；区间位置为示意，非线性比例。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="36" y="98" width="535" height="335" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="49" y="122" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">GPA 布局（高地址在上）</text>
+<text x="52" y="154" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x80000000</text>
+<rect x="260" y="133" width="295" height="34" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="407" y="156" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">2 GiB RAM 上界</text>
+<text x="52" y="198" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x40000000</text>
+<rect x="260" y="177" width="295" height="34" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="407" y="200" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">初始恒等映射 1 GiB 上界</text>
+<text x="52" y="241" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x3f000000</text>
+<rect x="260" y="220" width="295" height="34" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="407" y="243" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">initrd · 15,370,592 bytes</text>
+<text x="52" y="284" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x01000000</text>
+<rect x="260" y="263" width="295" height="34" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="407" y="286" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">bzImage payload · entry + 0x200</text>
+<text x="52" y="327" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x000e0000 / 0x9fc00</text>
+<rect x="260" y="306" width="295" height="34" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="407" y="329" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">ACPI / MP table</text>
+<text x="52" y="370" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">0x00020000 / 0x2000</text>
+<rect x="260" y="349" width="295" height="34" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="407" y="372" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">cmdline / 初始 CR3</text>
+<rect x="605" y="98" width="360" height="335" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="618" y="122" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">vCPU 0 入口状态</text>
+<rect x="625" y="145" width="320" height="55" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="785" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">RIP = 0x1000200</text>
+<text x="785" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">64-bit long mode</text>
+<rect x="625" y="233" width="320" height="55" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="785" y="256" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">CR3 = 0x2000</text>
+<text x="785" y="278" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">初始页表</text>
+<rect x="625" y="320" width="320" height="73" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="785" y="352" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">boot_params</text>
+<text x="785" y="374" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">描述 RAM、cmdline、initrd</text>
+<polyline points="625,172 590,172 590,284 555,284" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)"/>
+<polyline points="625,260 580,260 580,370 555,370" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="28" y="462" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">只标出原文日志明确给出的地址；未推测 boot_params 地址或未展示的 E820 项。</text>
+</svg>

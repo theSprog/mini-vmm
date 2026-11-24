@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="216" viewBox="0 0 960 216" role="img" aria-labelledby="title desc">
+  <title id="title">MSI Message Control：16 位位域</title>
+  <desc id="desc">从 bit 15 到 bit 0 依次为：7 位保留、1 位 Per-vector Masking Capable、1 位 64-bit Capable、3 位 MME、3 位 MMC、1 位 MSI Enable。示例 0x0081 只置位 bit 7 和 bit 0。</desc>
+  <rect width="960" height="216" rx="14" fill="#fbfcfe" stroke="#d6e0e9"/>
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, PingFang SC, sans-serif">
+    <text x="28" y="38" font-size="24" font-weight="600" fill="#20334a">MSI Message Control：16 位位域</text>
+    <text x="28" y="65" font-size="15" fill="#52667b">示例：AHCI 启用 MSI 后，配置空间偏移 0x42 的值为 0x0081。</text>
+    <g font-family="Consolas, DejaVu Sans Mono, monospace" text-anchor="middle" font-size="15" fill="#52667b">
+      <text x="90" y="99">15</text>
+      <text x="142" y="99">14</text>
+      <text x="194" y="99">13</text>
+      <text x="246" y="99">12</text>
+      <text x="298" y="99">11</text>
+      <text x="350" y="99">10</text>
+      <text x="402" y="99">9</text>
+      <text x="454" y="99">8</text>
+      <text x="506" y="99">7</text>
+      <text x="558" y="99">6</text>
+      <text x="610" y="99">5</text>
+      <text x="662" y="99">4</text>
+      <text x="714" y="99">3</text>
+      <text x="766" y="99">2</text>
+      <text x="818" y="99">1</text>
+      <text x="870" y="99">0</text>
+    </g>
+    <!-- 每位宽 52；用与重置值无关的颜色区分保留、只读和可写字段。 -->
+    <rect x="64" y="108" width="364" height="66" fill="#eff3f7" stroke="#66788a"/>
+    <rect x="428" y="108" width="52" height="66" fill="#e9f2fb" stroke="#1763a6"/>
+    <rect x="480" y="108" width="52" height="66" fill="#e9f2fb" stroke="#1763a6"/>
+    <rect x="532" y="108" width="156" height="66" fill="#e4f5ef" stroke="#087f70"/>
+    <rect x="688" y="108" width="156" height="66" fill="#e9f2fb" stroke="#1763a6"/>
+    <rect x="844" y="108" width="52" height="66" fill="#e4f5ef" stroke="#087f70"/>
+    <g text-anchor="middle" font-size="16" font-weight="600">
+      <text x="246" y="133" fill="#52667b">保留</text>
+      <text x="454" y="133" fill="#1763a6">PVM</text>
+      <text x="506" y="133" fill="#1763a6">64b</text>
+      <text x="610" y="133" fill="#087f70">MME</text>
+      <text x="766" y="133" fill="#1763a6">MMC</text>
+      <text x="870" y="133" fill="#087f70">EN</text>
+    </g>
+    <g font-family="Consolas, DejaVu Sans Mono, monospace" text-anchor="middle" font-size="16" fill="#20334a">
+      <text x="246" y="158">0000000</text>
+      <text x="454" y="158">0</text>
+      <text x="506" y="158">1</text>
+      <text x="610" y="158">000</text>
+      <text x="766" y="158">000</text>
+      <text x="870" y="158">1</text>
+    </g>
+    <g font-size="14" text-anchor="middle">
+      <text x="328" y="198" fill="#52667b">灰色：保留</text>
+      <text x="480" y="198" fill="#1763a6">蓝色：只读</text>
+      <text x="632" y="198" fill="#087f70">绿色：可读写</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="455" viewBox="0 0 1000 455" role="img">
+<title>TTY 是公共抽象，不等于一种硬件</title><desc>多个后端共享终端语义；应用的 fd 绑定具体 TTY 对象。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="455" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">TTY 是公共抽象，不等于一种硬件</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">多个后端共享终端语义；应用的 fd 绑定具体 TTY 对象。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="944" height="76" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">用户态</text>
+<rect x="48" y="127" width="270" height="33" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="183" y="149" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Bash / Vim</text>
+<rect x="365" y="127" width="270" height="33" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="500" y="149" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">read / write</text>
+<rect x="682" y="127" width="270" height="33" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="817" y="149" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">ioctl / termios</text>
+<rect x="28" y="187" width="944" height="124" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="211" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">TTY 子系统</text>
+<rect x="48" y="222" width="435" height="69" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="265" y="252" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">TTY core</text>
+<text x="265" y="274" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">对象 / 生命周期 / 设备接口</text>
+<rect x="517" y="222" width="435" height="69" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="734" y="252" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Line discipline · N_TTY</text>
+<text x="734" y="274" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">行缓冲 / 回显 / 信号</text>
+<polyline points="483,255 517,255" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<polyline points="500,160 500,222" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<polyline points="817,160 817,222" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<rect x="28" y="355" width="294" height="64" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="175" y="383" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Serial TTY</text>
+<text x="175" y="405" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">UART / ttyS0</text>
+<polyline points="175,355 175,330 500,330 500,311" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<rect x="353" y="355" width="294" height="64" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="500" y="383" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Virtual console</text>
+<text x="500" y="405" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">键盘 + 屏幕 / tty1</text>
+<polyline points="500,355 500,330 500,330 500,311" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<rect x="678" y="355" width="294" height="64" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="825" y="383" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">PTY</text>
+<text x="825" y="405" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">软件端点 / pts/N</text>
+<polyline points="825,355 825,330 500,330 500,311" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<text x="28" y="437" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">公共层内仍有具体驱动配置差异；图表达职责分层，而非精确函数调用栈。</text>
+</svg>

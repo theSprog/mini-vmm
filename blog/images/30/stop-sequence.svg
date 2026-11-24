@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="630" viewBox="0 0 1060 630" role="img" aria-label="一次 all-stop 如何从 vCPU 事件变成 GDB 应答">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="630" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">一次 all-stop 如何从 vCPU 事件变成 GDB 应答</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">以 vCPU 0 命中硬件断点、vCPU 1 正在 KVM_RUN 为例。</text>
+<text x="180" y="104" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">vCPU 0 线程</text>
+<path d="M180 116 L180 551" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<text x="530" y="104" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">vCPU 1 线程</text>
+<path d="M530 116 L530 551" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<text x="880" y="104" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">gdbstub 线程</text>
+<path d="M880 116 L880 585" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<rect x="45" y="125" width="270" height="66" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="180.0" y="152.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">KVM_EXIT_DEBUG</text>
+<text x="180.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">#DB / DR6.B0</text>
+<rect x="45" y="211" width="270" height="76" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="180.0" y="232.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">stop_all_locked</text>
+<text x="180.0" y="255.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">run[0] = run[1] = false</text>
+<text x="180.0" y="278.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">immediate_exit=1</text>
+<path d="M180 191 L180 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M315 265 H394" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="355" y="251" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">SIGUSR1</text>
+<rect x="395" y="255" width="270" height="64" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="530.0" y="281.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">KVM_RUN → EINTR</text>
+<text x="530.0" y="304.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">进入安全退出点</text>
+<path d="M315 222 H818 V342" stroke="#4778a6" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="665" y="208" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">发出 SIGUSR1 后写 eventfd</text>
+<rect x="745" y="343" width="270" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="880.0" y="367.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">poll 返回</text>
+<text x="880.0" y="390.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">wait_all_stopped_locked</text>
+<path d="M880 403 V480" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="45" y="365" width="270" height="72" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="180.0" y="395.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">parked[0] = true</text>
+<text x="180.0" y="418.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">广播 cond，等待 run[0]</text>
+<rect x="395" y="365" width="270" height="72" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="530.0" y="395.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">parked[1] = true</text>
+<text x="530.0" y="418.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">广播 cond，等待 run[1]</text>
+<path d="M180 287 L180 365" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M530 319 L530 365" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M315 437 L745 480" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M665 420 L745 480" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="745" y="481" width="270" height="64" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="880.0" y="507.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">两者均已 parked</text>
+<text x="880.0" y="530.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">rsp_report_stop</text>
+<rect x="745" y="556" width="270" height="50" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="880.0" y="587.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">T05thread:1;hwbreak:;</text>
+<path d="M880 545 L880 556" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="180" y="575" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">等待运行许可</text>
+<text x="530" y="575" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">等待运行许可</text>
+</svg>

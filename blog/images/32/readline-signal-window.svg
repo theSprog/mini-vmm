@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="440" viewBox="0 0 1000 440" role="img">
+<title>相同信号序列，不同的等待窗口</title><desc>对比两种调度情形；关键在于 terminating_signal 与 pselect 的先后关系。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247" /></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c" /></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3" /></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68" /></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18" /></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848" /></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90" /></marker></defs>
+<rect width="1000" height="440" rx="12" fill="#ffffff" />
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">相同信号序列，不同的等待窗口</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">对比两种调度情形；关键在于 terminating_signal 与 pselect 的先后关系。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round" />
+<rect x="28" y="110" width="944" height="135" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="41" y="134" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">正常关机</text>
+<text x="46" y="171" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">readline</text>
+<text x="46" y="214" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">bash</text>
+<polyline points="150,165 945,165" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<polyline points="150,208 945,208" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<rect x="440" y="150" width="340" height="31" rx="8" fill="#eef2f7" stroke="#667b90" stroke-width="1.4" />
+<text x="610" y="171" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#213247" text-anchor="middle">pselect 等待</text>
+<polyline points="565,141 565,208" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" />
+<text x="573" y="141" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#237b68" text-anchor="start">SIGHUP</text>
+<text x="805" y="157" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#237b68" text-anchor="start">EINTR / hook</text>
+<text x="805" y="202" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#237b68" text-anchor="start">退出</text>
+<text x="160" y="200" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">处理函数记录标志</text>
+<rect x="28" y="265" width="944" height="135" rx="8" fill="#fafcfe" stroke="#b34848" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="41" y="289" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#b34848" text-anchor="start">慢关机</text>
+<text x="46" y="326" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">readline</text>
+<text x="46" y="369" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">bash</text>
+<polyline points="150,320 945,320" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<polyline points="150,363 945,363" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<rect x="440" y="305" width="340" height="31" rx="8" fill="#eef2f7" stroke="#667b90" stroke-width="1.4" />
+<text x="610" y="326" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#213247" text-anchor="middle">pselect 等待</text>
+<polyline points="350,296 350,363" fill="none" stroke="#b34848" stroke-width="2" stroke-linejoin="round" marker-end="url(#red)" />
+<text x="358" y="296" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#b34848" text-anchor="start">SIGHUP</text>
+<text x="805" y="312" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#b34848" text-anchor="start">继续睡眠</text>
+<text x="805" y="357" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#b34848" text-anchor="start">90 s 后 SIGKILL</text>
+<text x="160" y="355" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">处理函数记录标志</text>
+<text x="28" y="422" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">示意时间轴非实测比例；慢路径中标志已设置，但没有新的信号使 pselect 返回 EINTR。</text>
+</svg>

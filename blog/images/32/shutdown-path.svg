@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img">
+<title>关机涉及两种不同的设备语义</title><desc>文件系统持久化与整机 reset/poweroff 是独立职责，共同受 systemd 关机协调。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="470" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">关机涉及两种不同的设备语义</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">文件系统持久化与整机 reset/poweroff 是独立职责，共同受 systemd 关机协调。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="944" height="105" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">Guest 用户态</text>
+<rect x="48" y="137" width="435" height="47" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="265" y="166" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">systemd-shutdown / exitrd · 卸载旧根</text>
+<rect x="517" y="137" width="435" height="47" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="734" y="166" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">reboot / poweroff 请求</text>
+<rect x="28" y="215" width="944" height="108" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="239" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">Guest 内核</text>
+<rect x="48" y="253" width="435" height="50" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="265" y="284" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">ext4 / sd / libata：FLUSH CACHE EXT</text>
+<rect x="517" y="253" width="435" height="50" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="734" y="284" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">i8042 (0xFE) / ACPI PM1a (S5)</text>
+<rect x="28" y="338" width="944" height="86" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="362" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">Host / mini-vmm</text>
+<rect x="48" y="371" width="435" height="40" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="265" y="397" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">AHCI 后端：fdatasync(disk_fd)</text>
+<rect x="517" y="371" width="435" height="40" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="734" y="397" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">原地复位 / 结束 VMM 进程</text>
+<polyline points="265,184 265,253" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)"/>
+<polyline points="265,303 265,371" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<polyline points="735,184 735,253" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)"/>
+<polyline points="735,303 735,371" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="28" y="452" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">左侧是缓存持久化契约；右侧是整机控制契约。图不表示两者可任意颠倒时序。</text>
+</svg>

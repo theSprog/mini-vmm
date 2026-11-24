@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="485" viewBox="0 0 1000 485" role="img">
+<title>虚拟串口连接两个操作系统的终端环境</title><desc>Host 与 Guest 的 TTY 是独立对象，VMM 模拟的是 UART 硬件契约。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="485" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">虚拟串口连接两个操作系统的终端环境</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">Host 与 Guest 的 TTY 是独立对象，VMM 模拟的是 UART 硬件契约。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="944" height="155" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">Host Linux</text>
+<rect x="48" y="140" width="255" height="76" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="175" y="174" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Host 终端窗口</text>
+<text x="175" y="196" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">显示 / 键盘</text>
+<rect x="328" y="128" width="300" height="95" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="341" y="152" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">Host PTY</text>
+<rect x="340" y="166" width="134" height="40" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="407" y="192" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Master</text>
+<rect x="482" y="166" width="134" height="40" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="549" y="192" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Slave</text>
+<polyline points="474,186 482,186" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round"/>
+<rect x="652" y="140" width="300" height="76" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="802" y="174" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">mini-vmm</text>
+<text x="802" y="196" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">持有 Host slave / UART 模型</text>
+<polyline points="303,178 328,178" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<polyline points="628,178 652,178" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" marker-start="url(#blue)"/>
+<rect x="28" y="265" width="944" height="170" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="289" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">Guest Linux</text>
+<rect x="48" y="315" width="255" height="76" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="175" y="349" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Guest Bash</text>
+<text x="175" y="371" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">fd 0/1/2</text>
+<rect x="328" y="315" width="300" height="76" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="478" y="349" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">TTY / ttyS0</text>
+<text x="478" y="371" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">line discipline</text>
+<rect x="652" y="315" width="300" height="76" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="802" y="349" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">8250 / 16550 驱动</text>
+<text x="802" y="371" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">PIO / IRQ</text>
+<polyline points="303,353 328,353" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="628,353 652,353" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="802,216 802,315" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)" marker-start="url(#orange)"/>
+<text x="814" y="277" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#a35c18" text-anchor="start">虚拟硬件边界</text>
+<text x="28" y="467" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">Guest 不需要 PTY；Host 字符后端若不是 PTY，左上连接可以替换，Guest 的接口不变。</text>
+</svg>

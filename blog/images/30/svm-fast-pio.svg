@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="547" viewBox="0 0 1060 547" role="img" aria-labelledby="title desc">
+  <title id="title">AMD SVM：非字符串 PIO IN 如何跨越两次 KVM_RUN</title>
+  <desc id="desc">第一次 KVM_RUN 中，IN AL, DX 触发 SVM 的 IOIO 拦截。若端口由 VMM 模拟，KVM 保存线性 RIP 和续延回调，以 KVM_EXIT_IO 返回。用户态填充共享 PIO 缓冲区，再次调用 KVM_RUN。KVM 校验 RIP，写回 AL，推进 RIP，随后检查 immediate_exit，不再进入 guest。</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#65788c"/>
+    </marker>
+  </defs>
+  <rect width="1060" height="547" rx="18" fill="#fff" stroke="#dce3eb"/>
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" fill="#24384b">
+    <text x="30" y="38" font-size="24" font-weight="700">AMD SVM：非字符串 PIO IN 如何跨越两次 KVM_RUN</text>
+    <text x="30" y="67" font-size="15" fill="#65788c">Linux v6.6；以 VMM 模拟端口、完成 I/O 后立即暂停为例。</text>
+
+    <rect x="40" y="94" width="980" height="126" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+    <text x="65" y="121" font-size="18" font-weight="700">第一次 KVM_RUN · KVM 接住尚未完成的 IN</text>
+    <text x="65" y="150" font-size="16">Guest 执行 IN AL, DX → IOIO 拦截 → io_interception() → kvm_fast_pio() → kvm_fast_pio_in()</text>
+    <text x="65" y="177" font-size="16">emulator_pio_in() → emulator_pio_in_out()：内核未处理该端口，准备 KVM_EXIT_IO</text>
+    <text x="65" y="204" font-size="16">保存 arch.pio.linear_rip，注册 complete_fast_pio_in()</text>
+
+    <rect x="40" y="258" width="980" height="68" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+    <text x="65" y="284" font-size="18" font-weight="700">VMM · 模拟设备</text>
+    <text x="65" y="309" font-size="16">从设备取回 0x42，写入共享 pio_data；以 immediate_exit = 1 再调用 KVM_RUN。</text>
+
+    <rect x="40" y="364" width="980" height="149" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+    <text x="65" y="391" font-size="18" font-weight="700">第二次 KVM_RUN · KVM 先完成旧 IN，再处理暂停请求</text>
+    <text x="65" y="420" font-size="16">complete_fast_pio_in()：检查线性 RIP 仍匹配；若已变化，丢弃这次 PIO。</text>
+    <text x="65" y="447" font-size="16">complete_emulator_pio_in() 取回 0x42、清 pio.count；kvm_rax_write() 只更新 AL 对应的位。</text>
+    <text x="65" y="474" font-size="16">kvm_skip_emulated_instruction() 将 RIP 推进到下一条指令。</text>
+    <text x="65" y="501" font-size="16" font-weight="700">回调成功后检查 immediate_exit，返回 EINTR；没有 VM entry。</text>
+
+    <g fill="none" stroke="#65788c" stroke-width="1.8" marker-end="url(#arr)">
+      <path d="M530 220 V257"/>
+      <path d="M530 326 V363"/>
+    </g>
+    <g font-size="14" fill="#53687a">
+      <text x="548" y="243">KVM_EXIT_IO</text>
+      <text x="548" y="349">KVM_RUN</text>
+    </g>
+  </g>
+</svg>

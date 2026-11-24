@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="375" viewBox="0 0 1060 375" role="img" aria-label="Detach：先恢复现场，再撤掉机制">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="375" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">Detach：先恢复现场，再撤掉机制</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">正常 D 命令和连接意外中断共享清理语义。</text>
+<text x="190.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">收敛</text>
+<rect x="30" y="113" width="320" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="190.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">停止请求</text>
+<text x="190.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">等待所有 vCPU 安全暂停</text>
+<path d="M190.0 187 L190.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="213" width="320" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="190.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">检查 parked</text>
+<text x="190.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">不允许边运行边改代码</text>
+<text x="530.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">清理</text>
+<rect x="370" y="113" width="320" height="74" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="530.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">恢复所有 saved_byte</text>
+<text x="530.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">撤销软件断点</text>
+<path d="M530.0 187 L530.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="370" y="213" width="320" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="530.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">清除调试器 DR / 单步</text>
+<text x="530.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">关闭 guest debug</text>
+<text x="870.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">恢复</text>
+<rect x="710" y="113" width="320" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="870.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">run[i] = true</text>
+<text x="870.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">广播条件变量</text>
+<path d="M870.0 187 L870.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="710" y="213" width="320" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="870.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">vCPU 离开暂停点</text>
+<text x="870.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">清 immediate_exit 后继续</text>
+<text x="530.0" y="351" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#39816b">如果先关闭拦截、却留下 CC，Guest 可能收到本不属于它的 #BP。</text>
+</svg>

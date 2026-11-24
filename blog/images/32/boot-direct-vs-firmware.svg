@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="410" viewBox="0 0 1000 410" role="img">
+<title>两种装载者，共同的 Linux 启动契约</title><desc>以双方都采用 Linux 64 位启动协议为例，比较由谁构造入口环境。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247" /></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c" /></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3" /></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68" /></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18" /></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848" /></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90" /></marker></defs>
+<rect width="1000" height="410" rx="12" fill="#ffffff" />
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">两种装载者，共同的 Linux 启动契约</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">以双方都采用 Linux 64 位启动协议为例，比较由谁构造入口环境。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round" />
+<rect x="28" y="95" width="350" height="240" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">真实机器</text>
+<rect x="48" y="135" width="310" height="65" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4" />
+<text x="203" y="163" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">固件 + 引导器</text>
+<text x="203" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">从启动介质读取内核</text>
+<rect x="48" y="244" width="310" height="65" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="203" y="272" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">磁盘 / 启动介质</text>
+<text x="203" y="294" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">内核与 initramfs</text>
+<polyline points="203,244 203,200" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" />
+<rect x="622" y="95" width="350" height="240" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="635" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">mini-vmm / Host</text>
+<rect x="642" y="135" width="310" height="65" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4" />
+<text x="797" y="163" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">VMM 直接装载器</text>
+<text x="797" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">不执行 guest 固件</text>
+<rect x="642" y="244" width="310" height="65" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="797" y="272" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Host 文件</text>
+<text x="797" y="294" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">bzImage + initramfs</text>
+<polyline points="797,244 797,200" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" />
+<rect x="400" y="132" width="200" height="170" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4" />
+<text x="500" y="160" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Linux 入口环境</text>
+<text x="500" y="184" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">64 位启动协议</text>
+<polyline points="358,166 400,166" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<polyline points="642,166 600,166" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<text x="500" y="220" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#213247" text-anchor="middle">boot_params / E820</text>
+<text x="500" y="245" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#213247" text-anchor="middle">CPU 寄存器 / 内存</text>
+<text x="500" y="270" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#213247" text-anchor="middle">内核与 initrd</text>
+<text x="28" y="392" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">真实机器的引导也可以采用其他入口，取决于固件和引导器。</text>
+</svg>

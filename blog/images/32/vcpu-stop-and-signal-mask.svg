@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="465" viewBox="0 0 1000 465" role="img">
+<title>停机意图、唤醒与信号掩码是不同状态</title><desc>实际故障：vCPU1–3 的 SIGUSR1 已 pending，但仍被阻塞。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="465" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">停机意图、唤醒与信号掩码是不同状态</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">实际故障：vCPU1–3 的 SIGUSR1 已 pending，但仍被阻塞。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="360" height="325" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">控制线程 / 共享状态</text>
+<rect x="48" y="140" width="320" height="60" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="208" y="166" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">stop = true</text>
+<text x="208" y="188" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">VMM 停止意图</text>
+<rect x="48" y="225" width="320" height="60" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="208" y="251" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">immediate_exit = 1</text>
+<text x="208" y="273" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">KVM_RUN 入口检查</text>
+<rect x="48" y="335" width="320" height="55" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="208" y="358" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">pthread_kill(SIGUSR1)</text>
+<text x="208" y="380" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">唤醒 / 打断请求</text>
+<rect x="465" y="95" width="507" height="325" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="478" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">vCPU1–3（每个线程各自的 mask）</text>
+<rect x="485" y="140" width="467" height="58" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="718" y="165" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">KVM_RUN / kvm_vcpu_block</text>
+<text x="718" y="187" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">正在等待；共享字段不是通知</text>
+<rect x="485" y="232" width="220" height="65" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="595" y="260" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">SigPnd = 0x200</text>
+<text x="595" y="282" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">信号已经产生</text>
+<rect x="732" y="232" width="220" height="65" rx="8" fill="#fceeed" stroke="#b34848" stroke-width="1.4"/>
+<text x="842" y="260" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">SigBlk = 0x200</text>
+<text x="842" y="282" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">SIGUSR1 被阻塞</text>
+<polyline points="705,264 732,264" fill="none" stroke="#b34848" stroke-width="2" stroke-linejoin="round"/>
+<rect x="485" y="337" width="467" height="53" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="718" y="359" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">sigaction handler</text>
+<text x="718" y="381" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">已注册，但不能因此解除 mask</text>
+<polyline points="368,362 425,362 425,264 485,264" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)"/>
+<polyline points="368,255 440,255 440,169 485,169" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" stroke-dasharray="6 5"/>
+<polyline points="842,297 842,337" fill="none" stroke="#b34848" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<text x="856" y="321" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#b34848" text-anchor="start">阻断递送</text>
+<text x="28" y="447" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">pasta / shell 的 mask 经 fork、exec、pthread_create 继承；修复在创建 vCPU 之前 unmask。</text>
+</svg>

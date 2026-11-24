@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420" role="img">
+<title>差分测量：公共成本与负载增量</title><desc>以相同镜像和配置为基准；KVM 总 exit 不区分设备，故块与网络负载分开测。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="420" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">差分测量：公共成本与负载增量</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">以相同镜像和配置为基准；KVM 总 exit 不区分设备，故块与网络负载分开测。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<text x="35" y="148" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#213247" text-anchor="start">空载</text>
+<rect x="150" y="112" width="390" height="54" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="345" y="145" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="400" fill="#213247" text-anchor="middle">共同成本：启动 / DHCP / 关机</text>
+<text x="35" y="231" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#213247" text-anchor="start">blk</text>
+<rect x="150" y="195" width="390" height="54" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="345" y="228" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="400" fill="#213247" text-anchor="middle">共同成本：启动 / DHCP / 关机</text>
+<rect x="540" y="195" width="390" height="54" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="735" y="228" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="400" fill="#213247" text-anchor="middle">fio · 16384 次 4 KiB 读</text>
+<text x="35" y="314" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#213247" text-anchor="start">net</text>
+<rect x="150" y="278" width="390" height="54" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="345" y="311" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="400" fill="#213247" text-anchor="middle">共同成本：启动 / DHCP / 关机</text>
+<rect x="540" y="278" width="390" height="54" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="735" y="311" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="400" fill="#213247" text-anchor="middle">iperf3 · 双向各 64 MiB</text>
+<text x="150" y="378" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" fill="#2463a3" text-anchor="start">负载增量 = 负载运行计数 − 空载运行计数</text>
+<text x="28" y="402" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">条块长度仅示意集合关系，不代表测得的 exit 数或耗时。</text>
+</svg>

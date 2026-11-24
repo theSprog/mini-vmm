@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" role="img">
+<title>PTY 的两端不对称：输入语义属于 Slave</title><desc>两侧都能 read/write；同一字节从不同端点进入，会获得不同语义。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247" /></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c" /></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3" /></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68" /></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18" /></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848" /></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90" /></marker></defs>
+<rect width="1000" height="470" rx="12" fill="#ffffff" />
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">PTY 的两端不对称：输入语义属于 Slave</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">两侧都能 read/write；同一字节从不同端点进入，会获得不同语义。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round" />
+<rect x="28" y="176" width="200" height="112" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4" />
+<text x="128" y="228" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Terminal Emulator</text>
+<text x="128" y="250" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">键盘 / 屏幕</text>
+<rect x="772" y="176" width="200" height="112" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4" />
+<text x="872" y="228" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Shell / Vim</text>
+<text x="872" y="250" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">fd 0 / 1 / 2</text>
+<rect x="250" y="96" width="500" height="323" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="263" y="120" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">内核 PTY pair</text>
+<rect x="270" y="148" width="120" height="245" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4" />
+<text x="330" y="222" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Master</text>
+<text x="330" y="242" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">外部端点</text>
+<rect x="610" y="148" width="120" height="245" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="670" y="222" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Slave</text>
+<text x="670" y="242" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">应用端点</text>
+<rect x="410" y="148" width="180" height="90" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4" />
+<text x="500" y="189" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">输入处理</text>
+<text x="500" y="211" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">ICANON / ISIG</text>
+<rect x="410" y="292" width="180" height="72" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="500" y="324" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">输出处理</text>
+<text x="500" y="346" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">OPOST 等</text>
+<polyline points="228,190 270,190" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<polyline points="390,190 410,190" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<polyline points="590,190 610,190" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<polyline points="730,190 772,190" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)" />
+<polyline points="772,260 730,260 730,328 590,328" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" />
+<polyline points="410,328 390,328 390,260 228,260" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" />
+<polyline points="500,238 500,265 330,265" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)" stroke-dasharray="6 5" />
+<text x="500" y="280" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#a35c18" text-anchor="middle">ECHO 回显</text>
+<text x="128" y="154" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="400" fill="#213247" text-anchor="middle">write(master) / read(master)</text>
+<text x="872" y="154" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="13" font-weight="400" fill="#213247" text-anchor="middle">read(slave) / write(slave)</text>
+<text x="28" y="452" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">蓝色：输入；绿色：输出；橙色：可选回显。输出不会等待输入行编辑完成。</text>
+</svg>

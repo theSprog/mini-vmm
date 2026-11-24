@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="450" viewBox="0 0 1000 450" role="img">
+<title>真实驱动的自恢复会掩盖系统复位缺陷</title><desc>两种 VMM 状态在 probe 之后可能变得不可区分；专项测试观察未被覆盖的寄存器。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="450" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">真实驱动的自恢复会掩盖系统复位缺陷</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">两种 VMM 状态在 probe 之后可能变得不可区分；专项测试观察未被覆盖的寄存器。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="455" height="265" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">正确的系统复位</text>
+<rect x="517" y="95" width="455" height="265" rx="8" fill="#fafcfe" stroke="#b34848" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="530" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#b34848" text-anchor="start">mutant：漏调 reset 回调</text>
+<rect x="46" y="142" width="419" height="60" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="255" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">设备上电状态</text>
+<text x="255" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">系统复位后的可见状态</text>
+<rect x="46" y="265" width="419" height="60" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="255" y="291" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Linux driver probe</text>
+<text x="255" y="313" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">HOST_RESET / CTRL.RST</text>
+<polyline points="255,202 255,265" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="255" y="345" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#237b68" text-anchor="middle">驱动重新配置 → 正常启动</text>
+<rect x="535" y="142" width="419" height="60" rx="8" fill="#fceeed" stroke="#b34848" stroke-width="1.4"/>
+<text x="744" y="168" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">旧 DMA 地址 / 中断状态</text>
+<text x="744" y="190" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">系统复位后的可见状态</text>
+<rect x="535" y="265" width="419" height="60" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="744" y="291" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Linux driver probe</text>
+<text x="744" y="313" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">HOST_RESET / CTRL.RST</text>
+<polyline points="744,202 744,265" fill="none" stroke="#2463a3" stroke-width="2" stroke-linejoin="round" marker-end="url(#blue)"/>
+<text x="744" y="345" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#237b68" text-anchor="middle">驱动重新配置 → 正常启动</text>
+<rect x="28" y="375" width="944" height="39" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4"/>
+<text x="500" y="400" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">system-reset 专项测试：scratch / cache line size 不由驱动覆盖，直接读回</text>
+<text x="28" y="432" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">两个集成测试结果都可能为 PASS；只有能区分错误状态的测试才验证对应不变量。</text>
+</svg>

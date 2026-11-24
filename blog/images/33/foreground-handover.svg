@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="445" viewBox="0 0 1000 445" role="img">
+<title>前台是 TTY 的归属字段，而非新建通道</title><desc>同一组 fd、同一个控制终端；Shell 改变 foreground PGID 而不是代理全部 I/O。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="445" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">前台是 TTY 的归属字段，而非新建通道</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">同一组 fd、同一个控制终端；Shell 改变 foreground PGID 而不是代理全部 I/O。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="95" width="944" height="300" rx="8" fill="#fafcfe" stroke="#667b90" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#667b90" text-anchor="start">同一 Session（示意）</text>
+<rect x="350" y="132" width="300" height="70" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="500" y="163" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">TTY / slave</text>
+<text x="500" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">foreground PGID</text>
+<rect x="65" y="270" width="300" height="82" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="215" y="307" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Shell · PGID 100</text>
+<text x="215" y="329" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">等待命令 / 等待子进程</text>
+<rect x="635" y="270" width="300" height="82" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="785" y="307" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">sleep · PGID 200</text>
+<text x="785" y="329" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">前台作业</text>
+<polyline points="215,270 215,222 425,222 425,202" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" marker-start="url(#gray)"/>
+<polyline points="785,270 785,222 575,222 575,202" fill="none" stroke="#237b68" stroke-width="2" stroke-linejoin="round" marker-end="url(#green)" marker-start="url(#green)"/>
+<polyline points="365,310 635,310" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 5"/>
+<text x="500" y="298" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="middle">父子关系 / wait</text>
+<text x="500" y="245" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="700" fill="#2463a3" text-anchor="middle">前台值：空闲 100 / 执行 sleep 200 / 结束 100</text>
+<text x="28" y="427" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">Shell 使用 tcsetpgrp 设置前台；Ctrl+C 由内核送往当前前台组，而非所有打开 slave 的进程。</text>
+</svg>

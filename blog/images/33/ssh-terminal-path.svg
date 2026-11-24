@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="440" viewBox="0 0 1000 440" role="img">
+<title>SSH 是跨主机的终端后端</title><desc>本地 client 使用本地终端；远端 sshd 提供远端 PTY，网络不传输屏幕像素。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247" /></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c" /></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3" /></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68" /></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18" /></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848" /></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90" /></marker></defs>
+<rect width="1000" height="440" rx="12" fill="#ffffff" />
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">SSH 是跨主机的终端后端</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">本地 client 使用本地终端；远端 sshd 提供远端 PTY，网络不传输屏幕像素。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round" />
+<rect x="28" y="95" width="389" height="300" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="41" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">本地 Linux</text>
+<rect x="48" y="137" width="349" height="58" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4" />
+<text x="222" y="162" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Terminal Emulator</text>
+<text x="222" y="184" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">本地窗口</text>
+<rect x="48" y="214" width="349" height="95" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="61" y="238" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">本地 PTY</text>
+<rect x="60" y="252" width="158" height="40" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4" />
+<text x="139" y="278" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Master</text>
+<rect x="226" y="252" width="158" height="40" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="305" y="278" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Slave</text>
+<polyline points="218,272 226,272" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<rect x="48" y="330" width="349" height="45" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4" />
+<text x="222" y="358" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">ssh client</text>
+<polyline points="152,195 152,252" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" marker-start="url(#gray)" />
+<polyline points="318,292 318,330" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" marker-start="url(#gray)" />
+<rect x="583" y="95" width="389" height="300" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="596" y="119" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">远端 Linux</text>
+<rect x="603" y="137" width="349" height="58" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="777" y="162" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Bash</text>
+<text x="777" y="184" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">远端应用</text>
+<rect x="603" y="214" width="349" height="95" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5" />
+<text x="616" y="238" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">远端 PTY</text>
+<rect x="615" y="252" width="158" height="40" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4" />
+<text x="694" y="278" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Master</text>
+<rect x="781" y="252" width="158" height="40" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4" />
+<text x="860" y="278" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Slave</text>
+<polyline points="773,272 781,272" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" />
+<rect x="603" y="330" width="349" height="45" rx="8" fill="#fff3df" stroke="#a35c18" stroke-width="1.4" />
+<text x="777" y="358" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">sshd</text>
+<polyline points="873,195 873,252" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" marker-start="url(#gray)" />
+<polyline points="683,292 683,330" fill="none" stroke="#667b90" stroke-width="2" stroke-linejoin="round" marker-end="url(#gray)" marker-start="url(#gray)" />
+<polyline points="397,352 603,352" fill="none" stroke="#a35c18" stroke-width="2" stroke-linejoin="round" marker-end="url(#orange)" marker-start="url(#orange)" />
+<text x="500" y="339" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" fill="#a35c18" text-anchor="middle">SSH / TCP</text>
+<text x="28" y="422" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">典型交互登录假设分配 PTY；ssh -T 不分配远端 PTY，普通命令可仅使用字节流。</text>
+</svg>

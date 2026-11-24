@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="475" viewBox="0 0 1060 475" role="img" aria-label="单步时，中断可能先于目标指令">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="475" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">单步时，中断可能先于目标指令</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">假设 LAPIC 有可注入的 pending IRQ，IF = 1。</text>
+<text x="275.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">无 BLOCKIRQ</text>
+<rect x="30" y="113" width="490" height="74" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="275.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">KVM_RUN</text>
+<text x="275.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">检查待注入事件</text>
+<path d="M275.0 187 L275.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="213" width="490" height="74" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="275.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">准备 IRQ 注入</text>
+<text x="275.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">VM entry 时先投递</text>
+<path d="M275.0 287 L275.0 311" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="313" width="490" height="74" rx="10" fill="#fbecec" stroke="#bd5454" stroke-width="1.5"/>
+<text x="275.0" y="344.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">IRQ Handler</text>
+<text x="275.0" y="367.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">原 ADD 可能尚未执行</text>
+<text x="785.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">有 BLOCKIRQ</text>
+<rect x="540" y="113" width="490" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="785.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">KVM_RUN</text>
+<text x="785.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">暂缓新中断投递</text>
+<path d="M785.0 187 L785.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="540" y="213" width="490" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="785.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">VM entry</text>
+<text x="785.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">执行 ADD（无其他异常时）</text>
+<path d="M785.0 287 L785.0 311" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="540" y="313" width="490" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="785.0" y="344.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">#DB → KVM_EXIT_DEBUG</text>
+<text x="785.0" y="367.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">RIP 指向 MOV</text>
+<text x="530.0" y="451" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#39816b">BLOCKIRQ 不清 IRR、不修改 Guest IF，也不保证屏蔽所有同步异常。</text>
+</svg>

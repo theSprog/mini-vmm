@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="479" viewBox="0 0 960 479" role="img" aria-labelledby="title desc">
+  <title id="title">MSI capability：64 位地址、无 per-vector mask</title>
+  <desc id="desc">以启用 MSI 后的 AHCI 为例。每行按 32 位绘制，高位在左。配置头的 8 位指针指向 0x40；capability 依次包含 8 位 ID、8 位 Next Pointer、16 位 Message Control、32 位地址低部分、32 位地址高部分和 16 位 Message Data。</desc>
+  <rect width="960" height="479" rx="14" fill="#fbfcfe" stroke="#d6e0e9"/>
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, PingFang SC, sans-serif">
+    <text x="28" y="38" font-size="24" font-weight="600" fill="#20334a">MSI capability：64 位地址、无 per-vector mask</text>
+    <text x="28" y="65" font-size="15" fill="#52667b">以本章启用 MSI 后的 AHCI 为例：每行 32 位，高位在左。</text>
+
+    <text x="698" y="113" text-anchor="end" font-size="16" fill="#52667b">配置头 0x34：Capability Pointer（8 位）</text>
+    <rect x="716" y="88" width="192" height="36" rx="6" fill="#eff3f7" stroke="#66788a" stroke-width="1.4"/>
+    <text x="812" y="112" text-anchor="middle" font-size="17" font-weight="600" fill="#20334a">0x40</text>
+
+    <g font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" text-anchor="middle" fill="#52667b">
+      <text x="152" y="166">31</text>
+      <text x="512" y="166">16</text>
+      <text x="536" y="166">15</text>
+      <text x="704" y="166">8</text>
+      <text x="728" y="166">7</text>
+      <text x="896" y="166">0</text>
+      <text x="84" y="213">0x40</text>
+      <text x="84" y="277">0x44</text>
+      <text x="84" y="341">0x48</text>
+      <text x="84" y="405">0x4C</text>
+    </g>
+
+    <!-- 每个配置空间位占 24 个 SVG 用户单位。 -->
+    <rect x="140" y="180" width="384" height="56" fill="#e9f2fb" stroke="#1763a6"/>
+    <rect x="524" y="180" width="192" height="56" fill="#eff3f7" stroke="#66788a"/>
+    <rect x="716" y="180" width="192" height="56" fill="#eff3f7" stroke="#66788a"/>
+    <rect x="140" y="244" width="768" height="56" fill="#e4f5ef" stroke="#087f70"/>
+    <rect x="140" y="308" width="768" height="56" fill="#e4f5ef" stroke="#087f70"/>
+    <rect x="140" y="372" width="384" height="56" fill="none" stroke="#a4b2bf" stroke-dasharray="5 5"/>
+    <rect x="524" y="372" width="384" height="56" fill="#e4f5ef" stroke="#087f70"/>
+
+    <g text-anchor="middle" font-size="17" font-weight="600">
+      <text x="332" y="203" fill="#1763a6">Message Control（16 位）</text>
+      <text x="620" y="203" fill="#52667b">Next Pointer（8 位）</text>
+      <text x="812" y="203" fill="#52667b">Capability ID（8 位）</text>
+      <text x="524" y="267" fill="#087f70">Message Address Low（32 位）</text>
+      <text x="524" y="331" fill="#087f70">Message Address High（32 位）</text>
+      <text x="716" y="395" fill="#087f70">Message Data（16 位）</text>
+    </g>
+    <text x="332" y="405" text-anchor="middle" font-size="16" fill="#52667b">0x4E–0x4F 不属于此结构</text>
+    <g font-family="Consolas, DejaVu Sans Mono, monospace" font-size="15" text-anchor="middle" fill="#20334a">
+      <text x="332" y="224">0x0081</text>
+      <text x="620" y="224">0x00</text>
+      <text x="812" y="224">0x05</text>
+      <text x="524" y="288">0xFEE00000</text>
+      <text x="524" y="352">0x00000000</text>
+      <text x="716" y="416">0x0021</text>
+    </g>
+    <text x="524" y="457" text-anchor="middle" font-size="15" fill="#52667b">MSI capability 从 0x40 到 0x4D，共 14 字节。</text>
+  </g>
+</svg>

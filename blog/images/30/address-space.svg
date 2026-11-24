@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="390" viewBox="0 0 1060 390" role="img" aria-label="断点匹配的是线性地址，修改的是物理字节">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="390" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">断点匹配的是线性地址，修改的是物理字节</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">x86-64 平坦地址空间示意；箭头表达地址语义，不代表流水线时序。</text>
+<rect x="30" y="140" width="200" height="82" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="130.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GVA / Linear</text>
+<text x="130.0" y="198.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">0xffffffff8310ea00</text>
+<rect x="300" y="140" width="200" height="82" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="400.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">GPA</text>
+<text x="400.0" y="198.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">Guest 物理地址</text>
+<rect x="570" y="140" width="200" height="82" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="670.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">HPA</text>
+<text x="670.0" y="198.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">Host 物理地址</text>
+<path d="M230 181 L300 181" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="265" y="128" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">Guest 页表</text>
+<path d="M500 181 L570 181" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="535" y="128" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">EPT / NPT</text>
+<rect x="30" y="265" width="200" height="75" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="130.0" y="297.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">DR0–DR3</text>
+<text x="130.0" y="320.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">比较 GVA，不改内存</text>
+<path d="M130 265 L130 222" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="810" y="140" width="220" height="82" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="920.0" y="175.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">HVA / VMM 指针</text>
+<text x="920.0" y="198.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">gpa_to_hva(GPA)</text>
+<path d="M810 181 L770 181" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M400 222 L400 267" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<text x="440" y="289" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">软件断点：GVA → GPA → HVA，写 CC</text>
+<text x="530" y="366" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#24384b">尚无映射时，hbreak 可以先配置；break 无法定位需要改写的字节。</text>
+</svg>

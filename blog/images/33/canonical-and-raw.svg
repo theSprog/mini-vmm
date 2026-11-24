@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="405" viewBox="0 0 1000 405" role="img">
+<title>同一串输入，两种交付规则</title><desc>模式改变的是终端处理策略，而不是窗口与程序之间的连接。</desc>
+<defs><marker id="ink" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#213247"/></marker><marker id="muted" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#52677c"/></marker><marker id="blue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#2463a3"/></marker><marker id="green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#237b68"/></marker><marker id="orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#a35c18"/></marker><marker id="red" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#b34848"/></marker><marker id="gray" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#667b90"/></marker></defs>
+<rect width="1000" height="405" rx="12" fill="#ffffff"/>
+<text x="28" y="35" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="700" fill="#213247" text-anchor="start">同一串输入，两种交付规则</text>
+<text x="28" y="62" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" fill="#52677c" text-anchor="start">模式改变的是终端处理策略，而不是窗口与程序之间的连接。</text>
+<polyline points="28,76 972,76" fill="none" stroke="#667b90" stroke-width="1" stroke-linejoin="round"/>
+<rect x="28" y="96" width="454" height="258" rx="8" fill="#fafcfe" stroke="#2463a3" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="41" y="120" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#2463a3" text-anchor="start">ICANON = ON</text>
+<text x="48" y="145" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="400" fill="#52677c" text-anchor="start">键盘输入</text>
+<rect x="48" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="85" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">a</text>
+<rect x="131" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="168" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">b</text>
+<rect x="214" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="251" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">DEL</text>
+<rect x="297" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="334" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">c</text>
+<rect x="380" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="417" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Enter</text>
+<rect x="48" y="218" width="414" height="55" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="255" y="241" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">内核处理 / 缓冲</text>
+<text x="255" y="263" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">ab → a → ac</text>
+<rect x="48" y="286" width="414" height="48" rx="8" fill="#eaf3fc" stroke="#2463a3" stroke-width="1.4"/>
+<text x="255" y="316" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">应用可读取：ac + LF</text>
+<rect x="518" y="96" width="454" height="258" rx="8" fill="#fafcfe" stroke="#237b68" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="531" y="120" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#237b68" text-anchor="start">Raw（简化）</text>
+<text x="538" y="145" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="400" fill="#52677c" text-anchor="start">键盘输入</text>
+<rect x="538" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="575" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">a</text>
+<rect x="621" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="658" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">b</text>
+<rect x="704" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="741" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">DEL</text>
+<rect x="787" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="824" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">c</text>
+<rect x="870" y="158" width="75" height="42" rx="8" fill="#f0f4f8" stroke="#667b90" stroke-width="1.4"/>
+<text x="907" y="185" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">Enter</text>
+<rect x="538" y="218" width="414" height="55" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="745" y="241" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">内核处理 / 缓冲</text>
+<text x="745" y="263" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="middle">不执行行编辑</text>
+<rect x="538" y="286" width="414" height="48" rx="8" fill="#e9f6f0" stroke="#237b68" stroke-width="1.4"/>
+<text x="745" y="316" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" fill="#213247" text-anchor="middle">应用可读取：a · b · DEL · c · CR</text>
+<text x="28" y="387" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" fill="#52677c" text-anchor="start">Raw 示例假设 Enter 产生 CR、退格产生 DEL；具体字节与 VMIN/VTIME 取决于终端配置。</text>
+</svg>

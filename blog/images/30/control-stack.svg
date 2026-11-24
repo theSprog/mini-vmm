@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="375" viewBox="0 0 1060 375" role="img" aria-label="GDB 如何控制一台虚拟机">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="375" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">GDB 如何控制一台虚拟机</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">协议、内核接口与硬件执行是三个不同的边界。</text>
+<text x="190.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">GDB / 用户态工具</text>
+<rect x="30" y="113" width="320" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="190.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">vmlinux + DWARF</text>
+<text x="190.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">函数名、源码、类型</text>
+<path d="M190.0 187 L190.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="213" width="320" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="190.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">RSP 请求</text>
+<text x="190.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">break / stepi / info registers</text>
+<text x="530.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">mini-vmm / 用户态</text>
+<rect x="370" y="113" width="320" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="530.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">gdbstub</text>
+<text x="530.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">RSP → target 操作</text>
+<path d="M530.0 187 L530.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="370" y="213" width="320" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="530.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">vCPU 线程</text>
+<text x="530.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">KVM_RUN / 停止协调</text>
+<text x="870.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">KVM / CPU</text>
+<rect x="710" y="113" width="320" height="74" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="870.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">KVM ioctl</text>
+<text x="870.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">GET_REGS / SET_GUEST_DEBUG</text>
+<path d="M870.0 187 L870.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="710" y="213" width="320" height="74" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="870.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">Guest 执行</text>
+<text x="870.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">VM entry / VMEXIT</text>
+<text x="530.0" y="351" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#39816b">VMEXIT 到 KVM，并不必然意味着 KVM_RUN 返回到 VMM。</text>
+</svg>

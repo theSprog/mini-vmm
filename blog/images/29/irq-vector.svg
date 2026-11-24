@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="395" viewBox="0 0 960 395" role="img" aria-labelledby="title desc">
+  <title id="title">不同 CPU 可以复用同一个 Vector 编号</title>
+  <desc id="desc">AHCI 和网卡的 MSI 分别投递给 CPU 0 和 CPU 1。两次投递的 Vector 编号都是 0x40，各 CPU 通过相同的入口代码查自己的 vector_irq，得到不同的 Linux IRQ。</desc>
+  <defs>
+    <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#1763a6"/>
+    </marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#087f70"/>
+    </marker>
+  </defs>
+  <rect width="960" height="395" rx="14" fill="#fbfcfe" stroke="#d6e0e9"/>
+  <g font-family="Noto Sans CJK SC, Microsoft YaHei, PingFang SC, sans-serif">
+    <text x="28" y="38" font-size="24" font-weight="600" fill="#20334a">不同 CPU 可以复用同一个 Vector 编号</text>
+    <text x="28" y="65" font-size="15" fill="#52667b">这是两次独立的 MSI 投递：入口代码可以共享，分派时只查当前 CPU 的表。</text>
+    <g text-anchor="middle" font-size="18">
+      <g fill="#e9f2fb" stroke="#1763a6" stroke-width="1.4">
+        <rect x="40" y="90" width="420" height="61" rx="8"/>
+        <rect x="40" y="250" width="420" height="48" rx="8"/>
+        <rect x="40" y="323" width="420" height="48" rx="8"/>
+      </g>
+      <g fill="#e4f5ef" stroke="#087f70" stroke-width="1.4">
+        <rect x="500" y="90" width="420" height="61" rx="8"/>
+        <rect x="500" y="250" width="420" height="48" rx="8"/>
+        <rect x="500" y="323" width="420" height="48" rx="8"/>
+      </g>
+      <g fill="#eff3f7" stroke="#66788a" stroke-width="1.4">
+        <rect x="40" y="177" width="420" height="48" rx="8"/>
+        <rect x="500" y="177" width="420" height="48" rx="8"/>
+      </g>
+      <g stroke="#1763a6" stroke-width="2" marker-end="url(#blue)">
+        <line x1="250" y1="151" x2="250" y2="176"/>
+        <line x1="250" y1="225" x2="250" y2="249"/>
+        <line x1="250" y1="298" x2="250" y2="322"/>
+      </g>
+      <g stroke="#087f70" stroke-width="2" marker-end="url(#green)">
+        <line x1="710" y1="151" x2="710" y2="176"/>
+        <line x1="710" y1="225" x2="710" y2="249"/>
+        <line x1="710" y1="298" x2="710" y2="322"/>
+      </g>
+      <g fill="#1763a6" font-weight="600">
+        <text x="250" y="115">AHCI 的 MSI → CPU 0 的 LAPIC</text>
+        <text x="250" y="137" font-size="15" font-weight="400">收到 Vector 0x40</text>
+        <text x="250" y="280">CPU 0 的 vector_irq[0x40] → irq_desc</text>
+        <text x="250" y="353">IRQ 24 → AHCI handler</text>
+      </g>
+      <g fill="#087f70" font-weight="600">
+        <text x="710" y="115">网卡的 MSI → CPU 1 的 LAPIC</text>
+        <text x="710" y="137" font-size="15" font-weight="400">收到 Vector 0x40</text>
+        <text x="710" y="280">CPU 1 的 vector_irq[0x40] → irq_desc</text>
+        <text x="710" y="353">IRQ 25 → 网卡 handler</text>
+      </g>
+      <g fill="#52667b" font-size="16" font-weight="600">
+        <text x="250" y="207">IDT[0x40] → 入口 stub → common_interrupt()</text>
+        <text x="710" y="207">IDT[0x40] → 入口 stub → common_interrupt()</text>
+      </g>
+    </g>
+  </g>
+</svg>

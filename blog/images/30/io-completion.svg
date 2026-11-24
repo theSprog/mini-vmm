@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="590" viewBox="0 0 1060 590" role="img" aria-label="第二次 KVM_RUN：完成旧指令，不执行新指令">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="590" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">第二次 KVM_RUN：完成旧指令，不执行新指令</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">例：0x1000 IN AL, DX；0x1001 MOV BL, AL；设备返回 0x42。</text>
+<text x="185" y="103" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">VMM 用户态</text>
+<path d="M185 113 L185 545" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<text x="530" y="103" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">Host KVM</text>
+<path d="M530 113 L530 545" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<text x="875" y="103" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#24384b">Guest CPU</text>
+<path d="M875 113 L875 545" stroke="#d5dee7" stroke-dasharray="5 5"/>
+<rect x="765" y="125" width="220" height="60" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="875.0" y="149.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">IN AL, DX</text>
+<text x="875.0" y="172.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">RIP=0x1000 / AL=0</text>
+<path d="M765 170 L650 205" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="710" y="175" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">VMEXIT</text>
+<rect x="420" y="207" width="220" height="60" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="530.0" y="231.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">准备 PIO 请求</text>
+<text x="530.0" y="254.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">保存 completion callback</text>
+<path d="M420 237 L295 237" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="357" y="226" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">KVM_EXIT_IO</text>
+<rect x="75" y="248" width="220" height="72" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="185.0" y="267.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">设备模拟完成</text>
+<text x="185.0" y="290.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">pio_data=0x42</text>
+<text x="185.0" y="313.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">immediate_exit=1</text>
+<path d="M295 330 L420 330" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="357" y="319" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">KVM_RUN</text>
+<rect x="420" y="345" width="220" height="75" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="530.0" y="365.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">complete_fast_pio_in</text>
+<text x="530.0" y="388.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">AL=0x42</text>
+<text x="530.0" y="411.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">RIP=0x1001</text>
+<rect x="420" y="441" width="220" height="60" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="530.0" y="465.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">检查 immediate_exit</text>
+<text x="530.0" y="488.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">返回 -EINTR</text>
+<path d="M530 420 L530 441" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M420 480 L295 480" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="357" y="469" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="14" font-weight="400" text-anchor="middle" fill="#53687a">EINTR</text>
+<rect x="75" y="487" width="220" height="56" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="185.0" y="509.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">parked=true</text>
+<text x="185.0" y="532.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">现在可安全读取现场</text>
+<rect x="765" y="365" width="220" height="90" rx="10" fill="#fbecec" stroke="#bd5454" stroke-width="1.5"/>
+<text x="875.0" y="393.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">MOV BL, AL</text>
+<text x="875.0" y="416.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">没有执行</text>
+<text x="875.0" y="439.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">没有 VM entry</text>
+<text x="530" y="570" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">VMEXIT 边界 ≠ 指令完成边界；KVM_RUN 也不等于 VM entry。</text>
+</svg>

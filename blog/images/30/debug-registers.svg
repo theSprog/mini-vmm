@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="375" viewBox="0 0 1060 375" role="img" aria-label="DR7 如何配置一个硬件执行断点">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="375" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">DR7 如何配置一个硬件执行断点</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">示例：DR0 = start_kernel 的线性地址，DR7 = 0x401。</text>
+<rect x="35" y="110" width="245" height="65" rx="10" fill="#f1edf9" stroke="#7863a1" stroke-width="1.5"/>
+<text x="157.5" y="137.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">DR0</text>
+<text x="157.5" y="160.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">目标线性地址</text>
+<rect x="35" y="195" width="245" height="65" rx="10" fill="#f1f4f7" stroke="#718096" stroke-width="1.5"/>
+<text x="157.5" y="222.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">DR1–DR3</text>
+<text x="157.5" y="245.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">其余断点槽</text>
+<rect x="340" y="110" width="685" height="90" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="682.5" y="149.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">DR7 = 0x401</text>
+<text x="682.5" y="172.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">bit 10 = 1（固定）；L0 = 1；RW0=00；LEN0=00</text>
+<path d="M280 142 L340 142" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="340" y="230" width="310" height="75" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="495.0" y="262.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">匹配执行地址</text>
+<text x="495.0" y="285.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">硬件产生 #DB</text>
+<rect x="715" y="230" width="310" height="75" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="870.0" y="262.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">DR6.B0 = 1</text>
+<text x="870.0" y="285.0" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">槽 0 命中；BS 表示单步</text>
+<path d="M683 200 L495 230" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<path d="M650 267 L715 267" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<text x="530" y="343" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#24384b">每槽：Ln 位于 2n，R/Wn 位于 16+4n，LENn 位于 18+4n。</text>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="475" viewBox="0 0 1060 475" role="img" aria-label="控制状态与 Guest 架构状态应分离">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#65788c"/></marker></defs>
+<rect width="1060" height="475" rx="18" fill="#ffffff" stroke="#dce3eb"/>
+<text x="30" y="38" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#24384b">控制状态与 Guest 架构状态应分离</text>
+<text x="30" y="65" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="start" fill="#65788c">假设原始 RFLAGS = 0x202，下一条指令为 PUSHFQ。</text>
+<text x="275.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">使用 RFLAGS.TF</text>
+<rect x="30" y="113" width="490" height="74" rx="10" fill="#fff2db" stroke="#b47b24" stroke-width="1.5"/>
+<text x="275.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">设置 TF = 1</text>
+<text x="275.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">实际 RFLAGS = 0x302</text>
+<path d="M275.0 187 L275.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="213" width="490" height="74" rx="10" fill="#fbecec" stroke="#bd5454" stroke-width="1.5"/>
+<text x="275.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">PUSHFQ</text>
+<text x="275.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">栈上写入 0x302</text>
+<path d="M275.0 287 L275.0 311" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="30" y="313" width="490" height="74" rx="10" fill="#fbecec" stroke="#bd5454" stroke-width="1.5"/>
+<text x="275.0" y="344.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">#DB → VMEXIT</text>
+<text x="275.0" y="367.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">退出后清 TF 也无法撤销栈写入</text>
+<text x="785.0" y="99" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#24384b">使用 VMCS.MTF（Intel VT-x）</text>
+<rect x="540" y="113" width="490" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="785.0" y="144.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">MTF = 1</text>
+<text x="785.0" y="167.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">Guest RFLAGS 保持 0x202</text>
+<path d="M785.0 187 L785.0 211" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="540" y="213" width="490" height="74" rx="10" fill="#e8f4ee" stroke="#39816b" stroke-width="1.5"/>
+<text x="785.0" y="244.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">PUSHFQ</text>
+<text x="785.0" y="267.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">栈上写入 0x202</text>
+<path d="M785.0 287 L785.0 311" stroke="#65788c" stroke-width="1.8" fill="none" marker-end="url(#arr)"/>
+<rect x="540" y="313" width="490" height="74" rx="10" fill="#eaf2fb" stroke="#4778a6" stroke-width="1.5"/>
+<text x="785.0" y="344.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24384b">MTF VMEXIT</text>
+<text x="785.0" y="367.5" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="15" font-weight="400" text-anchor="middle" fill="#24384b">无需借用 Guest 的 TF</text>
+<text x="530.0" y="451" font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#39816b">MTF 是独立的 VM-execution control；不是 KVM 6.6 当前通用单步路径。</text>
+</svg>
